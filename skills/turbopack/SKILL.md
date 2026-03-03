@@ -290,6 +290,6 @@ const nextConfig: NextConfig = {
 
 ## Official Documentation
 
-- [Turbopack](https://turbo.build/pack)
-- [Turbopack Documentation](https://turbo.build/pack/docs)
+- [Turbopack](https://turborepo.dev/pack)
+- [Turbopack Documentation](https://turborepo.dev/pack/docs)
 - [Next.js Turbopack Config](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack)

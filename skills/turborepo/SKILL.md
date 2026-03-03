@@ -32,7 +32,7 @@ The `turbo.json` file defines your task dependency graph. Here are comprehensive
 
 ```json
 {
-  "$schema": "https://turbo.build/schema.json",
+  "$schema": "https://turborepo.dev/schema.json",
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -54,7 +54,7 @@ The `turbo.json` file defines your task dependency graph. Here are comprehensive
 
 ```json
 {
-  "$schema": "https://turbo.build/schema.json",
+  "$schema": "https://turborepo.dev/schema.json",
   "globalDependencies": [".env"],
   "globalEnv": ["CI", "NODE_ENV"],
   "tasks": {
@@ -425,8 +425,8 @@ Vercel auto-detects Turborepo and optimizes builds. Each app in `apps/` can be a
 
 ## Official Documentation
 
-- [Turborepo Documentation](https://turbo.build/repo/docs)
-- [Getting Started](https://turbo.build/repo/docs/getting-started)
-- [Crafting Your Repository](https://turbo.build/repo/docs/crafting-your-repository)
-- [Task Configuration](https://turbo.build/repo/docs/reference/configuration)
-- [Filtering](https://turbo.build/repo/docs/crafting-your-repository/running-tasks#using-filters)
+- [Turborepo Documentation](https://turborepo.dev/repo/docs)
+- [Getting Started](https://turborepo.dev/repo/docs/getting-started)
+- [Crafting Your Repository](https://turborepo.dev/repo/docs/crafting-your-repository)
+- [Task Configuration](https://turborepo.dev/repo/docs/reference/configuration)
+- [Filtering](https://turborepo.dev/repo/docs/crafting-your-repository/running-tasks#using-filters)
