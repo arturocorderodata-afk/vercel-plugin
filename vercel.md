@@ -135,6 +135,26 @@ NEXT.JS (v16+)                           ⤳ skill: nextjs  📖 docs: https://n
     → Vercel Platform (optimized, zero-config)
     ↔ Vercel CLI (vercel dev, vercel build)
 
+SHADCN/UI                                ⤳ skill: shadcn  📖 docs: https://ui.shadcn.com
+├── CLI (npx shadcn@latest init/add/build/search)
+│   ⊃ Component source code copied to your project
+│   ⊃ Radix UI primitives + Tailwind CSS
+│   ⊃ CSS variable theming (oklch)
+│   ⊃ Custom registry system (build + host your own)
+│   ⊃ Namespaced registries (@v0, @acme, @ai-elements)
+│
+├── Key Patterns
+│   ⊃ cn() utility (clsx + tailwind-merge)
+│   ⊃ Dark mode via className="dark" on <html>
+│   ⊃ TooltipProvider at layout root
+│   ⊃ Components are source code — fully customizable
+│
+└── Integrations
+    ↔ Next.js (primary framework)
+    ↔ AI Elements (AI components built on shadcn)     ⤳ skill: ai-elements
+    ↔ v0 (generates shadcn/ui components)             ⤳ skill: v0-dev
+    ↔ Vite, Remix, Astro, Laravel (all supported)
+
 OTHER SUPPORTED FRAMEWORKS
 ├── Astro          ↔ Vercel Adapter
 ├── SvelteKit      ↔ Vercel Adapter
@@ -170,6 +190,15 @@ AI SDK (v6, TypeScript)                    ⤳ skill: ai-sdk  📖 docs: https:/
 │   ⊃ useCompletion (text completion hook)
 │   ⊃ useObject (structured streaming hook)
 │   ⊃ UIMessage / ModelMessage types
+│   ↔ AI Elements (pre-built chat UI components)       ⤳ skill: ai-elements
+│
+├── AI Elements (ai-elements)                          ⤳ skill: ai-elements
+│   ⊃ 40+ React components for AI interfaces
+│   ⊃ Message, Conversation, Tool, Reasoning, CodeBlock
+│   ⊃ Built on shadcn/ui (custom registry)
+│   ⊃ Handles UIMessage parts, streaming, markdown
+│   → AI SDK UI hooks (useChat, useCompletion)
+│   → shadcn/ui (component primitives)                 ⤳ skill: shadcn
 │
 ├── MCP Integration (@ai-sdk/mcp)
 │   ⊃ MCP Client (connect to any MCP server)
@@ -200,11 +229,20 @@ AI SDK (v6, TypeScript)                    ⤳ skill: ai-sdk  📖 docs: https:/
     ↔ Workflow DevKit (durable agents)
     ↔ AI Gateway (model routing, cost tracking)
     ↔ v0 (AI-generated UI components)
+    ↔ AI Elements (production chat UI components)      ⤳ skill: ai-elements
+    ↔ shadcn/ui (component foundation)                 ⤳ skill: shadcn
 
 AI GATEWAY                                 ⤳ skill: ai-gateway  📖 docs: https://vercel.com/docs/ai-gateway
 ├── Unified API ("creator/model-name" format)
 │   → @ai-sdk/gateway package
 │   ↔ AI SDK (automatic when using model strings)
+│
+├── Authentication
+│   ⊃ OIDC (default — auto-provisioned via `vercel env pull`)
+│   ⊃ AI_GATEWAY_API_KEY (alternative — manual key)
+│   ⊃ VERCEL_OIDC_TOKEN (short-lived JWT, auto-refreshed on deploy)
+│   → @vercel/oidc (reads VERCEL_OIDC_TOKEN from env)
+│   → Vercel CLI (`vercel env pull` provisions OIDC token)
 │
 ├── Features
 │   ⊃ Provider Routing (order, only, fallback models)
@@ -578,7 +616,9 @@ VERCEL MARKETPLACE                          ⤳ skill: marketplace  📖 docs: h
 | Need | Use | Why |
 |------|-----|-----|
 | **Any AI feature (default)** | **AI Gateway** (`gateway('provider/model')`) | **Failover, cost tracking, observability — no provider API keys needed on Vercel** |
-| Chat interface | AI SDK `useChat` + `streamText` + AI Gateway | Streaming UI, provider-agnostic |
+| Chat interface | AI SDK `useChat` + `streamText` + AI Gateway + AI Elements | Streaming UI, provider-agnostic |
+| Chat UI components (messages, tools, reasoning) | AI Elements (`npx ai-elements`) | Pre-built, handles UIMessage parts |
+| Custom chat rendering (no AI Elements) | Manual `message.parts` iteration | Full control, see ⤳ skill: json-render |
 | Structured data extraction | AI SDK `generateText` + `Output.object()` + AI Gateway | Type-safe, schema-validated |
 | Multi-step agent | AI SDK `Agent` class + AI Gateway | Loop control, tool calling |
 | Production agent (must not lose state) | Workflow DevKit `DurableAgent` | Survives crashes, observable |
@@ -664,12 +704,18 @@ Three distinct caching systems serve different purposes. They can be used indepe
 ### 1. Build an AI Chatbot
 ```
 1. vercel link (or create project in dashboard)
-2. Enable AI Gateway in Vercel dashboard → auto-provisions credentials
-3. vercel env pull (pulls gateway env vars to .env.local)
+2. Enable AI Gateway in Vercel dashboard → auto-provisions OIDC credentials
+3. vercel env pull (pulls VERCEL_OIDC_TOKEN + gateway env vars to .env.local)
 4. npm install ai (no provider SDK needed — gateway is built in)
-5. Code: import { gateway } from 'ai' → gateway('anthropic/claude-sonnet-4.6')
-6. Next.js (App Router) → AI SDK (useChat + streamText) → AI Gateway
+5. npx ai-elements (install chat UI components — Message, Conversation, PromptInput)
+6. Code: import { gateway } from 'ai' → gateway('anthropic/claude-sonnet-4.6')
+7. Server: convertToModelMessages(messages) → streamText → toUIMessageStreamResponse()
+8. Client: useChat({ transport: new DefaultChatTransport({ api: '/api/chat' }) })
+9. Next.js (App Router) → AI SDK + AI Elements → AI Gateway (OIDC auth)
                         → Vercel Functions (streaming) → vercel deploy
+```
+
+**OIDC Authentication (default):** When you run `vercel env pull`, it provisions a `VERCEL_OIDC_TOKEN` — a short-lived JWT that the AI Gateway uses automatically. No manual API keys needed. The `@ai-sdk/gateway` package reads `VERCEL_OIDC_TOKEN` from the environment via `@vercel/oidc`. On Vercel deployments, OIDC tokens are auto-refreshed. For local dev, re-run `vercel env pull` if the token expires (~24h).
 ```
 
 ### 2. Build a Durable AI Agent
@@ -717,6 +763,11 @@ Git Push → CI Pipeline → vercel build → vercel deploy --prebuilt
 | `result` (AI SDK tools) | `output` | Aligned with MCP spec |
 | `CoreMessage` | `ModelMessage` | Use `convertToModelMessages()` |
 | `Experimental_Agent` | `ToolLoopAgent` | `system` → `instructions` |
+| `useChat({ api })` | `useChat({ transport: new DefaultChatTransport({ api }) })` | v6 transport pattern |
+| `handleSubmit` / `input` | `sendMessage({ text })` / own state | v6 chat hook API |
+| `toDataStreamResponse()` | `toUIMessageStreamResponse()` | For chat UIs with useChat |
+| `message.content` | `message.parts` iteration | UIMessage format (text, tool-*, reasoning) |
+| Manual API keys (`ANTHROPIC_API_KEY`) | OIDC via `vercel env pull` | Auto-provisioned, no secrets to manage |
 
 ---
 
@@ -737,7 +788,10 @@ Git Push → CI Pipeline → vercel build → vercel deploy --prebuilt
 ### AI SDK v6
 
 - **Default to AI Gateway** — use `import { gateway } from 'ai'` and `gateway('provider/model')` (e.g., `gateway('anthropic/claude-sonnet-4.6')`). Do NOT install or import direct provider SDKs (`@ai-sdk/anthropic`, `@ai-sdk/openai`, etc.) unless you need provider-specific features not exposed through the gateway.
-- **For AI projects, set up a Vercel project first** — run `vercel link` (or create via dashboard) so AI Gateway credentials are auto-provisioned. Use `vercel env pull` to get them locally. Do NOT manually create `.env.local` with provider-specific API keys like `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
+- **OIDC is the default auth for AI Gateway** — when you run `vercel env pull`, it provisions `VERCEL_OIDC_TOKEN` which the `@ai-sdk/gateway` package reads automatically via `@vercel/oidc`. No `AI_GATEWAY_API_KEY` or provider-specific API keys needed. On Vercel deployments, OIDC tokens are auto-refreshed. For local dev, re-run `vercel env pull` if the token expires (~24h).
+- **For AI projects, set up a Vercel project first** — run `vercel link` (or create via dashboard) → enable AI Gateway in dashboard → `vercel env pull` to get OIDC credentials locally. Do NOT manually create `.env.local` with provider-specific API keys like `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
+- **Use AI Elements for chat UIs** — `npx ai-elements` installs pre-built Message, Conversation, and Tool components that handle UIMessage parts, streaming, and markdown automatically. Built on shadcn/ui.
+- **Server-side: use `convertToModelMessages()` (async) + `toUIMessageStreamResponse()`** — not `toDataStreamResponse()`. Client-side: use `DefaultChatTransport` with `useChat`, not the v5 `api` parameter.
 - Use `inputSchema` (not `parameters`) and `output`/`outputSchema` (not `result`) for tool definitions — aligned with MCP spec.
 - Always stream for user-facing AI: use `streamText` + `useChat`, not `generateText`.
 - `generateObject` and `streamObject` are removed in v6 — use `generateText` / `streamText` with `Output.object()` instead.

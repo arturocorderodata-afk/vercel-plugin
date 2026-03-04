@@ -17,14 +17,19 @@ npm install ai  # AI Gateway is built in — no provider SDK needed
 
 ## Setup for AI Projects
 
-For the smoothest experience, link to a Vercel project so AI Gateway credentials are auto-provisioned:
+For the smoothest experience, link to a Vercel project so AI Gateway credentials are auto-provisioned via OIDC:
 
 ```bash
-vercel link          # Connect to your Vercel project
-vercel env pull      # Pull gateway credentials to .env.local
+vercel link                    # Connect to your Vercel project
+# Enable AI Gateway in Vercel dashboard
+vercel env pull .env.local     # Provisions VERCEL_OIDC_TOKEN automatically
+npm install ai                 # Gateway is built in
+npx ai-elements                # Optional: install chat UI components
 ```
 
-This gives you AI Gateway access with cost tracking, failover, and observability — no manual API keys needed.
+This gives you AI Gateway access with OIDC authentication, cost tracking, failover, and observability — no manual API keys needed.
+
+**OIDC is the default auth**: `vercel env pull` provisions a `VERCEL_OIDC_TOKEN` (short-lived JWT, ~24h). The `@ai-sdk/gateway` reads it automatically via `@vercel/oidc`. On Vercel deployments, tokens auto-refresh. For local dev, re-run `vercel env pull` when the token expires. No `AI_GATEWAY_API_KEY` or provider-specific keys needed.
 
 ## Global Provider System (AI Gateway — Default)
 
@@ -231,38 +236,85 @@ const { image: edited } = await editImage({
 
 ## UI Hooks (React)
 
+### With AI Elements (Recommended)
+
 ```tsx
 'use client'
-import { useChat, useCompletion, useObject } from '@ai-sdk/react'
+import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
+import { Conversation } from '@/components/ai-elements/conversation'
+import { Message } from '@/components/ai-elements/message'
 
-// Chat interface
 function Chat() {
-  const { messages, input, handleInputChange, handleSubmit } = useChat()
+  const { messages, sendMessage, status } = useChat({
+    transport: new DefaultChatTransport({ api: '/api/chat' }),
+  })
+
+  return (
+    <Conversation>
+      {messages.map((message) => (
+        <Message key={message.id} message={message} />
+      ))}
+    </Conversation>
+  )
+}
+```
+
+AI Elements handles UIMessage parts (text, tool calls, reasoning, images) automatically. Install with `npx ai-elements`.
+
+⤳ skill: ai-elements — Full component library for AI interfaces
+⤳ skill: json-render — Manual rendering patterns for custom UIs
+
+### Without AI Elements (Manual)
+
+```tsx
+'use client'
+import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
+
+function Chat() {
+  const { messages, sendMessage, status } = useChat({
+    transport: new DefaultChatTransport({ api: '/api/chat' }),
+  })
+
   return (
     <div>
-      {messages.map(m => <div key={m.id}>{m.role}: {m.content}</div>)}
-      <form onSubmit={handleSubmit}>
-        <input value={input} onChange={handleInputChange} />
-      </form>
+      {messages.map((m) => (
+        <div key={m.id}>
+          {m.parts?.map((part, i) => {
+            if (part.type === 'text') return <p key={i}>{part.text}</p>
+            if (part.type.startsWith('tool-')) return <ToolCard key={i} part={part} />
+            return null
+          })}
+        </div>
+      ))}
     </div>
   )
 }
 ```
 
-The `useChat` hook connects to a Route Handler or Server Action that uses `streamText`.
+**v6 changes from v5:**
+- `useChat({ api })` → `useChat({ transport: new DefaultChatTransport({ api }) })`
+- `handleSubmit` → `sendMessage({ text })`
+- `input` / `handleInputChange` → manage your own `useState`
+- `isLoading` → `status === 'streaming' || status === 'submitted'`
+- `message.content` → iterate `message.parts` (UIMessage format)
 
 ### Server-side for useChat
 ```ts
 // app/api/chat/route.ts
-import { streamText, gateway } from 'ai'
+import { streamText, convertToModelMessages, gateway } from 'ai'
 
 export async function POST(req: Request) {
   const { messages } = await req.json()
+  // IMPORTANT: convertToModelMessages is async in v6
+  const modelMessages = await convertToModelMessages(messages)
   const result = streamText({
     model: gateway('openai/gpt-5.2'),
-    messages,
+    messages: modelMessages,
   })
-  return result.toDataStreamResponse()
+  // Use toUIMessageStreamResponse (not toDataStreamResponse) for chat UIs
+  return result.toUIMessageStreamResponse()
 }
 ```
 
@@ -319,13 +371,15 @@ npx @ai-sdk/devtools
 
 ## Key Patterns
 
-1. **Default to AI Gateway** — use `import { gateway } from 'ai'` for all AI features. Only use direct provider SDKs for provider-specific features not exposed through the gateway.
-2. **Set up a Vercel project for AI** — `vercel link` + `vercel env pull` to get auto-provisioned gateway credentials. Never manually create `.env.local` with provider-specific API keys.
-3. **Always stream for user-facing AI** — use `streamText` + `useChat`, not `generateText`
-4. **Use structured output** for extracting data — `generateText` with `Output.object()` and Zod schemas
-5. **Use the Agent class** for multi-step reasoning — not manual loops
-6. **Use DurableAgent** (from Workflow DevKit) for production agents that must survive crashes
-7. **Use `mcp-to-ai-sdk`** to generate static tool definitions from MCP servers for security
+1. **Default to AI Gateway with OIDC** — use `import { gateway } from 'ai'` for all AI features. `vercel env pull` provisions OIDC tokens automatically. No manual API keys needed.
+2. **Set up a Vercel project for AI** — `vercel link` → enable AI Gateway in dashboard → `vercel env pull` to get OIDC credentials. Never manually create `.env.local` with provider-specific API keys.
+3. **Use AI Elements for chat UIs** — `npx ai-elements` installs production-ready Message, Conversation, and Tool components that handle UIMessage parts automatically. ⤳ skill: ai-elements
+4. **Always stream for user-facing AI** — use `streamText` + `useChat`, not `generateText`
+5. **Server: `convertToModelMessages()` (async) + `toUIMessageStreamResponse()`** — not `toDataStreamResponse()`. Client: `DefaultChatTransport` with `useChat`.
+6. **Use structured output** for extracting data — `generateText` with `Output.object()` and Zod schemas
+7. **Use the Agent class** for multi-step reasoning — not manual loops
+8. **Use DurableAgent** (from Workflow DevKit) for production agents that must survive crashes
+9. **Use `mcp-to-ai-sdk`** to generate static tool definitions from MCP servers for security
 
 ## Migration from AI SDK 5
 
@@ -333,9 +387,13 @@ Run `npx @ai-sdk/codemod v6` to auto-migrate. Key changes:
 - `generateObject` / `streamObject` → `generateText` / `streamText` with `Output.object()`
 - `parameters` → `inputSchema`
 - `result` → `output`
-- `CoreMessage` → `ModelMessage` (use `convertToModelMessages()`)
+- `CoreMessage` → `ModelMessage` (use `convertToModelMessages()` — now async)
 - `Experimental_Agent` → `ToolLoopAgent` (`system` → `instructions`)
 - `experimental_createMCPClient` → `createMCPClient` (stable)
+- `useChat({ api })` → `useChat({ transport: new DefaultChatTransport({ api }) })`
+- `handleSubmit` / `input` → `sendMessage({ text })` / manage own state
+- `toDataStreamResponse()` → `toUIMessageStreamResponse()` (for chat UIs)
+- `message.content` → `message.parts` (UIMessage format with typed parts)
 - UIMessage / ModelMessage types introduced
 
 ## Official Documentation

@@ -27,6 +27,49 @@ const result = await generateText({
 
 No additional package needed — the `gateway` provider is built into the `ai` package.
 
+## Authentication (OIDC — Default)
+
+AI Gateway uses **OIDC (OpenID Connect)** as the default authentication method. No manual API keys needed.
+
+### Setup
+
+```bash
+vercel link                    # Connect to your Vercel project
+# Enable AI Gateway in Vercel dashboard
+vercel env pull .env.local     # Provisions VERCEL_OIDC_TOKEN automatically
+```
+
+### How It Works
+
+1. `vercel env pull` writes a `VERCEL_OIDC_TOKEN` to `.env.local` — a short-lived JWT (~24h)
+2. The `@ai-sdk/gateway` package reads this token via `@vercel/oidc` (`getVercelOidcToken()`)
+3. No `AI_GATEWAY_API_KEY` or provider-specific keys (like `ANTHROPIC_API_KEY`) are needed
+4. On Vercel deployments, OIDC tokens are auto-refreshed — zero maintenance
+
+### Local Development
+
+For local dev, the OIDC token from `vercel env pull` is valid for ~24 hours. When it expires:
+
+```bash
+vercel env pull .env.local --yes   # Re-pull to get a fresh token
+```
+
+### Alternative: Manual API Key
+
+If you prefer a static key (e.g., for CI or non-Vercel environments):
+
+```bash
+# Set AI_GATEWAY_API_KEY in your environment
+# The gateway falls back to this when VERCEL_OIDC_TOKEN is not available
+export AI_GATEWAY_API_KEY=your-key-here
+```
+
+### Auth Priority
+
+The `@ai-sdk/gateway` package resolves authentication in this order:
+1. `AI_GATEWAY_API_KEY` environment variable (if set)
+2. `VERCEL_OIDC_TOKEN` via `@vercel/oidc` (default on Vercel and after `vercel env pull`)
+
 ## Provider Routing
 
 Configure how AI Gateway routes requests across providers:

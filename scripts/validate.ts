@@ -554,6 +554,152 @@ async function validateCliBannedPatterns() {
 }
 
 // ---------------------------------------------------------------------------
+// 8. Validate PreToolUse hook and skill-map coverage
+// ---------------------------------------------------------------------------
+
+async function validatePreToolUseHook() {
+  section("[8] PreToolUse hook and skill-map coverage");
+
+  // 8a. Check PreToolUse hook exists in hooks.json
+  const hooksPath = join(ROOT, "hooks", "hooks.json");
+  if (!(await exists(hooksPath))) {
+    fail("HOOKS_MISSING", "hooks/hooks.json not found (cannot validate PreToolUse)", {
+      file: "hooks/hooks.json",
+      hint: "Create hooks/hooks.json with PreToolUse hook definitions",
+    });
+    return;
+  }
+
+  let hooks: any;
+  try {
+    hooks = JSON.parse(await readFile(hooksPath, "utf-8"));
+  } catch {
+    // Already reported in check [4]
+    return;
+  }
+
+  const preToolUse = hooks?.hooks?.PreToolUse;
+  if (!preToolUse || !Array.isArray(preToolUse) || preToolUse.length === 0) {
+    fail("PRETOOLUSE_MISSING", "hooks.json has no PreToolUse hook defined", {
+      file: "hooks/hooks.json",
+      hint: "Add a PreToolUse matcher group to hooks.json",
+    });
+    return;
+  }
+
+  // Check matcher covers Read|Edit|Write|Bash
+  const matcher = preToolUse[0]?.matcher || "";
+  for (const tool of ["Read", "Edit", "Write", "Bash"]) {
+    if (!matcher.includes(tool)) {
+      fail("PRETOOLUSE_MATCHER_INCOMPLETE", `PreToolUse matcher missing "${tool}" — current: "${matcher}"`, {
+        file: "hooks/hooks.json",
+        hint: `Add "${tool}" to the PreToolUse matcher pattern`,
+      });
+    }
+  }
+  if (["Read", "Edit", "Write", "Bash"].every((t) => matcher.includes(t))) {
+    pass("PreToolUse matcher covers Read|Edit|Write|Bash");
+  }
+
+  // 8b. Check referenced hook script exists
+  const hookCmd = preToolUse[0]?.hooks?.[0]?.command || "";
+  const scriptMatch = hookCmd.match(/pretooluse-skill-inject\.mjs/);
+  if (!scriptMatch) {
+    fail("PRETOOLUSE_SCRIPT_REF", "PreToolUse hook command does not reference pretooluse-skill-inject.mjs", {
+      file: "hooks/hooks.json",
+      hint: "Set the hook command to reference pretooluse-skill-inject.mjs",
+    });
+  } else {
+    const scriptPath = join(ROOT, "hooks", "pretooluse-skill-inject.mjs");
+    if (await exists(scriptPath)) {
+      pass("pretooluse-skill-inject.mjs exists");
+    } else {
+      fail("PRETOOLUSE_SCRIPT_MISSING", "hooks/pretooluse-skill-inject.mjs not found", {
+        file: "hooks/pretooluse-skill-inject.mjs",
+        hint: "Create the PreToolUse hook script at hooks/pretooluse-skill-inject.mjs",
+      });
+    }
+  }
+
+  // 8c. Validate skill-map.json
+  const skillMapPath = join(ROOT, "hooks", "skill-map.json");
+  if (!(await exists(skillMapPath))) {
+    fail("SKILLMAP_MISSING", "hooks/skill-map.json not found", {
+      file: "hooks/skill-map.json",
+      hint: "Create hooks/skill-map.json mapping skills to file/bash patterns",
+    });
+    return;
+  }
+
+  let skillMap: any;
+  try {
+    skillMap = JSON.parse(await readFile(skillMapPath, "utf-8"));
+  } catch (e) {
+    fail("SKILLMAP_INVALID", `hooks/skill-map.json is not valid JSON: ${e}`, {
+      file: "hooks/skill-map.json",
+      hint: "Fix JSON syntax errors in hooks/skill-map.json",
+    });
+    return;
+  }
+
+  const mapSkills = Object.keys(skillMap.skills || {});
+
+  // 8d. Every skill in skill-map.json must have a corresponding skills/*/SKILL.md
+  const missingSkillFiles: string[] = [];
+  for (const skill of mapSkills) {
+    const skillPath = join(ROOT, "skills", skill, "SKILL.md");
+    if (await exists(skillPath)) {
+      pass(`skill-map "${skill}" → skills/${skill}/SKILL.md`);
+    } else {
+      missingSkillFiles.push(skill);
+      fail("SKILLMAP_REF_BROKEN", `skill-map references "${skill}" but skills/${skill}/SKILL.md not found`, {
+        file: "hooks/skill-map.json",
+        hint: `Create skills/${skill}/SKILL.md or remove "${skill}" from skill-map.json`,
+      });
+    }
+  }
+
+  // 8e. Every skill in skill-map must have at least one trigger
+  const noTriggers: string[] = [];
+  for (const [skill, config] of Object.entries(skillMap.skills || {}) as [string, any][]) {
+    const pathCount = (config.pathPatterns || []).length;
+    const bashCount = (config.bashPatterns || []).length;
+    if (pathCount === 0 && bashCount === 0) {
+      noTriggers.push(skill);
+      fail("SKILLMAP_NO_TRIGGERS", `skill-map "${skill}" has no path or bash trigger patterns`, {
+        file: "hooks/skill-map.json",
+        hint: `Add pathPatterns or bashPatterns for "${skill}" in skill-map.json`,
+      });
+    }
+  }
+  if (noTriggers.length === 0 && mapSkills.length > 0) {
+    pass("All skill-map entries have at least one trigger pattern");
+  }
+
+  // 8f. Every skills/*/SKILL.md should have at least one trigger in skill-map
+  const skillsDir = join(ROOT, "skills");
+  if (await exists(skillsDir)) {
+    const dirs = await readdir(skillsDir);
+    const mapSkillSet = new Set(mapSkills);
+    const uncovered: string[] = [];
+    for (const dir of dirs.sort()) {
+      const skillPath = join(skillsDir, dir, "SKILL.md");
+      if (!(await exists(skillPath))) continue;
+      if (!mapSkillSet.has(dir)) {
+        uncovered.push(dir);
+        fail("SKILLMAP_UNCOVERED", `skills/${dir}/SKILL.md has no entry in skill-map.json`, {
+          file: `skills/${dir}/SKILL.md`,
+          hint: `Add "${dir}" with pathPatterns/bashPatterns to hooks/skill-map.json`,
+        });
+      }
+    }
+    if (uncovered.length === 0) {
+      pass("All skills have triggers in skill-map.json");
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -579,6 +725,7 @@ async function main() {
   await timed("coverageBaseline", () => validateCoverageBaseline());
   await timed("commandConventions", () => validateCommandConventions());
   await timed("cliBannedPatterns", () => validateCliBannedPatterns());
+  await timed("preToolUseHook", () => validatePreToolUseHook());
 
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const warnCount = issues.filter((i) => i.severity === "warning").length;
