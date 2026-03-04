@@ -8,7 +8,7 @@ This plugin pre-loads AI agents with a **relational knowledge graph** of the ent
 
 ## Components
 
-### Ecosystem Graph (`CLAUDE.md`)
+### Ecosystem Graph (`vercel.md`)
 
 A text-form relational graph covering:
 - All Vercel products and their relationships
@@ -59,12 +59,9 @@ A text-form relational graph covering:
 | `/vercel-plugin:status` | Project status overview |
 | `/vercel-plugin:marketplace` | Discover and install marketplace integrations |
 
-### CLAUDE.md (always-in-context conventions)
-
-The ecosystem knowledge graph and coding conventions (Next.js 16, AI SDK v6, Vercel platform best practices) are shipped as `CLAUDE.md` so they're automatically loaded into context for every session.
-
 ### Hooks
 
+- **SessionStart context injection** — Injects `vercel.md` (ecosystem graph + conventions) into every session via a `SessionStart` hook
 - **Pre-write/edit validation** — Catches deprecated patterns before they're written (sunset packages, old API names, renamed files)
 
 ## Usage
@@ -78,8 +75,8 @@ claude --plugin-dir ./vercel-plugin
 /vercel-plugin:ai-sdk
 /vercel-plugin:deploy prod
 
-# CLAUDE.md loads automatically with the ecosystem graph
-# and conventions, giving the agent full Vercel context.
+# vercel.md is injected via SessionStart hook,
+# giving the agent full Vercel context automatically.
 ```
 
 ## Architecture
@@ -113,8 +110,8 @@ vercel-plugin/
 │   └── workflow/
 ├── agents/                          # 3 specialist agents
 ├── commands/                        # 4 slash commands
-├── CLAUDE.md                        # Ecosystem graph + conventions (always in context)
-└── hooks/                           # Deprecation guard
+├── vercel.md                        # Ecosystem graph + conventions (injected via SessionStart hook)
+└── hooks/                           # SessionStart injection + deprecation guard
 ```
 
 ## Ecosystem Coverage (March 2026)
