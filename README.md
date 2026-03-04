@@ -16,21 +16,31 @@ A text-form relational graph covering:
 - Common cross-product workflows
 - Migration awareness for sunset products
 
-### Skills (11 skills)
+### Skills (21 skills)
 
 | Skill | Covers |
 |-------|--------|
-| `nextjs` | App Router, Server Components, Server Actions, Cache Components, routing, rendering strategies |
-| `ai-sdk` | AI SDK v6 — text/object generation, streaming, tool calling, agents, MCP, providers, embeddings |
-| `workflow` | Workflow DevKit — durable execution, DurableAgent, steps, Worlds, pause/resume |
-| `vercel-functions` | Serverless, Edge, Fluid Compute, streaming, Cron Jobs, configuration |
-| `vercel-storage` | Blob, Edge Config, Neon Postgres, Upstash Redis, migration from sunset packages |
 | `ai-gateway` | Unified model API, provider routing, failover, cost tracking, 100+ models |
-| `vercel-cli` | All CLI commands — deploy, env, dev, domains, marketplace discovery |
-| `turborepo` | Monorepo orchestration, caching, remote caching, --affected, pruned subsets |
+| `ai-sdk` | AI SDK v6 — text/object generation, streaming, tool calling, agents, MCP, providers, embeddings |
+| `marketplace` | Integration discovery, installation, auto-provisioned env vars, unified billing |
+| `nextjs` | App Router, Server Components, Server Actions, Cache Components, routing, rendering strategies |
+| `observability` | Web Analytics, Speed Insights, runtime logs, Log Drains, OpenTelemetry, monitoring |
+| `routing-middleware` | Request interception before cache, rewrites, redirects, personalization — Edge/Node.js/Bun runtimes |
+| `runtime-cache` | Ephemeral per-region key-value cache, tag-based invalidation, shared across Functions/Middleware/Builds |
+| `sign-in-with-vercel` | OAuth 2.0/OIDC identity provider, user authentication via Vercel accounts |
 | `turbopack` | Next.js bundler, HMR, configuration, Turbopack vs Webpack |
+| `turborepo` | Monorepo orchestration, caching, remote caching, --affected, pruned subsets |
 | `v0-dev` | AI code generation, agentic intelligence, GitHub integration |
+| `vercel-agent` | AI-powered code review, incident investigation, SDK installation, PR analysis |
+| `vercel-api` | Vercel MCP Server and REST API — projects, deployments, env vars, domains, logs |
+| `vercel-cli` | All CLI commands — deploy, env, dev, domains, cache management, MCP integration, marketplace |
 | `vercel-firewall` | DDoS, WAF, rate limiting, bot filter, custom rules |
+| `vercel-flags` | Feature flags, Flags Explorer, gradual rollouts, A/B testing, provider adapters |
+| `vercel-functions` | Serverless, Edge, Fluid Compute, streaming, Cron Jobs, configuration |
+| `vercel-queues` | Durable event streaming, topics, consumer groups, retries, delayed delivery |
+| `vercel-sandbox` | Ephemeral Firecracker microVMs for running untrusted/AI-generated code safely |
+| `vercel-storage` | Blob, Edge Config, Neon Postgres, Upstash Redis, migration from sunset packages |
+| `workflow` | Workflow DevKit — durable execution, DurableAgent, steps, Worlds, pause/resume |
 
 ### Agents (3 specialists)
 
@@ -81,18 +91,28 @@ vercel-plugin/
 ├── .plugin/plugin.json              # Plugin manifest
 ├── assets/
 │   └── vercel-ecosystem-graph.md    # Master relational knowledge graph
-├── skills/                          # 11 deep-dive skills
-│   ├── nextjs/
-│   ├── ai-sdk/
-│   ├── workflow/
-│   ├── vercel-functions/
-│   ├── vercel-storage/
+├── skills/                          # 21 deep-dive skills
 │   ├── ai-gateway/
-│   ├── vercel-cli/
-│   ├── turborepo/
+│   ├── ai-sdk/
+│   ├── marketplace/
+│   ├── nextjs/
+│   ├── observability/
+│   ├── routing-middleware/
+│   ├── runtime-cache/
+│   ├── sign-in-with-vercel/
 │   ├── turbopack/
+│   ├── turborepo/
 │   ├── v0-dev/
-│   └── vercel-firewall/
+│   ├── vercel-agent/
+│   ├── vercel-api/
+│   ├── vercel-cli/
+│   ├── vercel-firewall/
+│   ├── vercel-flags/
+│   ├── vercel-functions/
+│   ├── vercel-queues/
+│   ├── vercel-sandbox/
+│   ├── vercel-storage/
+│   └── workflow/
 ├── agents/                          # 3 specialist agents
 ├── commands/                        # 4 slash commands
 ├── rules/                           # 3 convention rules
@@ -107,10 +127,19 @@ vercel-plugin/
 - AI Gateway (100+ models, provider routing, cost tracking)
 - Vercel Functions (Fluid Compute, streaming, Cron Jobs)
 - Storage (Blob, Edge Config, Neon Postgres, Upstash Redis)
+- Routing Middleware (request interception, Edge/Node.js/Bun runtimes)
+- Runtime Cache API (per-region KV cache, tag-based invalidation)
+- Vercel Flags (feature flags, Flags Explorer, gradual rollouts, A/B testing)
+- Vercel Queues (durable event streaming, topics, consumer groups, retries)
+- Vercel Agent (AI code review, incident investigation)
+- Vercel Sandbox (Firecracker microVMs for untrusted code)
+- Sign in with Vercel (OAuth 2.0/OIDC identity provider)
 - Turborepo (--affected, remote caching, Rust core)
 - Turbopack (default bundler in Next.js 16)
+- Microfrontends (multi-app composition, independent deploys)
+- OG Image Generation (@vercel/og, dynamic social images at the edge)
 - v0 (agentic intelligence, GitHub integration)
 - Vercel Firewall (DDoS, WAF, Bot Filter)
-- Vercel CLI (Marketplace discovery, agent-friendly output)
+- Vercel CLI (cache management, MCP integration, marketplace discovery)
 - Vercel Observability (Analytics, Speed Insights, Drains)
 - Vercel Marketplace (one-click integrations, unified billing)
