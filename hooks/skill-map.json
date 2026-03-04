@@ -8,7 +8,11 @@
         "app/**",
         "pages/**",
         "src/app/**",
-        "src/pages/**"
+        "src/pages/**",
+        "tailwind.config.*",
+        "postcss.config.*",
+        "tsconfig.json",
+        "tsconfig.*.json"
       ],
       "bashPatterns": [
         "\\bnext\\s+(dev|build|start|lint)\\b",
@@ -42,7 +46,11 @@
         ".env.*"
       ],
       "bashPatterns": [
-        "\\bvercel\\s+env\\s+pull\\b"
+        "\\bvercel\\s+env\\s+pull\\b",
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@ai-sdk/gateway\\b",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@ai-sdk/gateway\\b",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*@ai-sdk/gateway\\b",
+        "\\byarn\\s+add\\s+[^\\n]*@ai-sdk/gateway\\b"
       ]
     },
     "routing-middleware": {
@@ -130,7 +138,9 @@
       ],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/functions\\b",
-        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/functions\\b"
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/functions\\b",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/functions\\b",
+        "\\byarn\\s+add\\s+[^\\n]*@vercel/functions\\b"
       ]
     },
     "vercel-firewall": {
@@ -195,7 +205,9 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/analytics\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/analytics\\b",
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/speed-insights\\b",
-        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/speed-insights\\b"
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/speed-insights\\b",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/speed-insights\\b",
+        "\\byarn\\s+add\\s+[^\\n]*@vercel/speed-insights\\b"
       ]
     },
     "marketplace": {

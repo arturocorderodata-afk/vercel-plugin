@@ -12,68 +12,118 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname, basename, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const MAX_SKILLS = 3;
-const PLUGIN_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // ---------------------------------------------------------------------------
-// Read stdin
+// Main
 // ---------------------------------------------------------------------------
 
-let input;
-try {
-  const raw = readFileSync("/dev/stdin", "utf-8").trim();
-  if (!raw) {
-    process.stdout.write("{}");
-    process.exit(0);
-  }
-  input = JSON.parse(raw);
-} catch {
-  process.stdout.write("{}");
-  process.exit(0);
-}
-
-const toolName = input.tool_name || "";
-const toolInput = input.tool_input || {};
-const sessionId = input.session_id || process.env.SESSION_ID || "default";
-
-// ---------------------------------------------------------------------------
-// Load skill map
-// ---------------------------------------------------------------------------
-
-let skillMap;
-try {
-  const mapPath = join(PLUGIN_ROOT, "hooks", "skill-map.json");
-  skillMap = JSON.parse(readFileSync(mapPath, "utf-8")).skills;
-} catch {
-  process.stdout.write("{}");
-  process.exit(0);
-}
-
-// ---------------------------------------------------------------------------
-// Session dedup
-// ---------------------------------------------------------------------------
-
-const dedupDir = join(tmpdir(), "vercel-plugin-hooks");
-const dedupFile = join(dedupDir, `session-${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
-
-let injectedSkills;
-try {
-  if (!existsSync(dedupDir)) mkdirSync(dedupDir, { recursive: true });
-  injectedSkills = existsSync(dedupFile)
-    ? new Set(JSON.parse(readFileSync(dedupFile, "utf-8")))
-    : new Set();
-} catch {
-  injectedSkills = new Set();
-}
-
-function persistDedup() {
+function run() {
+  // ---- Read stdin ----
+  let input;
   try {
-    writeFileSync(dedupFile, JSON.stringify([...injectedSkills]));
+    const raw = readFileSync(0, "utf-8").trim();
+    if (!raw) return "{}";
+    input = JSON.parse(raw);
   } catch {
-    // best-effort
+    return "{}";
   }
+
+  const toolName = input.tool_name || "";
+  const toolInput = input.tool_input || {};
+  const sessionId = input.session_id || process.env.SESSION_ID || "default";
+
+  // ---- Load skill map ----
+  let skillMap;
+  try {
+    const mapPath = join(PLUGIN_ROOT, "hooks", "skill-map.json");
+    const parsed = JSON.parse(readFileSync(mapPath, "utf-8"));
+    skillMap = parsed.skills || {};
+  } catch {
+    return "{}";
+  }
+
+  if (typeof skillMap !== "object" || Object.keys(skillMap).length === 0) {
+    return "{}";
+  }
+
+  // ---- Session dedup ----
+  const dedupDir = join(tmpdir(), "vercel-plugin-hooks");
+  const dedupFile = join(
+    dedupDir,
+    `session-${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`,
+  );
+
+  let injectedSkills;
+  try {
+    if (!existsSync(dedupDir)) mkdirSync(dedupDir, { recursive: true });
+    injectedSkills = existsSync(dedupFile)
+      ? new Set(JSON.parse(readFileSync(dedupFile, "utf-8")))
+      : new Set();
+  } catch {
+    injectedSkills = new Set();
+  }
+
+  function persistDedup() {
+    try {
+      writeFileSync(dedupFile, JSON.stringify([...injectedSkills]));
+    } catch {
+      // best-effort
+    }
+  }
+
+  // ---- Determine matched skills ----
+  const matched = new Set();
+
+  if (["Read", "Edit", "Write"].includes(toolName)) {
+    const filePath = toolInput.file_path || "";
+    for (const [skill, config] of Object.entries(skillMap)) {
+      if (matchPathPatterns(filePath, config.pathPatterns)) {
+        matched.add(skill);
+      }
+    }
+  } else if (toolName === "Bash") {
+    const command = toolInput.command || "";
+    for (const [skill, config] of Object.entries(skillMap)) {
+      if (matchBashPatterns(command, config.bashPatterns)) {
+        matched.add(skill);
+      }
+    }
+  }
+
+  // Filter out already-injected skills
+  const newSkills = [...matched].filter((s) => !injectedSkills.has(s));
+
+  if (newSkills.length === 0) return "{}";
+
+  // Cap at MAX_SKILLS
+  const toInject = newSkills.slice(0, MAX_SKILLS);
+
+  // ---- Load SKILL.md files and build output ----
+  const parts = [];
+  for (const skill of toInject) {
+    const skillPath = join(PLUGIN_ROOT, "skills", skill, "SKILL.md");
+    try {
+      const content = readFileSync(skillPath, "utf-8");
+      parts.push(
+        `<!-- skill:${skill} -->\n${content}\n<!-- /skill:${skill} -->`,
+      );
+      injectedSkills.add(skill);
+    } catch {
+      // skill file missing, skip
+    }
+  }
+
+  if (parts.length === 0) return "{}";
+
+  // Persist dedup state
+  persistDedup();
+
+  return JSON.stringify({ additionalContext: parts.join("\n\n") });
 }
 
 // ---------------------------------------------------------------------------
@@ -100,8 +150,8 @@ function globToRegex(pattern) {
       re += "[^/]*";
     } else if (c === "?") {
       re += "[^/]";
-    } else if (c === ".") {
-      re += "\\.";
+    } else if (".()+[]{}|^$\\".includes(c)) {
+      re += "\\" + c;
     } else {
       re += c;
     }
@@ -109,21 +159,6 @@ function globToRegex(pattern) {
   }
   re += "$";
   return new RegExp(re);
-}
-
-/**
- * Match a file path against skill-map pathPatterns.
- * The file_path from tool_input can be absolute — we try to extract
- * a project-relative path by stripping common prefixes.
- */
-function getRelativePath(filePath) {
-  if (!filePath) return "";
-  // Try to get just the project-relative part
-  // Common patterns: /Users/.../project/app/page.tsx -> app/page.tsx
-  const parts = filePath.split("/");
-  // Return the path as-is for matching — we'll match against both
-  // the full basename and progressively longer suffixes
-  return filePath;
 }
 
 function matchPathPatterns(filePath, patterns) {
@@ -165,66 +200,7 @@ function matchBashPatterns(command, patterns) {
 }
 
 // ---------------------------------------------------------------------------
-// Determine matched skills
+// Execute and write result
 // ---------------------------------------------------------------------------
 
-const matched = new Set();
-
-if (["Read", "Edit", "Write"].includes(toolName)) {
-  const filePath = toolInput.file_path || "";
-  for (const [skill, config] of Object.entries(skillMap)) {
-    if (matchPathPatterns(filePath, config.pathPatterns)) {
-      matched.add(skill);
-    }
-  }
-} else if (toolName === "Bash") {
-  const command = toolInput.command || "";
-  for (const [skill, config] of Object.entries(skillMap)) {
-    if (matchBashPatterns(command, config.bashPatterns)) {
-      matched.add(skill);
-    }
-  }
-}
-
-// Filter out already-injected skills
-const newSkills = [...matched].filter((s) => !injectedSkills.has(s));
-
-if (newSkills.length === 0) {
-  process.stdout.write("{}");
-  process.exit(0);
-}
-
-// Cap at MAX_SKILLS
-const toInject = newSkills.slice(0, MAX_SKILLS);
-
-// ---------------------------------------------------------------------------
-// Load SKILL.md files and build output
-// ---------------------------------------------------------------------------
-
-const parts = [];
-for (const skill of toInject) {
-  const skillPath = join(PLUGIN_ROOT, "skills", skill, "SKILL.md");
-  try {
-    const content = readFileSync(skillPath, "utf-8");
-    parts.push(`<!-- skill:${skill} -->\n${content}\n<!-- /skill:${skill} -->`);
-    injectedSkills.add(skill);
-  } catch {
-    // skill file missing, skip
-  }
-}
-
-if (parts.length === 0) {
-  process.stdout.write("{}");
-  process.exit(0);
-}
-
-// Persist dedup state
-persistDedup();
-
-// Output
-const output = {
-  additionalContext: parts.join("\n\n"),
-};
-
-process.stdout.write(JSON.stringify(output));
-process.exit(0);
+process.stdout.write(run());

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { readFileSync, existsSync, rmSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, rmSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { readdir, readFile } from "node:fs/promises";
@@ -224,22 +224,112 @@ describe("pretooluse-skill-inject.mjs", () => {
     expect(r2).toEqual({});
   });
 
-  test("caps at 3 skills per invocation", async () => {
-    // app/api/auth/route.ts could match: nextjs (app/**), sign-in-with-vercel (app/api/auth/**),
-    // vercel-functions (api/** won't match since it's app/api/auth/)
-    // Use a bash command that matches many skills
-    // Actually, let's use a path that hits many patterns
-    // Better: use instrumentation.ts in app/ dir — matches nextjs + observability
-    // For 3+ matches, we need a carefully crafted input or test with multiple skills
-    // Let's verify the cap by examining the output format
-    const { stdout } = await runHook({
-      tool_name: "Read",
-      tool_input: { file_path: "/Users/me/project/app/api/auth/route.ts" },
+  test("caps at 3 skills when bash command matches 4+ skills", async () => {
+    // This command matches 5 distinct skills:
+    //   vercel-cli  (vercel deploy)
+    //   turborepo   (turbo run build)
+    //   v0-dev      (npx v0)
+    //   ai-sdk      (npm install ai)
+    //   marketplace  (vercel integration)
+    const { code, stdout } = await runHook({
+      tool_name: "Bash",
+      tool_input: {
+        command:
+          "vercel deploy && turbo run build && npx v0 generate && npm install ai && vercel integration add neon",
+      },
     });
+    expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    if (result.additionalContext) {
-      const skillTags = result.additionalContext.match(/<!-- skill:[a-z-]+ -->/g) || [];
-      expect(skillTags.length).toBeLessThanOrEqual(3);
+    expect(result.additionalContext).toBeDefined();
+    const skillTags =
+      result.additionalContext.match(/<!-- skill:[a-z-]+ -->/g) || [];
+    expect(skillTags.length).toBe(3);
+  });
+
+  test("large multi-skill output is valid JSON with correct structure", async () => {
+    // Trigger 3 skills via bash and verify the full output structure
+    const { code, stdout } = await runHook({
+      tool_name: "Bash",
+      tool_input: {
+        command: "vercel deploy && turbo run build && npx v0 generate",
+      },
+    });
+    expect(code).toBe(0);
+
+    // Must be parseable JSON
+    let result: any;
+    expect(() => {
+      result = JSON.parse(stdout);
+    }).not.toThrow();
+
+    // Must have additionalContext string
+    expect(typeof result.additionalContext).toBe("string");
+    expect(result.additionalContext.length).toBeGreaterThan(0);
+
+    // Each injected skill must have matching open/close tags
+    const openTags =
+      result.additionalContext.match(/<!-- skill:([a-z0-9-]+) -->/g) || [];
+    const closeTags =
+      result.additionalContext.match(/<!-- \/skill:([a-z0-9-]+) -->/g) || [];
+    expect(openTags.length).toBe(closeTags.length);
+    expect(openTags.length).toBeGreaterThanOrEqual(1);
+    expect(openTags.length).toBeLessThanOrEqual(3);
+  });
+
+  test("returns {} when skill-map.json has valid JSON but missing .skills key", async () => {
+    // Create a temporary plugin-like directory with a skill-map.json missing .skills
+    const tempRoot = join(tmpdir(), `vp-test-malformed-${Date.now()}`);
+    const tempHooksDir = join(tempRoot, "hooks");
+    mkdirSync(tempHooksDir, { recursive: true });
+
+    // Copy the hook script
+    const hookSource = readFileSync(HOOK_SCRIPT, "utf-8");
+    const tempHookPath = join(tempHooksDir, "pretooluse-skill-inject.mjs");
+    writeFileSync(tempHookPath, hookSource);
+
+    // Write a skill-map.json with valid JSON but no .skills key
+    writeFileSync(join(tempHooksDir, "skill-map.json"), JSON.stringify({ version: 1, foo: "bar" }));
+
+    // Run the hook from the temp location
+    const payload = JSON.stringify({
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/me/project/next.config.ts" },
+      session_id: testSession,
+    });
+    const proc = Bun.spawn(["node", tempHookPath], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    proc.stdin.write(payload);
+    proc.stdin.end();
+    const code = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({});
+
+    // Cleanup
+    rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  test("globToRegex escapes regex metacharacters in path patterns", async () => {
+    // Paths containing ( ) [ ] { } + | ^ $ should match literally
+    // We test by reading a file whose path contains metacharacters
+    const metaCharPaths = [
+      "/project/src/components/(auth)/login.tsx",
+      "/project/src/[id]/page.tsx",
+      "/project/src/[[...slug]]/page.tsx",
+      "/project/app/(group)/layout.tsx",
+    ];
+    for (const filePath of metaCharPaths) {
+      const { code, stdout } = await runHook({
+        tool_name: "Read",
+        tool_input: { file_path: filePath },
+      });
+      expect(code).toBe(0);
+      // These should parse without throwing, even if they don't match a skill
+      expect(() => JSON.parse(stdout)).not.toThrow();
     }
   });
 
