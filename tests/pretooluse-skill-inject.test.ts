@@ -413,6 +413,431 @@ describe("skill-map.json", () => {
   });
 });
 
+// Helper to run hook with debug mode enabled
+async function runHookDebug(input: object): Promise<{ code: number; stdout: string; stderr: string }> {
+  const payload = JSON.stringify({ ...input, session_id: `dbg-${Date.now()}-${Math.random().toString(36).slice(2)}` });
+  const proc = Bun.spawn(["node", HOOK_SCRIPT], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+  });
+  proc.stdin.write(payload);
+  proc.stdin.end();
+  const code = await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  return { code, stdout, stderr };
+}
+
+describe("debug logging (VERCEL_PLUGIN_HOOK_DEBUG=1)", () => {
+  test("emits no stderr when debug is off (default)", async () => {
+    const { stderr } = await runHook({
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/me/project/next.config.ts" },
+    });
+    expect(stderr).toBe("");
+  });
+
+  test("emits JSON-lines to stderr when debug is on", async () => {
+    const { code, stderr } = await runHookDebug({
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/me/project/next.config.ts" },
+    });
+    expect(code).toBe(0);
+    expect(stderr.trim().length).toBeGreaterThan(0);
+    const lines = stderr.trim().split("\n");
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+  });
+
+  test("each debug line has invocationId, event, and timestamp", async () => {
+    const { stderr } = await runHookDebug({
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/me/project/next.config.ts" },
+    });
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    for (const obj of lines) {
+      expect(typeof obj.invocationId).toBe("string");
+      expect(obj.invocationId.length).toBe(8); // 4 random bytes = 8 hex chars
+      expect(typeof obj.event).toBe("string");
+      expect(typeof obj.timestamp).toBe("string");
+    }
+  });
+
+  test("all invocationIds are the same within one invocation", async () => {
+    const { stderr } = await runHookDebug({
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/me/project/next.config.ts" },
+    });
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const ids = new Set(lines.map((l: any) => l.invocationId));
+    expect(ids.size).toBe(1);
+  });
+
+  test("emits expected events for a matching invocation", async () => {
+    const { stderr } = await runHookDebug({
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/me/project/next.config.ts" },
+    });
+    const events = stderr.trim().split("\n").map((l: string) => JSON.parse(l).event);
+    expect(events).toContain("input-parsed");
+    expect(events).toContain("skillmap-loaded");
+    expect(events).toContain("matches-found");
+    expect(events).toContain("dedup-filtered");
+    expect(events).toContain("skills-injected");
+    expect(events).toContain("complete");
+  });
+
+  test("emits expected events for a non-matching invocation", async () => {
+    const { stderr } = await runHookDebug({
+      tool_name: "Read",
+      tool_input: { file_path: "/some/random/file.txt" },
+    });
+    const events = stderr.trim().split("\n").map((l: string) => JSON.parse(l).event);
+    expect(events).toContain("input-parsed");
+    expect(events).toContain("skillmap-loaded");
+    expect(events).toContain("matches-found");
+    expect(events).toContain("dedup-filtered");
+    expect(events).toContain("complete");
+    // skills-injected should NOT appear since nothing matched
+    expect(events).not.toContain("skills-injected");
+  });
+
+  test("complete event includes elapsed_ms", async () => {
+    const { stderr } = await runHookDebug({
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/me/project/next.config.ts" },
+    });
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const complete = lines.find((l: any) => l.event === "complete");
+    expect(complete).toBeDefined();
+    expect(typeof complete.elapsed_ms).toBe("number");
+    expect(complete.elapsed_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  test("stdout remains valid JSON when debug is on", async () => {
+    const { stdout } = await runHookDebug({
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/me/project/next.config.ts" },
+    });
+    const result = JSON.parse(stdout);
+    expect(result.additionalContext).toContain("skill:nextjs");
+  });
+});
+
+describe("issue events in debug mode", () => {
+  test("STDIN_EMPTY issue emitted for empty stdin", async () => {
+    const proc = Bun.spawn(["node", HOOK_SCRIPT], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+    });
+    proc.stdin.end();
+    const code = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({});
+
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const issue = lines.find((l: any) => l.event === "issue");
+    expect(issue).toBeDefined();
+    expect(issue.code).toBe("STDIN_EMPTY");
+    expect(typeof issue.message).toBe("string");
+    expect(typeof issue.hint).toBe("string");
+  });
+
+  test("STDIN_PARSE_FAIL issue emitted for invalid JSON", async () => {
+    const proc = Bun.spawn(["node", HOOK_SCRIPT], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+    });
+    proc.stdin.write("not-json");
+    proc.stdin.end();
+    const code = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({});
+
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const issue = lines.find((l: any) => l.event === "issue");
+    expect(issue).toBeDefined();
+    expect(issue.code).toBe("STDIN_PARSE_FAIL");
+    expect(typeof issue.context.error).toBe("string");
+  });
+
+  test("SKILLMAP_LOAD_FAIL issue emitted when skill-map.json is missing", async () => {
+    const tempRoot = join(tmpdir(), `vp-test-nomap-${Date.now()}`);
+    const tempHooksDir = join(tempRoot, "hooks");
+    mkdirSync(tempHooksDir, { recursive: true });
+    const hookSource = readFileSync(HOOK_SCRIPT, "utf-8");
+    const tempHookPath = join(tempHooksDir, "pretooluse-skill-inject.mjs");
+    writeFileSync(tempHookPath, hookSource);
+    // No skill-map.json written
+
+    const payload = JSON.stringify({
+      tool_name: "Read",
+      tool_input: { file_path: "/project/next.config.ts" },
+      session_id: testSession,
+    });
+    const proc = Bun.spawn(["node", tempHookPath], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+    });
+    proc.stdin.write(payload);
+    proc.stdin.end();
+    const code = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({});
+
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const issue = lines.find((l: any) => l.event === "issue");
+    expect(issue).toBeDefined();
+    expect(issue.code).toBe("SKILLMAP_LOAD_FAIL");
+
+    rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  test("SKILLMAP_EMPTY issue emitted when skills object is empty", async () => {
+    const tempRoot = join(tmpdir(), `vp-test-empty-${Date.now()}`);
+    const tempHooksDir = join(tempRoot, "hooks");
+    mkdirSync(tempHooksDir, { recursive: true });
+    const hookSource = readFileSync(HOOK_SCRIPT, "utf-8");
+    const tempHookPath = join(tempHooksDir, "pretooluse-skill-inject.mjs");
+    writeFileSync(tempHookPath, hookSource);
+    writeFileSync(join(tempHooksDir, "skill-map.json"), JSON.stringify({ skills: {} }));
+
+    const payload = JSON.stringify({
+      tool_name: "Read",
+      tool_input: { file_path: "/project/next.config.ts" },
+      session_id: testSession,
+    });
+    const proc = Bun.spawn(["node", tempHookPath], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+    });
+    proc.stdin.write(payload);
+    proc.stdin.end();
+    const code = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({});
+
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const issue = lines.find((l: any) => l.event === "issue");
+    expect(issue).toBeDefined();
+    expect(issue.code).toBe("SKILLMAP_EMPTY");
+
+    rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  test("no issue events emitted when debug is off", async () => {
+    const proc = Bun.spawn(["node", HOOK_SCRIPT], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    proc.stdin.end();
+    await proc.exited;
+    const stderr = await new Response(proc.stderr).text();
+    expect(stderr).toBe("");
+  });
+
+  test("issue events have required fields: code, message, hint, context", async () => {
+    const proc = Bun.spawn(["node", HOOK_SCRIPT], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+    });
+    proc.stdin.write("not-json");
+    proc.stdin.end();
+    await proc.exited;
+    const stderr = await new Response(proc.stderr).text();
+
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const issues = lines.filter((l: any) => l.event === "issue");
+    expect(issues.length).toBeGreaterThan(0);
+    for (const issue of issues) {
+      expect(typeof issue.code).toBe("string");
+      expect(typeof issue.message).toBe("string");
+      expect(typeof issue.hint).toBe("string");
+      expect(issue.context).toBeDefined();
+      // Also has standard debug fields
+      expect(typeof issue.invocationId).toBe("string");
+      expect(typeof issue.timestamp).toBe("string");
+    }
+  });
+});
+
+// Helper to run hook with custom env vars and optional session_id override
+async function runHookEnv(
+  input: object,
+  env: Record<string, string | undefined>,
+  opts?: { omitSessionId?: boolean },
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const payload = opts?.omitSessionId
+    ? JSON.stringify(input)
+    : JSON.stringify({ ...input, session_id: testSession });
+  const proc = Bun.spawn(["node", HOOK_SCRIPT], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, ...env },
+  });
+  proc.stdin.write(payload);
+  proc.stdin.end();
+  const code = await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  return { code, stdout, stderr };
+}
+
+describe("session_id fallback and dedup controls", () => {
+  test("missing session_id with no SESSION_ID env uses memory-only dedup (no persistence)", async () => {
+    // First call without session_id — should inject
+    const { stdout: first } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+      {},
+      { omitSessionId: true },
+    );
+    const r1 = JSON.parse(first);
+    expect(r1.additionalContext).toContain("skill:nextjs");
+
+    // Second call without session_id — memory-only means no cross-invocation dedup,
+    // so it should inject again
+    const { stdout: second } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+      {},
+      { omitSessionId: true },
+    );
+    const r2 = JSON.parse(second);
+    expect(r2.additionalContext).toContain("skill:nextjs");
+  });
+
+  test("SESSION_ID env var is used as fallback when session_id missing from input", async () => {
+    const envSession = `env-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const dedupFile = join(DEDUP_DIR, `session-${envSession}.json`);
+
+    try {
+      // First call — should inject and persist to env session file
+      const { stdout: first } = await runHookEnv(
+        { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+        { SESSION_ID: envSession },
+        { omitSessionId: true },
+      );
+      const r1 = JSON.parse(first);
+      expect(r1.additionalContext).toContain("skill:nextjs");
+
+      // Dedup file should exist
+      expect(existsSync(dedupFile)).toBe(true);
+
+      // Second call — same env session, should be deduped
+      const { stdout: second } = await runHookEnv(
+        { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+        { SESSION_ID: envSession },
+        { omitSessionId: true },
+      );
+      const r2 = JSON.parse(second);
+      expect(r2).toEqual({});
+    } finally {
+      rmSync(dedupFile, { force: true });
+    }
+  });
+
+  test("VERCEL_PLUGIN_HOOK_DEDUP=off disables all dedup", async () => {
+    // First call — should inject
+    const { stdout: first } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+    );
+    const r1 = JSON.parse(first);
+    expect(r1.additionalContext).toContain("skill:nextjs");
+
+    // Second call with same session — dedup is off, should inject again
+    const { stdout: second } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+    );
+    const r2 = JSON.parse(second);
+    expect(r2.additionalContext).toContain("skill:nextjs");
+  });
+
+  test("RESET_DEDUP=1 clears the dedup file before matching", async () => {
+    // First call — inject and persist
+    const { stdout: first } = await runHook({
+      tool_name: "Read",
+      tool_input: { file_path: "/project/next.config.ts" },
+    });
+    expect(JSON.parse(first).additionalContext).toContain("skill:nextjs");
+
+    // Verify dedup blocks re-injection
+    const { stdout: deduped } = await runHook({
+      tool_name: "Read",
+      tool_input: { file_path: "/project/next.config.ts" },
+    });
+    expect(JSON.parse(deduped)).toEqual({});
+
+    // With RESET_DEDUP=1, should inject again
+    const { stdout: reset } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+      { RESET_DEDUP: "1" },
+    );
+    expect(JSON.parse(reset).additionalContext).toContain("skill:nextjs");
+  });
+
+  test("debug mode logs dedup strategy as persistent when session_id provided", async () => {
+    const { stderr } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+    );
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const strategyEvent = lines.find((l: any) => l.event === "dedup-strategy");
+    expect(strategyEvent).toBeDefined();
+    expect(strategyEvent.strategy).toBe("persistent");
+  });
+
+  test("debug mode logs dedup strategy as memory-only when session_id missing", async () => {
+    const { stderr } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+      { omitSessionId: true },
+    );
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const strategyEvent = lines.find((l: any) => l.event === "dedup-strategy");
+    expect(strategyEvent).toBeDefined();
+    expect(strategyEvent.strategy).toBe("memory-only");
+  });
+
+  test("debug mode logs dedup strategy as disabled when VERCEL_PLUGIN_HOOK_DEDUP=off", async () => {
+    const { stderr } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEBUG: "1", VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+    );
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const strategyEvent = lines.find((l: any) => l.event === "dedup-strategy");
+    expect(strategyEvent).toBeDefined();
+    expect(strategyEvent.strategy).toBe("disabled");
+  });
+});
+
 describe("hooks.json PreToolUse config", () => {
   test("has PreToolUse matcher for Read|Edit|Write|Bash", () => {
     const hooks = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf-8"));
