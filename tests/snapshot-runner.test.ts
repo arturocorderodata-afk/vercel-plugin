@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect, beforeAll } from "bun:test";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -39,6 +39,7 @@ async function runHook(input: object): Promise<{
     env: {
       ...process.env,
       VERCEL_PLUGIN_HOOK_DEDUP: "off", // disable dedup so each scenario is independent
+      VERCEL_PLUGIN_INJECTION_BUDGET: "999999", // unlimited budget for snapshot tests
     },
   });
   proc.stdin.write(payload);
@@ -65,7 +66,7 @@ function normalize(injection: Record<string, unknown>): Record<string, unknown> 
   // toolTarget contains absolute paths that vary per machine/run
   delete clone.toolTarget;
   // Sort arrays for deterministic comparison
-  for (const key of ["matchedSkills", "injectedSkills", "droppedByCap"] as const) {
+  for (const key of ["matchedSkills", "injectedSkills", "droppedByCap", "droppedByBudget"] as const) {
     if (Array.isArray(clone[key])) {
       // injectedSkills order matters (priority), so only sort matchedSkills
       if (key === "matchedSkills") {
@@ -240,4 +241,76 @@ describe("golden snapshot tests", () => {
       expect(UPDATE_SNAPSHOTS).toBe(false);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Golden fixture tests — data-driven from tests/fixtures/golden-*.json
+// ---------------------------------------------------------------------------
+
+describe("golden fixture tests", () => {
+  const goldenFiles = readdirSync(FIXTURES_DIR).filter(
+    (f) => f.startsWith("golden-") && f.endsWith(".json"),
+  );
+
+  for (const fixtureName of goldenFiles) {
+    test(`golden: ${fixtureName}`, async () => {
+      const fixture = JSON.parse(
+        readFileSync(join(FIXTURES_DIR, fixtureName), "utf-8"),
+      );
+
+      let input = fixture.input;
+
+      // If the fixture includes vercelJson content, write a temp file so
+      // vercel-config.mjs key-aware routing can read it.
+      if (fixture.vercelJson) {
+        const projectDir = join(tempDir, `golden-${fixtureName}`);
+        mkdirSync(projectDir, { recursive: true });
+        const vercelPath = join(projectDir, "vercel.json");
+        writeFileSync(
+          vercelPath,
+          JSON.stringify(fixture.vercelJson, null, 2),
+          "utf-8",
+        );
+        input = {
+          ...input,
+          tool_input: { ...input.tool_input, file_path: vercelPath },
+        };
+      }
+
+      const { code, skillInjection } = await runHook(input);
+      expect(code).toBe(0);
+      expect(skillInjection).not.toBeNull();
+
+      const actual = skillInjection!;
+      const expected = fixture.expected.skillInjection;
+
+      // Version and toolName must match exactly
+      expect(actual.version).toBe(expected.version);
+      expect(actual.toolName).toBe(expected.toolName);
+
+      // toolTarget — only assert when the fixture specifies it
+      // (vercelJson fixtures use temp paths so toolTarget varies)
+      if (expected.toolTarget) {
+        expect(actual.toolTarget).toBe(expected.toolTarget);
+      }
+
+      // matchedSkills — same set (order may vary)
+      expect([...(actual.matchedSkills as string[])].sort()).toEqual(
+        [...expected.matchedSkills].sort(),
+      );
+
+      // injectedSkills — exact ordered list (ranking matters)
+      expect(actual.injectedSkills).toEqual(expected.injectedSkills);
+
+      // droppedByCap — same set (order may vary)
+      expect([...(actual.droppedByCap as string[])].sort()).toEqual(
+        [...expected.droppedByCap].sort(),
+      );
+
+      // Cap collision: if droppedByCap is expected non-empty, verify it
+      if (expected.droppedByCap.length > 0) {
+        expect((actual.droppedByCap as string[]).length).toBeGreaterThan(0);
+      }
+    });
+  }
 });

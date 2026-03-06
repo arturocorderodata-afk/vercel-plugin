@@ -3,7 +3,7 @@ name: routing-middleware
 description: Vercel Routing Middleware guidance — request interception before cache, rewrites, redirects, personalization. Works with any framework. Supports Edge, Node.js, and Bun runtimes. Use when intercepting requests at the platform level.
 metadata:
   priority: 6
-  filePattern: 
+  pathPatterns: 
     - 'middleware.ts'
     - 'middleware.js'
     - 'middleware.mts'
@@ -22,7 +22,7 @@ metadata:
     - 'src/proxy.mjs'
     - 'vercel.json'
     - 'apps/*/vercel.json'
-  bashPattern: []
+  bashPatterns: []
 ---
 
 # Vercel Routing Middleware

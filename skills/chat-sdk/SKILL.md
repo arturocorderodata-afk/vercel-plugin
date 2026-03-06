@@ -3,7 +3,7 @@ name: chat-sdk
 description: Vercel Chat SDK expert guidance. Use when building multi-platform chat bots — Slack, Telegram, Microsoft Teams, Discord, Google Chat, GitHub, Linear — with a single codebase. Covers the Chat class, adapters, threads, messages, cards, modals, streaming, state management, and webhook setup.
 metadata:
   priority: 8
-  filePattern:
+  pathPatterns:
     - "app/api/chat-bot/**"
     - "app/api/bot/**"
     - "app/api/slack/**"
@@ -47,7 +47,7 @@ metadata:
     - "apps/*/app/api/discord/**"
     - "apps/*/lib/bot/**"
     - "apps/*/src/lib/bot/**"
-  bashPattern:
+  bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*\bchat\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*\bchat\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*\bchat\b'

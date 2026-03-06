@@ -3,7 +3,7 @@ name: observability
 description: Vercel Observability expert guidance — Drains (logs, traces, speed insights, web analytics), Web Analytics, Speed Insights, runtime logs, custom events, OpenTelemetry integration, and monitoring dashboards. Use when instrumenting, debugging, or optimizing application performance and user experience on Vercel.
 metadata:
   priority: 6
-  filePattern: 
+  pathPatterns: 
     - 'instrumentation.ts'
     - 'instrumentation.js'
     - 'src/instrumentation.ts'
@@ -18,7 +18,7 @@ metadata:
     - 'apps/*/src/app/layout.*'
     - 'apps/*/pages/_app.*'
     - 'apps/*/src/pages/_app.*'
-  bashPattern: 
+  bashPatterns: 
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/analytics\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/analytics\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@vercel/analytics\b'

@@ -3,7 +3,7 @@ name: shadcn
 description: shadcn/ui expert guidance — CLI, component installation, custom registries, theming, and Tailwind CSS integration. Use when initializing shadcn, adding components, building custom registries, configuring themes, or troubleshooting component issues.
 metadata:
   priority: 5
-  filePattern: 
+  pathPatterns: 
     - 'components.json'
     - 'components/ui/**'
     - 'src/components/ui/**'
@@ -11,7 +11,7 @@ metadata:
     - 'apps/*/src/components/ui/**'
     - 'packages/*/components/ui/**'
     - 'packages/*/src/components/ui/**'
-  bashPattern: 
+  bashPatterns: 
     - '\bnpx\s+shadcn\b'
     - '\bnpx\s+shadcn@latest\s+(init|add|build|search|list|migrate)\b'
 ---

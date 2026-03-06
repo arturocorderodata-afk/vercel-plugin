@@ -3,7 +3,7 @@ name: vercel-storage
 description: Vercel storage expert guidance — Blob, Edge Config, and Marketplace storage (Neon Postgres, Upstash Redis). Use when choosing, configuring, or using data storage with Vercel applications.
 metadata:
   priority: 7
-  filePattern:
+  pathPatterns:
     - 'lib/blob/**'
     - 'lib/storage/**'
     - 'src/lib/blob/**'
@@ -14,7 +14,7 @@ metadata:
     - 'src/lib/blob.*'
     - 'src/lib/storage.*'
     - 'src/lib/edge-config.*'
-  bashPattern:
+  bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/blob\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/blob\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@vercel/blob\b'

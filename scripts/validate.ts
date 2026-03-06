@@ -129,7 +129,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * Parse YAML frontmatter from markdown content using js-yaml via skill-map-frontmatter.mjs.
+ * Parse YAML frontmatter from markdown content using the inline parser in skill-map-frontmatter.mjs.
  * Returns the parsed object (with nested metadata) or null if no frontmatter found.
  * Throws on malformed YAML so callers can report actionable errors.
  */
@@ -294,7 +294,7 @@ async function validateSkillFrontmatter(): Promise<void> {
   }
 
   // Run the shared buildSkillMap + validateSkillMap pipeline to catch
-  // metadata type issues (filePattern/bashPattern not arrays, bad priority, etc.)
+  // metadata type issues (pathPatterns/bashPatterns not arrays, bad priority, etc.)
   // Uses structured warningDetails to avoid brittle regex-parsing of warning strings.
   const built = buildSkillMap(skillsDir);
 
@@ -302,19 +302,25 @@ async function validateSkillFrontmatter(): Promise<void> {
   for (const d of built.warningDetails) {
     const skillName = d.skill || "unknown";
 
-    if (d.field === "filePattern" && (d.code === "INVALID_TYPE" || d.code === "COERCE_STRING_TO_ARRAY")) {
+    if (d.field === "pathPatterns" && (d.code === "INVALID_TYPE" || d.code === "COERCE_STRING_TO_ARRAY")) {
       const suffix = d.code === "COERCE_STRING_TO_ARRAY" ? ", got string" : "";
-      fail("FM_FILEPATTERN_TYPE", `skills/${skillName}/SKILL.md — metadata.filePattern must be an array${suffix}`, {
+      fail("FM_PATHPATTERNS_TYPE", `skills/${skillName}/SKILL.md — metadata.pathPatterns must be an array${suffix}`, {
         file: `skills/${skillName}/SKILL.md`,
         line: 1,
-        hint: d.hint || "Change metadata.filePattern to a YAML list (e.g., filePattern:\\n  - 'src/**')",
+        hint: d.hint || "Change metadata.pathPatterns to a YAML list (e.g., pathPatterns:\\n  - 'src/**')",
       });
-    } else if (d.field === "bashPattern" && (d.code === "INVALID_TYPE" || d.code === "COERCE_STRING_TO_ARRAY")) {
+    } else if (d.field === "bashPatterns" && (d.code === "INVALID_TYPE" || d.code === "COERCE_STRING_TO_ARRAY")) {
       const suffix = d.code === "COERCE_STRING_TO_ARRAY" ? ", got string" : "";
-      fail("FM_BASHPATTERN_TYPE", `skills/${skillName}/SKILL.md — metadata.bashPattern must be an array${suffix}`, {
+      fail("FM_BASHPATTERNS_TYPE", `skills/${skillName}/SKILL.md — metadata.bashPatterns must be an array${suffix}`, {
         file: `skills/${skillName}/SKILL.md`,
         line: 1,
-        hint: d.hint || "Change metadata.bashPattern to a YAML list (e.g., bashPattern:\\n  - '\\\\bvercel\\\\b')",
+        hint: d.hint || "Change metadata.bashPatterns to a YAML list (e.g., bashPatterns:\\n  - '\\\\bvercel\\\\b')",
+      });
+    } else if (d.code === "DEPRECATED_FIELD") {
+      warn("FM_DEPRECATED_FIELD", `skills/${skillName}/SKILL.md — ${d.message}`, {
+        file: `skills/${skillName}/SKILL.md`,
+        line: 1,
+        hint: d.hint || `Rename metadata.${d.field} to its canonical name`,
       });
     }
   }
@@ -702,7 +708,7 @@ async function validatePreToolUseHook() {
   }
 
   // 8c. Validate skill frontmatter triggers
-  // Every skills/*/SKILL.md should have metadata.filePattern or metadata.bashPattern
+  // Every skills/*/SKILL.md should have metadata.pathPatterns or metadata.bashPatterns
   const skillsDir = join(ROOT, "skills");
   if (!(await exists(skillsDir))) {
     fail("SKILLS_DIR_MISSING", "skills/ directory not found", {
@@ -731,14 +737,16 @@ async function validatePreToolUseHook() {
     if (!fm) continue; // frontmatter presence already checked in section [2]
 
     const meta = fm.metadata ?? {};
-    const hasFilePattern = Array.isArray(meta.filePattern) && meta.filePattern.length > 0;
-    const hasBashPattern = Array.isArray(meta.bashPattern) && meta.bashPattern.length > 0;
+    const hasPathPatterns = (Array.isArray(meta.pathPatterns) && meta.pathPatterns.length > 0)
+      || (Array.isArray(meta.filePattern) && meta.filePattern.length > 0);
+    const hasBashPatterns = (Array.isArray(meta.bashPatterns) && meta.bashPatterns.length > 0)
+      || (Array.isArray(meta.bashPattern) && meta.bashPattern.length > 0);
 
-    if (!hasFilePattern && !hasBashPattern) {
+    if (!hasPathPatterns && !hasBashPatterns) {
       noTriggers.push(dir);
-      fail("SKILL_NO_TRIGGERS", `skills/${dir}/SKILL.md has no filePattern or bashPattern in frontmatter metadata`, {
+      fail("SKILL_NO_TRIGGERS", `skills/${dir}/SKILL.md has no pathPatterns or bashPatterns in frontmatter metadata`, {
         file: `skills/${dir}/SKILL.md`,
-        hint: `Add metadata.filePattern or metadata.bashPattern to the YAML frontmatter`,
+        hint: `Add metadata.pathPatterns or metadata.bashPatterns to the YAML frontmatter`,
       });
     }
   }
@@ -749,11 +757,42 @@ async function validatePreToolUseHook() {
 }
 
 // ---------------------------------------------------------------------------
-// 9. Validate pattern compilation (filePattern → globToRegex, bashPattern → RegExp)
+// 9. Validate pattern compilation (pathPatterns → globToRegex, bashPatterns → RegExp)
 // ---------------------------------------------------------------------------
 
+/**
+ * Detect obvious catastrophic backtracking risk in a regex pattern string.
+ * Flags nested quantifiers like (a+)+, (a*)+, (a+)*, (.+.+)+, etc.
+ * Returns a description of the risk if found, or null if safe.
+ */
+export function detectReDoS(pattern: string): string | null {
+  // Nested quantifier: a group containing a quantifier, followed by a quantifier
+  // e.g. (a+)+  (.*)+  (\w+)*  ([^/]+)+
+  if (/\([^)]*[+*]\)[+*{]/.test(pattern)) {
+    return "nested quantifiers — group with inner quantifier followed by outer quantifier";
+  }
+  // Overlapping alternation with quantifier: (a|a)+  or (.*|.+)+
+  if (/\(([^)]*\|[^)]*)\)[+*{]/.test(pattern)) {
+    const m = pattern.match(/\(([^)]*\|[^)]*)\)[+*{]/);
+    if (m) {
+      const alts = m[1].split("|").map((a) => a.trim());
+      // Flag if any two alternatives could match the same character class
+      // Simple heuristic: check for dot-quantifier alternatives
+      const hasDotStar = alts.some((a) => /^\.\*$|^\.\+$/.test(a));
+      if (hasDotStar && alts.length > 1) {
+        return "overlapping alternation with quantifier — alternatives may match same input";
+      }
+    }
+  }
+  // Quantified backreference (rare but dangerous)
+  if (/\\[1-9]\d*[+*{]/.test(pattern)) {
+    return "quantified backreference";
+  }
+  return null;
+}
+
 async function validatePatternCompilation() {
-  section("[9] Pattern compilation (filePattern + bashPattern)");
+  section("[9] Pattern compilation (pathPatterns + bashPatterns)");
 
   const skillsDir = join(ROOT, "skills");
   if (!(await exists(skillsDir))) return; // already reported elsewhere
@@ -761,6 +800,7 @@ async function validatePatternCompilation() {
   const dirs = await readdir(skillsDir);
   let compiled = 0;
   let failures = 0;
+  let redosWarnings = 0;
 
   for (const dir of dirs.sort()) {
     const skillPath = join(skillsDir, dir, "SKILL.md");
@@ -777,23 +817,24 @@ async function validatePatternCompilation() {
 
     const meta = fm.metadata ?? {};
 
-    // Compile filePatterns via globToRegex
-    const filePatterns: unknown[] = Array.isArray(meta.filePattern) ? meta.filePattern : [];
-    for (let idx = 0; idx < filePatterns.length; idx++) {
-      const pat = filePatterns[idx];
+    // Compile pathPatterns via globToRegex (check canonical name first, fall back to deprecated filePattern)
+    const pathPatternsRaw: unknown[] = Array.isArray(meta.pathPatterns) ? meta.pathPatterns
+      : Array.isArray(meta.filePattern) ? meta.filePattern : [];
+    for (let idx = 0; idx < pathPatternsRaw.length; idx++) {
+      const pat = pathPatternsRaw[idx];
       if (typeof pat !== "string") {
         failures++;
-        fail("PATTERN_FILE_COMPILE", `skills/${dir}/SKILL.md — filePattern[${idx}] is not a string (${typeof pat})`, {
+        fail("PATTERN_PATH_COMPILE", `skills/${dir}/SKILL.md — pathPatterns[${idx}] is not a string (${typeof pat})`, {
           file: `skills/${dir}/SKILL.md`,
-          hint: "Each filePattern entry must be a string glob pattern",
+          hint: "Each pathPatterns entry must be a string glob pattern",
         });
         continue;
       }
       if (pat === "") {
         failures++;
-        fail("PATTERN_FILE_COMPILE", `skills/${dir}/SKILL.md — filePattern[${idx}] is empty`, {
+        fail("PATTERN_PATH_COMPILE", `skills/${dir}/SKILL.md — pathPatterns[${idx}] is empty`, {
           file: `skills/${dir}/SKILL.md`,
-          hint: "Remove empty entries from metadata.filePattern",
+          hint: "Remove empty entries from metadata.pathPatterns",
         });
         continue;
       }
@@ -802,30 +843,31 @@ async function validatePatternCompilation() {
         compiled++;
       } catch (err: any) {
         failures++;
-        fail("PATTERN_FILE_COMPILE", `skills/${dir}/SKILL.md — filePattern "${pat}" failed to compile: ${err.message}`, {
+        fail("PATTERN_PATH_COMPILE", `skills/${dir}/SKILL.md — pathPatterns "${pat}" failed to compile: ${err.message}`, {
           file: `skills/${dir}/SKILL.md`,
-          hint: "Fix the glob pattern syntax in metadata.filePattern",
+          hint: "Fix the glob pattern syntax in metadata.pathPatterns",
         });
       }
     }
 
-    // Compile bashPatterns as RegExp
-    const bashPatterns: unknown[] = Array.isArray(meta.bashPattern) ? meta.bashPattern : [];
-    for (let idx = 0; idx < bashPatterns.length; idx++) {
-      const pat = bashPatterns[idx];
+    // Compile bashPatterns as RegExp (check canonical name first, fall back to deprecated bashPattern)
+    const bashPatternsRaw: unknown[] = Array.isArray(meta.bashPatterns) ? meta.bashPatterns
+      : Array.isArray(meta.bashPattern) ? meta.bashPattern : [];
+    for (let idx = 0; idx < bashPatternsRaw.length; idx++) {
+      const pat = bashPatternsRaw[idx];
       if (typeof pat !== "string") {
         failures++;
-        fail("PATTERN_BASH_COMPILE", `skills/${dir}/SKILL.md — bashPattern[${idx}] is not a string (${typeof pat})`, {
+        fail("PATTERN_BASH_COMPILE", `skills/${dir}/SKILL.md — bashPatterns[${idx}] is not a string (${typeof pat})`, {
           file: `skills/${dir}/SKILL.md`,
-          hint: "Each bashPattern entry must be a string regex pattern",
+          hint: "Each bashPatterns entry must be a string regex pattern",
         });
         continue;
       }
       if (pat === "") {
         failures++;
-        fail("PATTERN_BASH_COMPILE", `skills/${dir}/SKILL.md — bashPattern[${idx}] is empty`, {
+        fail("PATTERN_BASH_COMPILE", `skills/${dir}/SKILL.md — bashPatterns[${idx}] is empty`, {
           file: `skills/${dir}/SKILL.md`,
-          hint: "Remove empty entries from metadata.bashPattern",
+          hint: "Remove empty entries from metadata.bashPatterns",
         });
         continue;
       }
@@ -834,16 +876,29 @@ async function validatePatternCompilation() {
         compiled++;
       } catch (err: any) {
         failures++;
-        fail("PATTERN_BASH_COMPILE", `skills/${dir}/SKILL.md — bashPattern "${pat}" failed to compile: ${err.message}`, {
+        fail("PATTERN_BASH_COMPILE", `skills/${dir}/SKILL.md — bashPatterns "${pat}" failed to compile: ${err.message}`, {
           file: `skills/${dir}/SKILL.md`,
-          hint: "Fix the regex syntax in metadata.bashPattern",
+          hint: "Fix the regex syntax in metadata.bashPatterns",
+        });
+        continue;
+      }
+
+      // Check for catastrophic backtracking risk
+      const redosRisk = detectReDoS(pat);
+      if (redosRisk) {
+        redosWarnings++;
+        fail("PATTERN_BASH_REDOS", `skills/${dir}/SKILL.md — bashPatterns "${pat}" has catastrophic backtracking risk: ${redosRisk}`, {
+          file: `skills/${dir}/SKILL.md`,
+          hint: "Rewrite the regex to avoid nested quantifiers. Use atomic groups or possessive quantifiers, or simplify the pattern.",
         });
       }
     }
   }
 
-  if (failures === 0 && compiled > 0) {
-    pass(`All ${compiled} patterns compiled successfully`);
+  if (failures === 0 && redosWarnings === 0 && compiled > 0) {
+    pass(`All ${compiled} patterns compiled successfully (no ReDoS risks detected)`);
+  } else if (failures === 0 && redosWarnings > 0 && compiled > 0) {
+    pass(`All ${compiled} patterns compiled, but ${redosWarnings} ReDoS warning(s)`);
   }
 }
 

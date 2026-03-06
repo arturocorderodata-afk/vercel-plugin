@@ -3,14 +3,14 @@ name: vercel-queues
 description: Vercel Queues guidance — durable event streaming with topics, consumer groups, retries, and delayed delivery. Powers Workflow DevKit. Use when building async processing, fan-out patterns, or event-driven architectures.
 metadata:
   priority: 5
-  filePattern:
+  pathPatterns:
     - 'lib/queues/**'
     - 'src/lib/queues/**'
     - 'lib/queues.*'
     - 'lib/queue.*'
     - 'src/lib/queues.*'
     - 'src/lib/queue.*'
-  bashPattern:
+  bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/queue\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/queue\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@vercel/queue\b'

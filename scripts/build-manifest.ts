@@ -41,9 +41,18 @@ if (validation.warnings?.length) {
   }
 }
 
+// Augment each skill entry with its bodyPath (relative to plugin root)
+const skills: Record<string, any> = {};
+for (const [slug, config] of Object.entries(validation.normalizedSkillMap.skills)) {
+  skills[slug] = {
+    ...config,
+    bodyPath: `skills/${slug}/SKILL.md`,
+  };
+}
+
 const manifest = {
   generatedAt: new Date().toISOString(),
-  skills: validation.normalizedSkillMap.skills,
+  skills,
 };
 
 mkdirSync(OUT_DIR, { recursive: true });

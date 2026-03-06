@@ -293,7 +293,7 @@ function parseSimpleYaml(yamlStr) {
 /**
  * Parse a YAML frontmatter string into a structured skill object.
  * @param {string} yamlStr
- * @returns {{ name: string, description: string, metadata: { priority?: number, filePattern?: string[], bashPattern?: string[] } }}
+ * @returns {{ name: string, description: string, metadata: { priority?: number, pathPatterns?: string[], bashPatterns?: string[] } }}
  */
 export function parseSkillFrontmatter(yamlStr) {
   if (!yamlStr || !yamlStr.trim()) {
@@ -402,18 +402,32 @@ export function buildSkillMap(rootDir) {
   for (const skill of parsed) {
     const meta = skill.metadata || {};
 
-    // Coerce filePattern: bare string → single-element array
-    let pathPatterns = meta.filePattern ?? [];
+    // Read pathPatterns (canonical) with fallback to deprecated filePattern
+    let rawPathPatterns;
+    if (meta.pathPatterns !== undefined) {
+      rawPathPatterns = meta.pathPatterns;
+    } else if (meta.filePattern !== undefined) {
+      rawPathPatterns = meta.filePattern;
+      addWarning(
+        `skill "${skill.dir}": metadata.filePattern is deprecated, rename to pathPatterns`,
+        { code: "DEPRECATED_FIELD", skill: skill.dir, field: "filePattern", valueType: typeof meta.filePattern, hint: "Rename metadata.filePattern to metadata.pathPatterns" },
+      );
+    } else {
+      rawPathPatterns = [];
+    }
+
+    // Coerce pathPatterns: bare string → single-element array
+    let pathPatterns = rawPathPatterns;
     if (typeof pathPatterns === "string") {
       addWarning(
-        `skill "${skill.dir}": metadata.filePattern is a string, coercing to array`,
-        { code: "COERCE_STRING_TO_ARRAY", skill: skill.dir, field: "filePattern", valueType: "string", hint: "Change metadata.filePattern to a YAML list" },
+        `skill "${skill.dir}": metadata.pathPatterns is a string, coercing to array`,
+        { code: "COERCE_STRING_TO_ARRAY", skill: skill.dir, field: "pathPatterns", valueType: "string", hint: "Change metadata.pathPatterns to a YAML list" },
       );
       pathPatterns = [pathPatterns];
     } else if (!Array.isArray(pathPatterns)) {
       addWarning(
-        `skill "${skill.dir}": metadata.filePattern is not an array (${typeof pathPatterns}), defaulting to []`,
-        { code: "INVALID_TYPE", skill: skill.dir, field: "filePattern", valueType: typeof pathPatterns, hint: "metadata.filePattern must be an array of glob strings" },
+        `skill "${skill.dir}": metadata.pathPatterns is not an array (${typeof pathPatterns}), defaulting to []`,
+        { code: "INVALID_TYPE", skill: skill.dir, field: "pathPatterns", valueType: typeof pathPatterns, hint: "metadata.pathPatterns must be an array of glob strings" },
       );
       pathPatterns = [];
     }
@@ -421,33 +435,47 @@ export function buildSkillMap(rootDir) {
     pathPatterns = pathPatterns.filter((p, i) => {
       if (typeof p !== "string") {
         addWarning(
-          `skill "${skill.dir}": metadata.filePattern[${i}] is not a string (${typeof p}), removing`,
-          { code: "ENTRY_NOT_STRING", skill: skill.dir, field: `filePattern[${i}]`, valueType: typeof p, hint: "Each filePattern entry must be a string" },
+          `skill "${skill.dir}": metadata.pathPatterns[${i}] is not a string (${typeof p}), removing`,
+          { code: "ENTRY_NOT_STRING", skill: skill.dir, field: `pathPatterns[${i}]`, valueType: typeof p, hint: "Each pathPatterns entry must be a string" },
         );
         return false;
       }
       if (p === "") {
         addWarning(
-          `skill "${skill.dir}": metadata.filePattern[${i}] is empty, removing`,
-          { code: "ENTRY_EMPTY", skill: skill.dir, field: `filePattern[${i}]`, valueType: "string", hint: "Remove empty entries from metadata.filePattern" },
+          `skill "${skill.dir}": metadata.pathPatterns[${i}] is empty, removing`,
+          { code: "ENTRY_EMPTY", skill: skill.dir, field: `pathPatterns[${i}]`, valueType: "string", hint: "Remove empty entries from metadata.pathPatterns" },
         );
         return false;
       }
       return true;
     });
 
-    // Coerce bashPattern: bare string → single-element array
-    let bashPatterns = meta.bashPattern ?? [];
+    // Read bashPatterns (canonical) with fallback to deprecated bashPattern
+    let rawBashPatterns;
+    if (meta.bashPatterns !== undefined) {
+      rawBashPatterns = meta.bashPatterns;
+    } else if (meta.bashPattern !== undefined) {
+      rawBashPatterns = meta.bashPattern;
+      addWarning(
+        `skill "${skill.dir}": metadata.bashPattern is deprecated, rename to bashPatterns`,
+        { code: "DEPRECATED_FIELD", skill: skill.dir, field: "bashPattern", valueType: typeof meta.bashPattern, hint: "Rename metadata.bashPattern to metadata.bashPatterns" },
+      );
+    } else {
+      rawBashPatterns = [];
+    }
+
+    // Coerce bashPatterns: bare string → single-element array
+    let bashPatterns = rawBashPatterns;
     if (typeof bashPatterns === "string") {
       addWarning(
-        `skill "${skill.dir}": metadata.bashPattern is a string, coercing to array`,
-        { code: "COERCE_STRING_TO_ARRAY", skill: skill.dir, field: "bashPattern", valueType: "string", hint: "Change metadata.bashPattern to a YAML list" },
+        `skill "${skill.dir}": metadata.bashPatterns is a string, coercing to array`,
+        { code: "COERCE_STRING_TO_ARRAY", skill: skill.dir, field: "bashPatterns", valueType: "string", hint: "Change metadata.bashPatterns to a YAML list" },
       );
       bashPatterns = [bashPatterns];
     } else if (!Array.isArray(bashPatterns)) {
       addWarning(
-        `skill "${skill.dir}": metadata.bashPattern is not an array (${typeof bashPatterns}), defaulting to []`,
-        { code: "INVALID_TYPE", skill: skill.dir, field: "bashPattern", valueType: typeof bashPatterns, hint: "metadata.bashPattern must be an array of regex strings" },
+        `skill "${skill.dir}": metadata.bashPatterns is not an array (${typeof bashPatterns}), defaulting to []`,
+        { code: "INVALID_TYPE", skill: skill.dir, field: "bashPatterns", valueType: typeof bashPatterns, hint: "metadata.bashPatterns must be an array of regex strings" },
       );
       bashPatterns = [];
     }
@@ -455,15 +483,15 @@ export function buildSkillMap(rootDir) {
     bashPatterns = bashPatterns.filter((p, i) => {
       if (typeof p !== "string") {
         addWarning(
-          `skill "${skill.dir}": metadata.bashPattern[${i}] is not a string (${typeof p}), removing`,
-          { code: "ENTRY_NOT_STRING", skill: skill.dir, field: `bashPattern[${i}]`, valueType: typeof p, hint: "Each bashPattern entry must be a string" },
+          `skill "${skill.dir}": metadata.bashPatterns[${i}] is not a string (${typeof p}), removing`,
+          { code: "ENTRY_NOT_STRING", skill: skill.dir, field: `bashPatterns[${i}]`, valueType: typeof p, hint: "Each bashPatterns entry must be a string" },
         );
         return false;
       }
       if (p === "") {
         addWarning(
-          `skill "${skill.dir}": metadata.bashPattern[${i}] is empty, removing`,
-          { code: "ENTRY_EMPTY", skill: skill.dir, field: `bashPattern[${i}]`, valueType: "string", hint: "Remove empty entries from metadata.bashPattern" },
+          `skill "${skill.dir}": metadata.bashPatterns[${i}] is empty, removing`,
+          { code: "ENTRY_EMPTY", skill: skill.dir, field: `bashPatterns[${i}]`, valueType: "string", hint: "Remove empty entries from metadata.bashPatterns" },
         );
         return false;
       }

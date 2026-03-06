@@ -3,7 +3,7 @@ name: json-render
 description: AI chat response rendering guidance — handling UIMessage parts, tool call displays, streaming states, and structured data presentation. Use when building custom chat UIs, rendering tool results, or troubleshooting AI response display issues.
 metadata:
   priority: 4
-  filePattern:
+  pathPatterns:
     - 'components/chat/**'
     - 'components/chat-*.tsx'
     - 'components/chat-*.ts'
@@ -12,7 +12,7 @@ metadata:
     - 'src/components/chat-*.ts'
     - 'components/message*.tsx'
     - 'src/components/message*.tsx'
-  bashPattern: []
+  bashPatterns: []
 ---
 
 # AI Chat Response Rendering

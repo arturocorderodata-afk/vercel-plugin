@@ -16,5 +16,6 @@
   "droppedByCap": [
     "cron-jobs",
     "deployments-cicd"
-  ]
+  ],
+  "droppedByBudget": []
 }

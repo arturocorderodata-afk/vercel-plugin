@@ -3,14 +3,14 @@ name: deployments-cicd
 description: Vercel deployment and CI/CD expert guidance. Use when deploying, promoting, rolling back, inspecting deployments, building with --prebuilt, or configuring CI workflow files for Vercel.
 metadata:
   priority: 6
-  filePattern:
+  pathPatterns:
     - '.github/workflows/*.yml'
     - '.github/workflows/*.yaml'
     - '.gitlab-ci.yml'
     - 'bitbucket-pipelines.yml'
     - 'vercel.json'
     - 'apps/*/vercel.json'
-  bashPattern:
+  bashPatterns:
     - '\bvercel\s+deploy\b'
     - '\bvercel\s+--prod\b'
     - '\bvercel\s+promote\b'

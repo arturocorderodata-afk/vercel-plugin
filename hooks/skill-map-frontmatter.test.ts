@@ -20,7 +20,7 @@ describe("skill-map frontmatter regression coverage", () => {
       "description: AI SDK skill",
       "metadata:",
       "  priority: 8",
-      "  filePattern:",
+      "  pathPatterns:",
       "    - app/api/chat/**",
       "    - src/lib/ai/**",
     ].join("\n");
@@ -30,23 +30,23 @@ describe("skill-map frontmatter regression coverage", () => {
     expect(parsed.name).toBe("ai-sdk");
     expect(parsed.metadata.priority).toBe(8);
     expect(typeof parsed.metadata.priority).toBe("number");
-    expect(parsed.metadata.filePattern).toEqual(["app/api/chat/**", "src/lib/ai/**"]);
-    expect(parsed.metadata.filePattern?.every((item) => typeof item === "string")).toBe(true);
+    expect(parsed.metadata.pathPatterns).toEqual(["app/api/chat/**", "src/lib/ai/**"]);
+    expect(parsed.metadata.pathPatterns?.every((item: string) => typeof item === "string")).toBe(true);
   });
 
   it("parseSkillFrontmatter should parse inline arrays and preserve regex-like strings", () => {
     const yaml = [
       "name: ai-sdk",
       "metadata:",
-      "  bashPattern: ['^bun test$', '^pnpm lint$']",
+      "  bashPatterns: ['^bun test$', '^pnpm lint$']",
     ].join("\n");
 
     const parsed = parseSkillFrontmatter(yaml);
 
-    expect(parsed.metadata.bashPattern).toEqual(["^bun test$", "^pnpm lint$"]);
+    expect(parsed.metadata.bashPatterns).toEqual(["^bun test$", "^pnpm lint$"]);
   });
 
-  it("buildSkillMap should preserve scalar metadata.filePattern coercion", () => {
+  it("buildSkillMap should accept deprecated filePattern with deprecation warning", () => {
     const root = mkdtempSync(join(tmpdir(), "vercel-plugin-skillmap-"));
 
     try {
@@ -68,7 +68,7 @@ describe("skill-map frontmatter regression coverage", () => {
 
       expect(result.skills.foo.pathPatterns).toEqual(["app/api/chat/**"]);
       expect(
-        result.warnings.some((warning) => warning.includes("metadata.filePattern is a string, coercing to array")),
+        result.warnings.some((warning: string) => warning.includes("filePattern is deprecated")),
       ).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });

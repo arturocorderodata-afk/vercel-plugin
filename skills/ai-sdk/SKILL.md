@@ -3,7 +3,7 @@ name: ai-sdk
 description: Vercel AI SDK expert guidance. Use when building AI-powered features — chat interfaces, text generation, structured output, tool calling, agents, MCP integration, streaming, embeddings, reranking, image generation, or working with any LLM provider.
 metadata:
   priority: 8
-  filePattern:
+  pathPatterns:
     - 'app/api/chat/**'
     - 'app/api/completion/**'
     - 'src/app/api/chat/**'
@@ -27,7 +27,7 @@ metadata:
     - 'apps/*/src/app/api/completion/**'
     - 'apps/*/lib/ai/**'
     - 'apps/*/src/lib/ai/**'
-  bashPattern:
+  bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*\bai\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*\bai\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*\bai\b'

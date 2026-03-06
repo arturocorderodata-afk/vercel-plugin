@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { readdir, readFile, stat, mkdir, writeFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { detectReDoS } from "../scripts/validate";
 
 const ROOT = resolve(import.meta.dirname, "..");
 
@@ -368,36 +369,36 @@ describe("validate.ts — focused frontmatter validation", () => {
     });
   }, 30_000);
 
-  test("string filePattern produces FM_FILEPATTERN_TYPE", async () => {
+  test("string pathPatterns produces FM_PATHPATTERNS_TYPE", async () => {
     await withTempSkill("zzz-test-string-filepattern", [
       "---",
       "name: string-fp",
-      "description: filePattern is a bare string",
+      "description: pathPatterns is a bare string",
       "metadata:",
-      "  filePattern: 'src/**/*.ts'",
+      "  pathPatterns: 'src/**/*.ts'",
       "---",
-      "# String filePattern",
+      "# String pathPatterns",
     ].join("\n"), async () => {
       const { code, report } = await runValidateJson();
       expect(code).not.toBe(0);
 
       const issue = report.issues.find(
-        (i: any) => i.code === "FM_FILEPATTERN_TYPE" && i.message.includes("zzz-test-string-filepattern"),
+        (i: any) => i.code === "FM_PATHPATTERNS_TYPE" && i.message.includes("zzz-test-string-filepattern"),
       );
       expect(issue).toBeDefined();
       expect(issue.hint).toMatch(/list/i);
     });
   }, 30_000);
 
-  test("invalid bashPattern regex produces PATTERN_BASH_COMPILE", async () => {
+  test("invalid bashPatterns regex produces PATTERN_BASH_COMPILE", async () => {
     await withTempSkill("zzz-test-bad-bash-regex", [
       "---",
       "name: bad-regex",
-      "description: bashPattern with invalid regex",
+      "description: bashPatterns with invalid regex",
       "metadata:",
-      "  bashPattern:",
+      "  bashPatterns:",
       "    - '[unclosed'",
-      "  filePattern:",
+      "  pathPatterns:",
       "    - '**/*.ts'",
       "---",
       "# Bad regex",
@@ -413,18 +414,18 @@ describe("validate.ts — focused frontmatter validation", () => {
     });
   }, 30_000);
 
-  test("SKILL.md with filePattern: [42] produces warning-level filtering (no crash)", async () => {
+  test("SKILL.md with pathPatterns: [42] produces warning-level filtering (no crash)", async () => {
     await withTempSkill("zzz-test-nonstring-fp", [
       "---",
       "name: nonstring-fp",
-      "description: filePattern has a number",
+      "description: pathPatterns has a number",
       "metadata:",
-      "  filePattern:",
+      "  pathPatterns:",
       "    - 42",
-      "  bashPattern:",
+      "  bashPatterns:",
       "    - '\\\\bvercel\\\\b'",
       "---",
-      "# Non-string filePattern",
+      "# Non-string pathPatterns",
     ].join("\n"), async () => {
       const { report } = await runValidateJson();
       // The number entry gets filtered out, leaving no triggers → SKILL_NO_TRIGGERS
@@ -436,18 +437,18 @@ describe("validate.ts — focused frontmatter validation", () => {
     });
   }, 30_000);
 
-  test("SKILL.md with filePattern: [''] produces warning-level filtering (no crash)", async () => {
+  test("SKILL.md with pathPatterns: [''] produces warning-level filtering (no crash)", async () => {
     await withTempSkill("zzz-test-empty-fp", [
       "---",
       "name: empty-fp",
-      "description: filePattern has an empty string",
+      "description: pathPatterns has an empty string",
       "metadata:",
-      "  filePattern:",
+      "  pathPatterns:",
       "    - ''",
-      "  bashPattern:",
+      "  bashPatterns:",
       "    - '\\\\bvercel\\\\b'",
       "---",
-      "# Empty filePattern",
+      "# Empty pathPatterns",
     ].join("\n"), async () => {
       const { report } = await runValidateJson();
       const crashIssues = report.issues.filter(
@@ -463,7 +464,7 @@ describe("validate.ts — focused frontmatter validation", () => {
       "description: has metadata.name but no top-level name",
       "metadata:",
       "  name: sneaky-name",
-      "  filePattern:",
+      "  pathPatterns:",
       "    - '**/*.ts'",
       "---",
       "# No top-level name",
@@ -478,21 +479,21 @@ describe("validate.ts — focused frontmatter validation", () => {
     });
   }, 30_000);
 
-  test("string filePattern produces FM_FILEPATTERN_TYPE via structured warningDetails", async () => {
+  test("string pathPatterns produces FM_PATHPATTERNS_TYPE via structured warningDetails", async () => {
     await withTempSkill("zzz-test-structured-fp", [
       "---",
       "name: structured-fp",
-      "description: filePattern is a bare string (structured test)",
+      "description: pathPatterns is a bare string (structured test)",
       "metadata:",
-      "  filePattern: 'src/**/*.ts'",
+      "  pathPatterns: 'src/**/*.ts'",
       "---",
-      "# Structured filePattern test",
+      "# Structured pathPatterns test",
     ].join("\n"), async () => {
       const { code, report } = await runValidateJson();
       expect(code).not.toBe(0);
 
       const issue = report.issues.find(
-        (i: any) => i.code === "FM_FILEPATTERN_TYPE" && i.message.includes("zzz-test-structured-fp"),
+        (i: any) => i.code === "FM_PATHPATTERNS_TYPE" && i.message.includes("zzz-test-structured-fp"),
       );
       expect(issue).toBeDefined();
       // Verify the message includes ", got string" (from structured detail code path)
@@ -507,9 +508,9 @@ describe("validate.ts — focused frontmatter validation", () => {
       "name: clean-skill",
       "description: A perfectly valid test skill",
       "metadata:",
-      "  filePattern:",
+      "  pathPatterns:",
       "    - '**/*.ts'",
-      "  bashPattern:",
+      "  bashPatterns:",
       "    - '\\bvercel\\b'",
       "  priority: 5",
       "---",
@@ -529,4 +530,75 @@ describe("validate.ts — focused frontmatter validation", () => {
       expect(fmIssues).toEqual([]);
     });
   }, 30_000);
+
+  test("bashPattern with nested quantifiers produces PATTERN_BASH_REDOS", async () => {
+    await withTempSkill("zzz-test-redos-pattern", [
+      "---",
+      "name: redos-pattern",
+      "description: bashPattern with catastrophic backtracking",
+      "metadata:",
+      "  pathPatterns:",
+      "    - '**/*.ts'",
+      "  bashPatterns:",
+      "    - '(a+)+'",
+      "---",
+      "# ReDoS pattern",
+    ].join("\n"), async () => {
+      const { code, report } = await runValidateJson();
+      expect(code).not.toBe(0);
+
+      const issue = report.issues.find(
+        (i: any) => i.code === "PATTERN_BASH_REDOS" && i.message.includes("zzz-test-redos-pattern"),
+      );
+      expect(issue).toBeDefined();
+      expect(issue.message).toMatch(/nested quantifiers/);
+      expect(issue.hint).toMatch(/rewrite/i);
+    });
+  }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// detectReDoS unit tests
+// ---------------------------------------------------------------------------
+
+describe("detectReDoS", () => {
+  test("flags (a+)+ as nested quantifier", () => {
+    expect(detectReDoS("(a+)+")).not.toBeNull();
+  });
+
+  test("flags (.*)*  as nested quantifier", () => {
+    expect(detectReDoS("(.*)*")).not.toBeNull();
+  });
+
+  test("flags ([^/]+)+ as nested quantifier", () => {
+    expect(detectReDoS("([^/]+)+")).not.toBeNull();
+  });
+
+  test("flags (\\w+)* as nested quantifier", () => {
+    expect(detectReDoS("(\\w+)*")).not.toBeNull();
+  });
+
+  test("flags (a+){2,} as nested quantifier", () => {
+    expect(detectReDoS("(a+){2,}")).not.toBeNull();
+  });
+
+  test("allows simple \\bvercel\\b", () => {
+    expect(detectReDoS("\\bvercel\\b")).toBeNull();
+  });
+
+  test("allows non-nested [a-z]+", () => {
+    expect(detectReDoS("[a-z]+")).toBeNull();
+  });
+
+  test("allows simple alternation without quantifier", () => {
+    expect(detectReDoS("(foo|bar)")).toBeNull();
+  });
+
+  test("allows quantified group without inner quantifier", () => {
+    expect(detectReDoS("(abc)+")).toBeNull();
+  });
+
+  test("flags quantified backreference \\1+", () => {
+    expect(detectReDoS("(a)\\1+")).not.toBeNull();
+  });
 });

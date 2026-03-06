@@ -1,0 +1,18 @@
+{
+  "description": "Golden snapshot: Edit middleware.ts triggers routing-middleware only",
+  "input": {
+    "tool_name": "Edit",
+    "tool_input": { "file_path": "/Users/me/project/middleware.ts" }
+  },
+  "expected": {
+    "skillInjection": {
+      "version": 1,
+      "toolName": "Edit",
+      "toolTarget": "/Users/me/project/middleware.ts",
+      "matchedSkills": ["routing-middleware"],
+      "injectedSkills": ["routing-middleware"],
+      "droppedByCap": [],
+      "droppedByBudget": []
+    }
+  }
+}

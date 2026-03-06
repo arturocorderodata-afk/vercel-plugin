@@ -101,13 +101,13 @@ describe("extractFrontmatter", () => {
 
 describe("parseSkillFrontmatter", () => {
   test("parses name, description, and metadata", () => {
-    const yamlStr = `name: nextjs\ndescription: Next.js guide\nmetadata:\n  priority: 5\n  filePattern:\n    - 'app/**'\n  bashPattern:\n    - '\\bnext\\s+dev\\b'`;
+    const yamlStr = `name: nextjs\ndescription: Next.js guide\nmetadata:\n  priority: 5\n  pathPatterns:\n    - 'app/**'\n  bashPatterns:\n    - '\\bnext\\s+dev\\b'`;
     const result = parseSkillFrontmatter(yamlStr);
     expect(result.name).toBe("nextjs");
     expect(result.description).toBe("Next.js guide");
     expect(result.metadata.priority).toBe(5);
-    expect(result.metadata.filePattern).toEqual(["app/**"]);
-    expect(result.metadata.bashPattern).toEqual(["\\bnext\\s+dev\\b"]);
+    expect(result.metadata.pathPatterns).toEqual(["app/**"]);
+    expect(result.metadata.bashPatterns).toEqual(["\\bnext\\s+dev\\b"]);
   });
 
   test("returns defaults for empty string", () => {
@@ -119,9 +119,9 @@ describe("parseSkillFrontmatter", () => {
 
   test("preserves backslash sequences in single-quoted YAML strings", () => {
     // Single-quoted YAML strings should NOT interpret \b as backspace
-    const yamlStr = `name: test\nmetadata:\n  bashPattern:\n    - '\\bnpm\\s+install\\b'`;
+    const yamlStr = `name: test\nmetadata:\n  bashPatterns:\n    - '\\bnpm\\s+install\\b'`;
     const result = parseSkillFrontmatter(yamlStr);
-    expect(result.metadata.bashPattern[0]).toBe("\\bnpm\\s+install\\b");
+    expect(result.metadata.bashPatterns[0]).toBe("\\bnpm\\s+install\\b");
   });
 
   test("handles missing metadata gracefully", () => {
@@ -176,11 +176,11 @@ describe("scanSkillsDir", () => {
     }
   });
 
-  test("each skill has filePattern and bashPattern arrays in metadata", () => {
+  test("each skill has pathPatterns and bashPatterns arrays in metadata", () => {
     const { skills } = scanSkillsDir(SKILLS_DIR);
     for (const skill of skills) {
-      expect(Array.isArray(skill.metadata.filePattern)).toBe(true);
-      expect(Array.isArray(skill.metadata.bashPattern)).toBe(true);
+      expect(Array.isArray(skill.metadata.pathPatterns)).toBe(true);
+      expect(Array.isArray(skill.metadata.bashPatterns)).toBe(true);
     }
   });
 
@@ -196,7 +196,7 @@ describe("scanSkillsDir", () => {
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, "SKILL.md"),
-      `---\nname: my-skill\ndescription: A test skill\nmetadata:\n  priority: 3\n  filePattern:\n    - 'src/**'\n  bashPattern:\n    - '\\bmy-cmd\\b'\n---\n# My Skill`
+      `---\nname: my-skill\ndescription: A test skill\nmetadata:\n  priority: 3\n  pathPatterns:\n    - 'src/**'\n  bashPatterns:\n    - '\\bmy-cmd\\b'\n---\n# My Skill`
     );
 
     const { skills, diagnostics } = scanSkillsDir(tmp);
@@ -204,7 +204,7 @@ describe("scanSkillsDir", () => {
     expect(skills[0].dir).toBe("my-skill");
     expect(skills[0].name).toBe("my-skill"); // frontmatter name matches dir here
     expect(skills[0].metadata.priority).toBe(3);
-    expect(skills[0].metadata.filePattern).toEqual(["src/**"]);
+    expect(skills[0].metadata.pathPatterns).toEqual(["src/**"]);
     expect(diagnostics).toEqual([]);
 
     rmSync(tmp, { recursive: true, force: true });
@@ -219,7 +219,7 @@ describe("scanSkillsDir", () => {
 
     writeFileSync(
       join(goodDir, "SKILL.md"),
-      `---\nname: good-skill\ndescription: Works\nmetadata:\n  priority: 5\n  filePattern:\n    - 'src/**'\n  bashPattern: []\n---\n# Good`,
+      `---\nname: good-skill\ndescription: Works\nmetadata:\n  priority: 5\n  pathPatterns:\n    - 'src/**'\n  bashPatterns: []\n---\n# Good`,
     );
     // Malformed YAML: tab indentation triggers inline parser error
     writeFileSync(
@@ -259,7 +259,7 @@ describe("buildSkillMap", () => {
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, "SKILL.md"),
-      `---\nname: no-priority-skill\ndescription: No priority set\nmetadata:\n  filePattern:\n    - 'src/**'\n  bashPattern: []\n---\n# Test`,
+      `---\nname: no-priority-skill\ndescription: No priority set\nmetadata:\n  pathPatterns:\n    - 'src/**'\n  bashPatterns: []\n---\n# Test`,
     );
 
     const map = buildSkillMap(tmp);
@@ -319,13 +319,13 @@ describe("buildSkillMap", () => {
     expect(hasWordBoundary).toBe(true);
   });
 
-  test("coerces bare string filePattern to array with warning", () => {
+  test("coerces bare string pathPatterns to array with warning", () => {
     const tmp = join(tmpdir(), `skill-string-fp-${Date.now()}`);
     const skillDir = join(tmp, "bare-string-skill");
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, "SKILL.md"),
-      `---\nname: bare-string-skill\ndescription: Test bare string\nmetadata:\n  priority: 3\n  filePattern: 'src/**'\n  bashPattern:\n    - '\\btest\\b'\n---\n# Test`,
+      `---\nname: bare-string-skill\ndescription: Test bare string\nmetadata:\n  priority: 3\n  pathPatterns: 'src/**'\n  bashPatterns:\n    - '\\btest\\b'\n---\n# Test`,
     );
 
     const map = buildSkillMap(tmp);
@@ -336,18 +336,18 @@ describe("buildSkillMap", () => {
     expect(Array.isArray(skill.bashPatterns)).toBe(true);
     // Should have a coercion warning
     expect(map.warnings.length).toBeGreaterThanOrEqual(1);
-    expect(map.warnings.some((w: string) => w.includes("filePattern") && w.includes("coercing"))).toBe(true);
+    expect(map.warnings.some((w: string) => w.includes("pathPatterns") && w.includes("coercing"))).toBe(true);
 
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  test("coerces bare string bashPattern to array with warning", () => {
+  test("coerces bare string bashPatterns to array with warning", () => {
     const tmp = join(tmpdir(), `skill-string-bp-${Date.now()}`);
     const skillDir = join(tmp, "bare-bash-skill");
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, "SKILL.md"),
-      `---\nname: bare-bash-skill\ndescription: Test bare bash string\nmetadata:\n  priority: 2\n  filePattern:\n    - 'app/**'\n  bashPattern: '\\bnpm\\b'\n---\n# Test`,
+      `---\nname: bare-bash-skill\ndescription: Test bare bash string\nmetadata:\n  priority: 2\n  pathPatterns:\n    - 'app/**'\n  bashPatterns: '\\bnpm\\b'\n---\n# Test`,
     );
 
     const map = buildSkillMap(tmp);
@@ -355,12 +355,12 @@ describe("buildSkillMap", () => {
     expect(skill).toBeDefined();
     expect(Array.isArray(skill.bashPatterns)).toBe(true);
     expect(skill.bashPatterns).toEqual(["\\bnpm\\b"]);
-    expect(map.warnings.some((w: string) => w.includes("bashPattern") && w.includes("coercing"))).toBe(true);
+    expect(map.warnings.some((w: string) => w.includes("bashPatterns") && w.includes("coercing"))).toBe(true);
 
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  test("defaults non-array non-string filePattern to empty array with warning", () => {
+  test("defaults non-array non-string pathPatterns to empty array with warning", () => {
     const tmp = join(tmpdir(), `skill-bad-type-${Date.now()}`);
     const skillDir = join(tmp, "bad-type-skill");
     mkdirSync(skillDir, { recursive: true });
@@ -368,7 +368,7 @@ describe("buildSkillMap", () => {
     // so use numbers which are reliably non-array non-string.
     writeFileSync(
       join(skillDir, "SKILL.md"),
-      `---\nname: bad-type-skill\ndescription: Test bad type\nmetadata:\n  priority: 1\n  filePattern: 42\n  bashPattern: 99\n---\n# Test`,
+      `---\nname: bad-type-skill\ndescription: Test bad type\nmetadata:\n  priority: 1\n  pathPatterns: 42\n  bashPatterns: 99\n---\n# Test`,
     );
 
     const map = buildSkillMap(tmp);
@@ -392,7 +392,7 @@ describe("buildSkillMap", () => {
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, "SKILL.md"),
-      `---\nname: different-frontmatter-name\ndescription: Mismatched\nmetadata:\n  priority: 7\n  filePattern:\n    - 'lib/**'\n  bashPattern:\n    - '\\bmy-cmd\\b'\n---\n# Test`,
+      `---\nname: different-frontmatter-name\ndescription: Mismatched\nmetadata:\n  priority: 7\n  pathPatterns:\n    - 'lib/**'\n  bashPatterns:\n    - '\\bmy-cmd\\b'\n---\n# Test`,
     );
 
     const map = buildSkillMap(tmp);
@@ -413,7 +413,7 @@ describe("buildSkillMap", () => {
     mkdirSync(dir2, { recursive: true });
 
     const frontmatter = (pat: string) =>
-      `---\nname: same-name\ndescription: Dup\nmetadata:\n  priority: 5\n  filePattern:\n    - '${pat}'\n  bashPattern: []\n---\n# Test`;
+      `---\nname: same-name\ndescription: Dup\nmetadata:\n  priority: 5\n  pathPatterns:\n    - '${pat}'\n  bashPatterns: []\n---\n# Test`;
 
     writeFileSync(join(dir1, "SKILL.md"), frontmatter("alpha/**"));
     writeFileSync(join(dir2, "SKILL.md"), frontmatter("beta/**"));
@@ -436,7 +436,7 @@ describe("buildSkillMap", () => {
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, "SKILL.md"),
-      `---\ndescription: No name field\nmetadata:\n  priority: 2\n  filePattern:\n    - 'unnamed/**'\n  bashPattern: []\n---\n# Test`,
+      `---\ndescription: No name field\nmetadata:\n  priority: 2\n  pathPatterns:\n    - 'unnamed/**'\n  bashPatterns: []\n---\n# Test`,
     );
 
     const map = buildSkillMap(tmp);
@@ -462,7 +462,7 @@ describe("buildSkillMap — BOM and metadata edge cases", () => {
   }
 
   test("BOM-prefixed SKILL.md is parsed correctly", () => {
-    const content = "\uFEFF---\nname: bom-skill\ndescription: BOM test\nmetadata:\n  priority: 3\n  filePattern:\n    - 'src/**'\n  bashPattern: []\n---\n# BOM Skill";
+    const content = "\uFEFF---\nname: bom-skill\ndescription: BOM test\nmetadata:\n  priority: 3\n  pathPatterns:\n    - 'src/**'\n  bashPatterns: []\n---\n# BOM Skill";
     const map = buildWithContent("bom-skill", content);
     expect(map.skills["bom-skill"]).toBeDefined();
     expect(map.skills["bom-skill"].priority).toBe(3);
@@ -514,42 +514,42 @@ describe("buildSkillMap — malformed array entries", () => {
     return result;
   }
 
-  test("filePattern: [42] filters out non-string with warning", () => {
-    const map = buildWithFrontmatter("  filePattern:\n    - 42\n  bashPattern: []");
+  test("pathPatterns: [42] filters out non-string with warning", () => {
+    const map = buildWithFrontmatter("  pathPatterns:\n    - 42\n  bashPatterns: []");
     expect(map.skills["test-skill"].pathPatterns).toEqual([]);
-    expect(map.warnings.some((w: string) => w.includes("filePattern[0]") && w.includes("not a string"))).toBe(true);
+    expect(map.warnings.some((w: string) => w.includes("pathPatterns[0]") && w.includes("not a string"))).toBe(true);
   });
 
-  test("filePattern: [null] treats bare null as string 'null' (inline parser)", () => {
+  test("pathPatterns: [null] treats bare null as string 'null' (inline parser)", () => {
     // The inline YAML parser treats bare `null` as the string "null", not JS null.
-    const map = buildWithFrontmatter("  filePattern:\n    - null\n  bashPattern: []");
+    const map = buildWithFrontmatter("  pathPatterns:\n    - null\n  bashPatterns: []");
     expect(map.skills["test-skill"].pathPatterns).toEqual(["null"]);
     expect(map.warnings.length).toBe(0);
   });
 
-  test("filePattern: [''] filters out empty string with warning", () => {
-    const map = buildWithFrontmatter("  filePattern:\n    - ''\n  bashPattern: []");
+  test("pathPatterns: [''] filters out empty string with warning", () => {
+    const map = buildWithFrontmatter("  pathPatterns:\n    - ''\n  bashPatterns: []");
     expect(map.skills["test-skill"].pathPatterns).toEqual([]);
-    expect(map.warnings.some((w: string) => w.includes("filePattern[0]") && w.includes("empty"))).toBe(true);
+    expect(map.warnings.some((w: string) => w.includes("pathPatterns[0]") && w.includes("empty"))).toBe(true);
   });
 
-  test("bashPattern: [42] filters out non-string with warning", () => {
-    const map = buildWithFrontmatter("  filePattern: []\n  bashPattern:\n    - 42");
+  test("bashPatterns: [42] filters out non-string with warning", () => {
+    const map = buildWithFrontmatter("  pathPatterns: []\n  bashPatterns:\n    - 42");
     expect(map.skills["test-skill"].bashPatterns).toEqual([]);
-    expect(map.warnings.some((w: string) => w.includes("bashPattern[0]") && w.includes("not a string"))).toBe(true);
+    expect(map.warnings.some((w: string) => w.includes("bashPatterns[0]") && w.includes("not a string"))).toBe(true);
   });
 
-  test("bashPattern: [null] treats bare null as string 'null' (inline parser)", () => {
+  test("bashPatterns: [null] treats bare null as string 'null' (inline parser)", () => {
     // The inline YAML parser treats bare `null` as the string "null", not JS null.
-    const map = buildWithFrontmatter("  filePattern: []\n  bashPattern:\n    - null");
+    const map = buildWithFrontmatter("  pathPatterns: []\n  bashPatterns:\n    - null");
     expect(map.skills["test-skill"].bashPatterns).toEqual(["null"]);
     expect(map.warnings.length).toBe(0);
   });
 
-  test("bashPattern: [''] filters out empty string with warning", () => {
-    const map = buildWithFrontmatter("  filePattern: []\n  bashPattern:\n    - ''");
+  test("bashPatterns: [''] filters out empty string with warning", () => {
+    const map = buildWithFrontmatter("  pathPatterns: []\n  bashPatterns:\n    - ''");
     expect(map.skills["test-skill"].bashPatterns).toEqual([]);
-    expect(map.warnings.some((w: string) => w.includes("bashPattern[0]") && w.includes("empty"))).toBe(true);
+    expect(map.warnings.some((w: string) => w.includes("bashPatterns[0]") && w.includes("empty"))).toBe(true);
   });
 });
 
@@ -575,10 +575,10 @@ describe("buildSkillMap — warningDetails structured diagnostics", () => {
     expect(map.warningDetails).toEqual([]);
   });
 
-  test("coercing string filePattern produces structured detail with COERCE_STRING_TO_ARRAY", () => {
-    const map = buildWithFrontmatter("  filePattern: 'src/**'\n  bashPattern: []");
+  test("coercing string pathPatterns produces structured detail with COERCE_STRING_TO_ARRAY", () => {
+    const map = buildWithFrontmatter("  pathPatterns: 'src/**'\n  bashPatterns: []");
     expect(map.warningDetails.length).toBeGreaterThanOrEqual(1);
-    const detail = map.warningDetails.find((d: any) => d.code === "COERCE_STRING_TO_ARRAY" && d.field === "filePattern");
+    const detail = map.warningDetails.find((d: any) => d.code === "COERCE_STRING_TO_ARRAY" && d.field === "pathPatterns");
     expect(detail).toBeDefined();
     expect(detail.skill).toBe("test-skill");
     expect(detail.valueType).toBe("string");
@@ -586,28 +586,28 @@ describe("buildSkillMap — warningDetails structured diagnostics", () => {
     expect(typeof detail.hint).toBe("string");
   });
 
-  test("non-array filePattern produces INVALID_TYPE detail", () => {
-    const map = buildWithFrontmatter("  filePattern: 42\n  bashPattern: []");
-    const detail = map.warningDetails.find((d: any) => d.code === "INVALID_TYPE" && d.field === "filePattern");
+  test("non-array pathPatterns produces INVALID_TYPE detail", () => {
+    const map = buildWithFrontmatter("  pathPatterns: 42\n  bashPatterns: []");
+    const detail = map.warningDetails.find((d: any) => d.code === "INVALID_TYPE" && d.field === "pathPatterns");
     expect(detail).toBeDefined();
     expect(detail.valueType).toBe("number");
   });
 
-  test("non-string entry in filePattern produces ENTRY_NOT_STRING detail", () => {
-    const map = buildWithFrontmatter("  filePattern:\n    - 42\n  bashPattern: []");
-    const detail = map.warningDetails.find((d: any) => d.code === "ENTRY_NOT_STRING" && d.field === "filePattern[0]");
+  test("non-string entry in pathPatterns produces ENTRY_NOT_STRING detail", () => {
+    const map = buildWithFrontmatter("  pathPatterns:\n    - 42\n  bashPatterns: []");
+    const detail = map.warningDetails.find((d: any) => d.code === "ENTRY_NOT_STRING" && d.field === "pathPatterns[0]");
     expect(detail).toBeDefined();
     expect(detail.skill).toBe("test-skill");
   });
 
-  test("empty string in bashPattern produces ENTRY_EMPTY detail", () => {
-    const map = buildWithFrontmatter("  filePattern: []\n  bashPattern:\n    - ''");
-    const detail = map.warningDetails.find((d: any) => d.code === "ENTRY_EMPTY" && d.field === "bashPattern[0]");
+  test("empty string in bashPatterns produces ENTRY_EMPTY detail", () => {
+    const map = buildWithFrontmatter("  pathPatterns: []\n  bashPatterns:\n    - ''");
+    const detail = map.warningDetails.find((d: any) => d.code === "ENTRY_EMPTY" && d.field === "bashPatterns[0]");
     expect(detail).toBeDefined();
   });
 
   test("warningDetails length matches warnings length", () => {
-    const map = buildWithFrontmatter("  filePattern: 42\n  bashPattern: true");
+    const map = buildWithFrontmatter("  pathPatterns: 42\n  bashPatterns: true");
     expect(map.warningDetails.length).toBe(map.warnings.length);
   });
 });

@@ -3,7 +3,7 @@ name: nextjs
 description: Next.js App Router expert guidance. Use when building, debugging, or architecting Next.js applications — routing, Server Components, Server Actions, Cache Components, layouts, middleware/proxy, data fetching, rendering strategies, and deployment on Vercel.
 metadata:
   priority: 5
-  filePattern:
+  pathPatterns:
     - 'next.config.*'
     - 'next-env.d.ts'
     - 'app/**'
@@ -19,7 +19,7 @@ metadata:
     - 'apps/*/src/app/**'
     - 'apps/*/src/pages/**'
     - 'apps/*/next.config.*'
-  bashPattern:
+  bashPatterns:
     - '\bnext\s+(dev|build|start|lint)\b'
     - '\bnpx\s+create-next-app\b'
     - '\bbunx\s+create-next-app\b'
@@ -31,6 +31,16 @@ metadata:
 # Next.js (v16+) — App Router
 
 You are an expert in Next.js 16 with the App Router. Always prefer the App Router over the legacy Pages Router unless the user's project explicitly uses Pages Router.
+
+## Scaffolding
+
+When running `create-next-app`, **always** pass `--yes` to skip interactive prompts (e.g., the React Compiler question) that block non-interactive shells:
+
+```bash
+npx create-next-app@latest my-app --yes --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --turbopack --use-npm
+```
+
+`create-next-app` refuses to run in a non-empty directory. To scaffold into an existing project, create in a temp directory and copy the files over.
 
 ## Key Architecture
 

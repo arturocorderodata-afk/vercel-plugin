@@ -1,0 +1,18 @@
+{
+  "description": "Golden snapshot: Bash 'npx next dev --turbopack' triggers nextjs and turbopack, nothing dropped",
+  "input": {
+    "tool_name": "Bash",
+    "tool_input": { "command": "npx next dev --turbopack" }
+  },
+  "expected": {
+    "skillInjection": {
+      "version": 1,
+      "toolName": "Bash",
+      "toolTarget": "npx next dev --turbopack",
+      "matchedSkills": ["turbopack", "nextjs"],
+      "injectedSkills": ["nextjs", "turbopack"],
+      "droppedByCap": [],
+      "droppedByBudget": []
+    }
+  }
+}

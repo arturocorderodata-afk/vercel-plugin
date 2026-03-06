@@ -26,12 +26,16 @@ beforeEach(() => {
   testSession = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 });
 
+// High budget disables budget-based limiting so existing cap tests are unaffected
+const UNLIMITED_BUDGET = "999999";
+
 async function runHook(input: object): Promise<{ code: number; stdout: string; stderr: string }> {
   const payload = JSON.stringify({ ...input, session_id: testSession });
   const proc = Bun.spawn(["node", HOOK_SCRIPT], {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
+    env: { ...process.env, VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
   });
   proc.stdin.write(payload);
   proc.stdin.end();
@@ -493,7 +497,7 @@ async function runHookDebug(input: object): Promise<{ code: number; stdout: stri
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+    env: { ...process.env, VERCEL_PLUGIN_HOOK_DEBUG: "1", VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
   });
   proc.stdin.write(payload);
   proc.stdin.end();
@@ -751,7 +755,7 @@ describe("issue events in debug mode", () => {
     mkdirSync(validSkillDir, { recursive: true });
     writeFileSync(
       join(validSkillDir, "SKILL.md"),
-      `---\nname: valid-skill\nmetadata:\n  filePattern:\n    - '**/*.valid'\n---\n# Valid Skill\n`,
+      `---\nname: valid-skill\nmetadata:\n  pathPatterns:\n    - '**/*.valid'\n---\n# Valid Skill\n`,
     );
 
     // Create a malformed skill with invalid YAML frontmatter (tab indentation triggers parse error)
@@ -896,7 +900,7 @@ async function runHookEnv(
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, ...env },
+    env: { ...process.env, VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET, ...env },
   });
   proc.stdin.write(payload);
   proc.stdin.end();
@@ -1480,28 +1484,23 @@ describe("cap observability (debug mode)", () => {
     const capEvent = lines.find((l: any) => l.event === "cap-applied");
     expect(capEvent).toBeDefined();
     expect(capEvent.max).toBe(3);
-    expect(capEvent.totalMatched).toBeGreaterThan(3);
+    expect(capEvent.totalCandidates).toBeGreaterThan(3);
+    expect(typeof capEvent.budgetBytes).toBe("number");
+    expect(typeof capEvent.usedBytes).toBe("number");
 
-    // selected array has exactly 3 entries with skill + priority
+    // selected array has exactly 3 entries with skill name
     expect(Array.isArray(capEvent.selected)).toBe(true);
     expect(capEvent.selected.length).toBe(3);
     for (const entry of capEvent.selected) {
       expect(typeof entry.skill).toBe("string");
-      expect(typeof entry.priority).toBe("number");
     }
 
-    // dropped array has at least 1 entry with skill + priority
-    expect(Array.isArray(capEvent.dropped)).toBe(true);
-    expect(capEvent.dropped.length).toBeGreaterThanOrEqual(1);
-    for (const entry of capEvent.dropped) {
-      expect(typeof entry.skill).toBe("string");
-      expect(typeof entry.priority).toBe("number");
+    // droppedByCap should have the excess skills
+    expect(Array.isArray(capEvent.droppedByCap)).toBe(true);
+    expect(capEvent.droppedByCap.length).toBeGreaterThanOrEqual(1);
+    for (const skill of capEvent.droppedByCap) {
+      expect(typeof skill).toBe("string");
     }
-
-    // selected priorities should be >= all dropped priorities (sorted DESC)
-    const minSelected = Math.min(...capEvent.selected.map((e: any) => e.priority));
-    const maxDropped = Math.max(...capEvent.dropped.map((e: any) => e.priority));
-    expect(minSelected).toBeGreaterThanOrEqual(maxDropped);
   });
 
   test("does NOT emit cap-applied when <=3 skills match", async () => {
@@ -1512,6 +1511,113 @@ describe("cap observability (debug mode)", () => {
     const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
     const capEvent = lines.find((l: any) => l.event === "cap-applied");
     expect(capEvent).toBeUndefined();
+  });
+});
+
+describe("injection byte budget", () => {
+  test("small budget limits injection to fewer skills than MAX_SKILLS", async () => {
+    // app/api/chat/route.ts matches ai-sdk (~15KB), vercel-functions (~5.7KB), nextjs (~10KB)
+    // With a 6000-byte budget, only 1 skill should fit (first skill always allowed)
+    const { code, stdout } = await runHookEnv(
+      {
+        tool_name: "Read",
+        tool_input: { file_path: "/Users/me/project/app/api/chat/route.ts" },
+      },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "6000" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    expect(si.injectedSkills.length).toBeLessThan(3);
+    expect(si.droppedByBudget.length).toBeGreaterThan(0);
+  });
+
+  test("large budget allows all matching skills up to MAX_SKILLS", async () => {
+    // Same path, unlimited budget
+    const { code, stdout } = await runHookEnv(
+      {
+        tool_name: "Read",
+        tool_input: { file_path: "/Users/me/project/app/api/chat/route.ts" },
+      },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "999999" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    expect(si.injectedSkills.length).toBe(3);
+    expect(si.droppedByBudget.length).toBe(0);
+  });
+
+  test("VERCEL_PLUGIN_INJECTION_BUDGET env var overrides default", async () => {
+    // With a very small budget (100 bytes), first skill is still always allowed
+    const { code, stdout } = await runHookEnv(
+      {
+        tool_name: "Read",
+        tool_input: { file_path: "/Users/me/project/next.config.ts" },
+      },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "100" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+    // First skill always allowed even if over budget
+    const si = result.hookSpecificOutput.skillInjection;
+    expect(si.injectedSkills.length).toBe(1);
+  });
+
+  test("small skills can fill more than typical slots under generous budget", async () => {
+    // vercel.json matches 5 skills; some are small (cron-jobs ~2KB, vercel-functions ~5.7KB)
+    // With 15000-byte budget, should fit more small skills
+    const { code, stdout } = await runHookEnv(
+      {
+        tool_name: "Read",
+        tool_input: { file_path: "/project/vercel.json" },
+      },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "15000" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    // MAX_SKILLS=3 ceiling still applies
+    expect(si.injectedSkills.length).toBeLessThanOrEqual(3);
+  });
+
+  test("invalid VERCEL_PLUGIN_INJECTION_BUDGET falls back to default", async () => {
+    const { code, stdout } = await runHookEnv(
+      {
+        tool_name: "Read",
+        tool_input: { file_path: "/project/next.config.ts" },
+      },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "not-a-number" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    // Should still work with default budget
+    expect(result.hookSpecificOutput).toBeDefined();
+  });
+
+  test("droppedByBudget appears in skillInjection metadata", async () => {
+    // Use a tight budget that forces budget drops
+    const { code, stdout } = await runHookEnv(
+      {
+        tool_name: "Read",
+        tool_input: { file_path: "/Users/me/project/app/api/chat/route.ts" },
+      },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "6000" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    expect(Array.isArray(si.droppedByBudget)).toBe(true);
+    expect(Array.isArray(si.droppedByCap)).toBe(true);
+    // Total should account for all matched skills
+    expect(si.injectedSkills.length + si.droppedByCap.length + si.droppedByBudget.length).toBe(
+      si.matchedSkills.length,
+    );
   });
 });
 
@@ -1593,7 +1699,7 @@ describe("invalid bash regex handling", () => {
     const bashYaml = bashPatterns.map(p => `    - '${p.replace(/'/g, "''")}'`).join("\n");
     writeFileSync(
       join(tempSkillDir, "SKILL.md"),
-      `---\nname: test-skill\ndescription: Test skill\nmetadata:\n  priority: 10\n  filePattern: []\n  bashPattern:\n${bashYaml}\n---\n# Test Skill\nContent here.`,
+      `---\nname: test-skill\ndescription: Test skill\nmetadata:\n  priority: 10\n  pathPatterns: []\n  bashPatterns:\n${bashYaml}\n---\n# Test Skill\nContent here.`,
     );
 
     return { hookPath: join(tempHooksDir, "pretooluse-skill-inject.mjs"), root: tempRoot };
@@ -1713,7 +1819,7 @@ describe("invalid glob pattern handling", () => {
     mkdirSync(badSkillDir, { recursive: true });
     writeFileSync(
       join(badSkillDir, "SKILL.md"),
-      `---\nname: bad-glob-skill\ndescription: Skill with bad glob\nmetadata:\n  priority: 10\n  filePattern:\n    - '__THROW__'\n    - '**/*.validext'\n---\n# Bad Glob Skill\nContent here.`,
+      `---\nname: bad-glob-skill\ndescription: Skill with bad glob\nmetadata:\n  priority: 10\n  pathPatterns:\n    - '__THROW__'\n    - '**/*.validext'\n---\n# Bad Glob Skill\nContent here.`,
     );
 
     // Valid skill that should still match
@@ -1721,7 +1827,7 @@ describe("invalid glob pattern handling", () => {
     mkdirSync(goodSkillDir, { recursive: true });
     writeFileSync(
       join(goodSkillDir, "SKILL.md"),
-      `---\nname: good-skill\ndescription: Valid skill\nmetadata:\n  priority: 5\n  filePattern:\n    - '**/*.validext'\n---\n# Good Skill\nGood content.`,
+      `---\nname: good-skill\ndescription: Valid skill\nmetadata:\n  priority: 5\n  pathPatterns:\n    - '**/*.validext'\n---\n# Good Skill\nGood content.`,
     );
 
     return { hookPath: join(tempHooksDir, "pretooluse-skill-inject.mjs"), root: tempRoot };
@@ -1850,7 +1956,7 @@ describe("coverage matrix — file paths", () => {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
     });
     proc.stdin.write(payload);
     proc.stdin.end();
@@ -2047,7 +2153,7 @@ describe("coverage matrix — bash commands", () => {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
     });
     proc.stdin.write(payload);
     proc.stdin.end();
@@ -2209,7 +2315,7 @@ describe("specialist wins over generalist in overlap", () => {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
     });
     proc.stdin.write(payload);
     proc.stdin.end();
@@ -2233,7 +2339,7 @@ describe("specialist wins over generalist in overlap", () => {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
     });
     proc.stdin.write(payload);
     proc.stdin.end();
@@ -2318,7 +2424,7 @@ describe("vercel-firewall priority ranks above vercel-cli", () => {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
     });
     proc.stdin.write(payload);
     proc.stdin.end();
@@ -2361,7 +2467,7 @@ describe("ai-sdk bash patterns match @ai-sdk/ scoped packages", () => {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
     });
     proc.stdin.write(payload);
     proc.stdin.end();
@@ -2541,7 +2647,7 @@ describe("validateSkillMap", () => {
     expect(result.errors[0]).toContain('skill "bad-skill"');
   });
 
-  test("validates buildSkillMap output with coerced bare-string filePattern", async () => {
+  test("validates buildSkillMap output with coerced bare-string pathPatterns", async () => {
     const { buildSkillMap } = await import("../hooks/skill-map-frontmatter.mjs");
     const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
@@ -2552,7 +2658,7 @@ describe("validateSkillMap", () => {
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, "SKILL.md"),
-      `---\nname: coerce-skill\ndescription: Test\nmetadata:\n  priority: 3\n  filePattern: 'src/**'\n  bashPattern: '\\bnpm\\b'\n---\n# Test`,
+      `---\nname: coerce-skill\ndescription: Test\nmetadata:\n  priority: 3\n  pathPatterns: 'src/**'\n  bashPatterns: '\\bnpm\\b'\n---\n# Test`,
     );
 
     const built = buildSkillMap(tmp);
@@ -2641,7 +2747,7 @@ describe("vercel.json control-plane coverage", () => {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off" },
+      env: { ...process.env, VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: UNLIMITED_BUDGET },
     });
     proc.stdin.write(payload);
     proc.stdin.end();
@@ -2723,6 +2829,7 @@ describe("hookSpecificOutput.skillInjection metadata", () => {
     expect(Array.isArray(si.matchedSkills)).toBe(true);
     expect(Array.isArray(si.injectedSkills)).toBe(true);
     expect(Array.isArray(si.droppedByCap)).toBe(true);
+    expect(Array.isArray(si.droppedByBudget)).toBe(true);
     expect(si.injectedSkills.length).toBeGreaterThan(0);
     expect(si.matchedSkills).toContain("nextjs");
     expect(si.injectedSkills).toContain("nextjs");
@@ -2787,9 +2894,12 @@ describe("hookSpecificOutput.skillInjection metadata", () => {
     const si = result.hookSpecificOutput?.skillInjection;
     expect(si).toBeDefined();
     expect(si.injectedSkills.length).toBeLessThanOrEqual(3);
-    // If more than 3 matched, droppedByCap should have entries
+    expect(Array.isArray(si.droppedByBudget)).toBe(true);
+    // If more than 3 matched, droppedByCap + droppedByBudget should account for all
     if (si.matchedSkills.length > 3) {
-      expect(si.droppedByCap.length).toBe(si.matchedSkills.length - 3);
+      expect(si.droppedByCap.length + si.droppedByBudget.length).toBe(
+        si.matchedSkills.length - si.injectedSkills.length,
+      );
     }
   });
 
@@ -2886,6 +2996,94 @@ describe("redactCommand", () => {
     expect(redactCommand("TOKEN=abc123")).toBe("TOKEN=[REDACTED]");
     expect(redactCommand("KEY=abc123")).toBe("KEY=[REDACTED]");
     expect(redactCommand("SECRET=abc123")).toBe("SECRET=[REDACTED]");
+    // Sensitive word in the middle of key name (not just suffix)
+    expect(redactCommand("MY_SECRET_VALUE=hunter2")).toBe("MY_SECRET_VALUE=[REDACTED]");
+    expect(redactCommand("CREDENTIAL_STORE=val")).toBe("CREDENTIAL_STORE=[REDACTED]");
+    expect(redactCommand("MY_TOKEN_ID=abc")).toBe("MY_TOKEN_ID=[REDACTED]");
+  });
+
+  // --- Broadened redaction patterns ---
+
+  test("masks Bearer tokens", () => {
+    expect(redactCommand("curl -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc'")).toContain("Bearer [REDACTED]");
+    expect(redactCommand("curl -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc'")).not.toContain("eyJhbGciOiJIUzI1NiJ9");
+  });
+
+  test("masks 'token xxx' authorization style", () => {
+    expect(redactCommand("gh api -H 'Authorization: token ghp_abc123XYZ456'")).toContain("token [REDACTED]");
+    expect(redactCommand("gh api -H 'Authorization: token ghp_abc123XYZ456'")).not.toContain("ghp_abc123XYZ456");
+  });
+
+  test("masks connection strings (postgres)", () => {
+    const cmd = "psql postgres://admin:s3cret@db.example.com:5432/mydb";
+    const result = redactCommand(cmd);
+    expect(result).toContain("postgres://[REDACTED]@db.example.com");
+    expect(result).not.toContain("s3cret");
+    expect(result).not.toContain("admin:");
+  });
+
+  test("masks connection strings (redis)", () => {
+    const cmd = "redis-cli -u redis://default:hunter2@cache.example.com:6379";
+    const result = redactCommand(cmd);
+    expect(result).toContain("redis://[REDACTED]@cache.example.com");
+    expect(result).not.toContain("hunter2");
+  });
+
+  test("masks JSON secret values", () => {
+    const cmd = 'echo \'{"token": "sk_live_abc123", "name": "test"}\'';
+    const result = redactCommand(cmd);
+    expect(result).toContain('"token": "[REDACTED]"');
+    expect(result).not.toContain("sk_live_abc123");
+    // Non-sensitive keys preserved
+    expect(result).toContain('"name": "test"');
+  });
+
+  test("masks JSON password and api_key values", () => {
+    expect(redactCommand('{"password": "hunter2"}')).toContain('"password": "[REDACTED]"');
+    expect(redactCommand('{"api_key": "ak_xyz"}')).toContain('"api_key": "[REDACTED]"');
+    expect(redactCommand('{"apiKey": "ak_xyz"}')).toContain('"apiKey": "[REDACTED]"');
+  });
+
+  test("masks URL query params with sensitive keys", () => {
+    const cmd = "curl 'https://x.co?token=abc123&name=foo'";
+    const result = redactCommand(cmd);
+    expect(result).toContain("?token=[REDACTED]");
+    expect(result).not.toContain("abc123");
+    expect(result).toContain("&name=foo");
+  });
+
+  test("masks multiple sensitive URL query params", () => {
+    const cmd = "curl 'https://x.co?key=k1&secret=s2&page=1'";
+    const result = redactCommand(cmd);
+    expect(result).toContain("?key=[REDACTED]");
+    expect(result).toContain("&secret=[REDACTED]");
+    expect(result).toContain("&page=1");
+    expect(result).not.toContain("k1");
+    expect(result).not.toContain("s2");
+  });
+
+  test("masks Cookie headers", () => {
+    const cmd = "curl -H 'Cookie: session=abc123; auth_tok=xyz789' https://example.com";
+    const result = redactCommand(cmd);
+    expect(result).toContain("Cookie: [REDACTED]");
+    expect(result).not.toContain("abc123");
+    expect(result).not.toContain("xyz789");
+  });
+
+  test("masks Set-Cookie headers", () => {
+    const cmd = "curl -v 'Set-Cookie: id=a3fWa; Path=/; HttpOnly'";
+    const result = redactCommand(cmd);
+    expect(result).toContain("Set-Cookie: [REDACTED]");
+    expect(result).not.toContain("a3fWa");
+  });
+
+  test("masks --secret and --auth flags", () => {
+    expect(redactCommand("tool --secret mysecretval")).toContain("--secret [REDACTED]");
+    expect(redactCommand("tool --auth bearer_tok")).toContain("--auth [REDACTED]");
+  });
+
+  test("masks PASSWORD= env vars", () => {
+    expect(redactCommand("DB_PASSWORD=hunter2 npm start")).toBe("DB_PASSWORD=[REDACTED] npm start");
   });
 });
 
@@ -3191,5 +3389,70 @@ describe("decision logging — reason codes", () => {
     expect(result.hookSpecificOutput).toHaveProperty("additionalContext");
     expect(result.hookSpecificOutput).toHaveProperty("skillInjection");
     expect(Object.keys(result)).toEqual(["hookSpecificOutput"]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Golden snapshot tests
+  // ---------------------------------------------------------------------------
+
+  describe("golden snapshots", () => {
+    const FIXTURES_DIR = join(ROOT, "tests", "fixtures");
+
+    const goldenFixtures = [
+      "golden-read-vercel-json.json",
+      "golden-bash-next-dev.json",
+      "golden-edit-middleware.json",
+      "golden-bash-cap-collision.json",
+      "golden-read-env-local.json",
+    ];
+
+    for (const fixtureName of goldenFixtures) {
+      test(`golden: ${fixtureName}`, async () => {
+        const fixture = JSON.parse(
+          readFileSync(join(FIXTURES_DIR, fixtureName), "utf-8"),
+        );
+        const { code, stdout } = await runHook(fixture.input);
+        expect(code).toBe(0);
+
+        const result = JSON.parse(stdout);
+        expect(result).toHaveProperty("hookSpecificOutput");
+        expect(result.hookSpecificOutput).toHaveProperty("skillInjection");
+
+        const actual = result.hookSpecificOutput.skillInjection;
+        const expected = fixture.expected.skillInjection;
+
+        // Version and tool metadata must match exactly
+        expect(actual.version).toBe(expected.version);
+        expect(actual.toolName).toBe(expected.toolName);
+        expect(actual.toolTarget).toBe(expected.toolTarget);
+
+        // matchedSkills — same set (order may vary)
+        expect([...actual.matchedSkills].sort()).toEqual(
+          [...expected.matchedSkills].sort(),
+        );
+
+        // injectedSkills — exact ordered list (ranking matters)
+        expect(actual.injectedSkills).toEqual(expected.injectedSkills);
+
+        // droppedByCap — same set (order may vary)
+        expect([...actual.droppedByCap].sort()).toEqual(
+          [...expected.droppedByCap].sort(),
+        );
+
+        // droppedByBudget — same set (order may vary)
+        if (expected.droppedByBudget) {
+          expect([...(actual.droppedByBudget || [])].sort()).toEqual(
+            [...expected.droppedByBudget].sort(),
+          );
+        }
+
+        // Verify additionalContext contains skill markers for each injected skill
+        const ctx = result.hookSpecificOutput.additionalContext;
+        for (const skill of expected.injectedSkills) {
+          expect(ctx).toContain(`<!-- skill:${skill} -->`);
+          expect(ctx).toContain(`<!-- /skill:${skill} -->`);
+        }
+      });
+    }
   });
 });

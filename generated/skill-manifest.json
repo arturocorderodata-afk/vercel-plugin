@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-06T06:22:58.825Z",
+  "generatedAt": "2026-03-06T15:28:42.812Z",
   "skills": {
     "vercel-agent": {
       "priority": 4,
@@ -13,7 +13,8 @@
       ],
       "bashPatterns": [
         "\\bvercel\\s+agent\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-agent/SKILL.md"
     },
     "routing-middleware": {
       "priority": 6,
@@ -37,7 +38,8 @@
         "vercel.json",
         "apps/*/vercel.json"
       ],
-      "bashPatterns": []
+      "bashPatterns": [],
+      "bodyPath": "skills/routing-middleware/SKILL.md"
     },
     "json-render": {
       "priority": 4,
@@ -51,7 +53,8 @@
         "components/message*.tsx",
         "src/components/message*.tsx"
       ],
-      "bashPatterns": []
+      "bashPatterns": [],
+      "bodyPath": "skills/json-render/SKILL.md"
     },
     "deployments-cicd": {
       "priority": 6,
@@ -71,7 +74,8 @@
         "\\bvercel\\s+inspect\\b",
         "\\bvercel\\s+build\\b",
         "\\bvercel\\s+deploy\\s+--prebuilt\\b"
-      ]
+      ],
+      "bodyPath": "skills/deployments-cicd/SKILL.md"
     },
     "vercel-storage": {
       "priority": 7,
@@ -112,7 +116,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/postgres\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/postgres\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/postgres\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-storage/SKILL.md"
     },
     "vercel-cli": {
       "priority": 4,
@@ -130,7 +135,8 @@
         "\\bpnpm\\s+dlx\\s+vercel\\b",
         "\\bbunx\\s+vercel\\b",
         "\\byarn\\s+dlx\\s+vercel\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-cli/SKILL.md"
     },
     "runtime-cache": {
       "priority": 6,
@@ -145,7 +151,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/functions\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/functions\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/functions\\b"
-      ]
+      ],
+      "bodyPath": "skills/runtime-cache/SKILL.md"
     },
     "ai-gateway": {
       "priority": 7,
@@ -156,7 +163,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@ai-sdk/gateway\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@ai-sdk/gateway\\b",
         "\\byarn\\s+add\\s+[^\\n]*@ai-sdk/gateway\\b"
-      ]
+      ],
+      "bodyPath": "skills/ai-gateway/SKILL.md"
     },
     "vercel-queues": {
       "priority": 5,
@@ -173,7 +181,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/queue\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/queue\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/queue\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-queues/SKILL.md"
     },
     "turbopack": {
       "priority": 4,
@@ -183,7 +192,8 @@
       "bashPatterns": [
         "\\bnext\\s+dev\\s+--turbo\\b",
         "\\bnext\\s+dev\\s+--turbopack\\b"
-      ]
+      ],
+      "bodyPath": "skills/turbopack/SKILL.md"
     },
     "marketplace": {
       "priority": 3,
@@ -192,7 +202,8 @@
       ],
       "bashPatterns": [
         "\\bvercel\\s+integration\\b"
-      ]
+      ],
+      "bodyPath": "skills/marketplace/SKILL.md"
     },
     "vercel-flags": {
       "priority": 6,
@@ -211,7 +222,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/flags\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/flags\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/flags\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-flags/SKILL.md"
     },
     "shadcn": {
       "priority": 5,
@@ -227,7 +239,8 @@
       "bashPatterns": [
         "\\bnpx\\s+shadcn\\b",
         "\\bnpx\\s+shadcn@latest\\s+(init|add|build|search|list|migrate)\\b"
-      ]
+      ],
+      "bodyPath": "skills/shadcn/SKILL.md"
     },
     "cron-jobs": {
       "priority": 6,
@@ -235,7 +248,8 @@
         "vercel.json",
         "apps/*/vercel.json"
       ],
-      "bashPatterns": []
+      "bashPatterns": [],
+      "bodyPath": "skills/cron-jobs/SKILL.md"
     },
     "observability": {
       "priority": 6,
@@ -264,7 +278,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/speed-insights\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/speed-insights\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/speed-insights\\b"
-      ]
+      ],
+      "bodyPath": "skills/observability/SKILL.md"
     },
     "workflow": {
       "priority": 6,
@@ -280,7 +295,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/workflow\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/workflow\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/workflow\\b"
-      ]
+      ],
+      "bodyPath": "skills/workflow/SKILL.md"
     },
     "nextjs": {
       "priority": 5,
@@ -308,7 +324,8 @@
         "\\bnpm\\s+run\\s+(dev|build|start)\\b",
         "\\bpnpm\\s+(dev|build)\\b",
         "\\bbun\\s+run\\s+(dev|build)\\b"
-      ]
+      ],
+      "bodyPath": "skills/nextjs/SKILL.md"
     },
     "ai-elements": {
       "priority": 5,
@@ -323,7 +340,8 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bai-elements\\b",
         "\\byarn\\s+add\\s+[^\\n]*\\bai-elements\\b",
         "\\bnpx\\s+shadcn@latest\\s+add\\s+[^\\n]*elements\\.ai-sdk\\.dev\\b"
-      ]
+      ],
+      "bodyPath": "skills/ai-elements/SKILL.md"
     },
     "vercel-sandbox": {
       "priority": 4,
@@ -333,7 +351,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/sandbox\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/sandbox\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/sandbox\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-sandbox/SKILL.md"
     },
     "chat-sdk": {
       "priority": 8,
@@ -395,7 +414,8 @@
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@chat-adapter/telegram",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@chat-adapter/telegram",
         "\\byarn\\s+add\\s+[^\\n]*@chat-adapter/telegram"
-      ]
+      ],
+      "bodyPath": "skills/chat-sdk/SKILL.md"
     },
     "turborepo": {
       "priority": 5,
@@ -407,7 +427,8 @@
         "\\bturbo\\s+(run|build|test|lint|dev)\\b",
         "\\bnpx\\s+turbo\\b",
         "\\bbunx\\s+turbo\\b"
-      ]
+      ],
+      "bodyPath": "skills/turborepo/SKILL.md"
     },
     "ai-sdk": {
       "priority": 8,
@@ -448,7 +469,8 @@
         "\\bnpx\\s+@ai-sdk/devtools\\b",
         "\\bnpx\\s+@ai-sdk/codemod\\b",
         "\\bnpx\\s+mcp-to-ai-sdk\\b"
-      ]
+      ],
+      "bodyPath": "skills/ai-sdk/SKILL.md"
     },
     "v0-dev": {
       "priority": 5,
@@ -457,7 +479,8 @@
         "\\bnpx\\s+v0\\b",
         "\\bbunx\\s+v0\\b",
         "\\bv0\\s+(generate|dev|chat)\\b"
-      ]
+      ],
+      "bodyPath": "skills/v0-dev/SKILL.md"
     },
     "env-vars": {
       "priority": 7,
@@ -478,7 +501,8 @@
         "\\bvercel\\s+env\\s+add\\b",
         "\\bvercel\\s+env\\s+rm\\b",
         "\\bvercel\\s+env\\s+ls\\b"
-      ]
+      ],
+      "bodyPath": "skills/env-vars/SKILL.md"
     },
     "vercel-api": {
       "priority": 7,
@@ -493,7 +517,8 @@
         "\\byarn\\s+add\\s+[^\\n]*@vercel/sdk\\b",
         "\\bclaude\\s+mcp\\s+add\\b[^\\n]*\\bvercel\\b",
         "\\bmcp\\.vercel\\.com\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-api/SKILL.md"
     },
     "sign-in-with-vercel": {
       "priority": 6,
@@ -504,7 +529,8 @@
         "src/app/login/**",
         "pages/api/auth/**"
       ],
-      "bashPatterns": []
+      "bashPatterns": [],
+      "bodyPath": "skills/sign-in-with-vercel/SKILL.md"
     },
     "vercel-firewall": {
       "priority": 5,
@@ -513,7 +539,8 @@
       ],
       "bashPatterns": [
         "\\bvercel\\s+firewall\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-firewall/SKILL.md"
     },
     "vercel-functions": {
       "priority": 8,
@@ -533,7 +560,8 @@
       "bashPatterns": [
         "\\bvercel\\s+dev\\b",
         "\\bvercel\\s+logs\\b"
-      ]
+      ],
+      "bodyPath": "skills/vercel-functions/SKILL.md"
     }
   }
 }

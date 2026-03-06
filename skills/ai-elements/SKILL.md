@@ -3,10 +3,10 @@ name: ai-elements
 description: AI Elements component library guidance — pre-built React components for AI interfaces built on shadcn/ui. Use when building chat UIs, message displays, tool call rendering, streaming responses, reasoning panels, or any AI-native interface with the AI SDK.
 metadata:
   priority: 5
-  filePattern:
+  pathPatterns:
     - 'components/ai-elements/**'
     - 'src/components/ai-elements/**'
-  bashPattern:
+  bashPatterns:
     - '\bnpx\s+ai-elements\b'
     - '\bnpm\s+(install|i|add)\s+[^\n]*\bai-elements\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*\bai-elements\b'

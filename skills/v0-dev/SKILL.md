@@ -3,8 +3,8 @@ name: v0-dev
 description: v0 by Vercel expert guidance. Use when discussing AI code generation, generating UI components from prompts, v0 CLI usage, v0 SDK/API integration, or integrating v0 into development workflows with GitHub and Vercel deployment.
 metadata:
   priority: 5
-  filePattern: []
-  bashPattern: 
+  pathPatterns: []
+  bashPatterns: 
     - '\bnpx\s+v0\b'
     - '\bbunx\s+v0\b'
     - '\bv0\s+(generate|dev|chat)\b'

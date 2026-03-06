@@ -3,9 +3,9 @@ name: marketplace
 description: Vercel Marketplace expert guidance — discovering, installing, and building integrations, auto-provisioned environment variables, unified billing, and the vercel integration CLI. Use when consuming third-party services, building custom integrations, or managing marketplace resources on Vercel.
 metadata:
   priority: 3
-  filePattern:
+  pathPatterns:
     - 'integration.json'
-  bashPattern:
+  bashPatterns:
     - '\bvercel\s+integration\b'
 ---
 

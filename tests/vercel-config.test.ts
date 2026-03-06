@@ -38,6 +38,7 @@ async function runHook(input: object): Promise<{
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
+    env: { ...process.env, VERCEL_PLUGIN_INJECTION_BUDGET: "999999" },
   });
   proc.stdin.write(payload);
   proc.stdin.end();

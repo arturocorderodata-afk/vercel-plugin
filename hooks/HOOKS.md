@@ -24,9 +24,9 @@ Each `skills/<name>/SKILL.md` contains YAML frontmatter with metadata:
 ```yaml
 ---
 metadata:
-  filePattern:
+  pathPatterns:
     - "lib/my-feature/**"
-  bashPattern:
+  bashPatterns:
     - "\\bmy-tool\\s+run\\b"
   priority: 6
 ---
@@ -35,8 +35,10 @@ metadata:
 | Field          | Type       | Default | Description                                              |
 |----------------|------------|---------|----------------------------------------------------------|
 | `priority`     | `number`   | `5`     | Higher = injected first when multiple skills match        |
-| `filePattern`  | `string[]` | `[]`    | Glob patterns matched against Read/Edit/Write file paths  |
-| `bashPattern`  | `string[]` | `[]`    | Regex patterns matched against Bash tool commands         |
+| `pathPatterns`  | `string[]` | `[]`    | Glob patterns matched against Read/Edit/Write file paths  |
+| `bashPatterns`  | `string[]` | `[]`    | Regex patterns matched against Bash tool commands         |
+
+> **Migration note:** The deprecated names `filePattern` and `bashPattern` (singular) are still accepted but will emit a warning. Rename them to the canonical plural forms.
 
 ---
 
@@ -81,7 +83,7 @@ Priority determines which skills get injected when more than 3 match.
 
 ---
 
-## Glob Syntax for `filePattern`
+## Glob Syntax for `pathPatterns`
 
 Patterns use a simplified glob syntax (not full minimatch):
 
@@ -107,7 +109,7 @@ and `app/**/route.*` will match `/Users/me/project/app/api/route.ts` via suffix.
 
 ```yaml
 # Match all files in app/ and nested subdirectories
-filePattern:
+pathPatterns:
   - "app/**"
 
 # Match route handlers at any depth under app/
@@ -123,7 +125,7 @@ filePattern:
 
 ---
 
-## Regex Syntax for `bashPattern`
+## Regex Syntax for `bashPatterns`
 
 Patterns are standard JavaScript `RegExp` strings (no delimiters, no flags).
 They are tested against the full bash command string.
@@ -132,7 +134,7 @@ They are tested against the full bash command string.
 
 ```yaml
 # Match "next dev", "next build", "next start", "next lint"
-bashPattern:
+bashPatterns:
   - "\\bnext\\s+(dev|build|start|lint)\\b"
 
 # Match package install commands for a specific package
@@ -156,9 +158,9 @@ bashPattern:
    ```yaml
    ---
    metadata:
-     filePattern:
+     pathPatterns:
        - "lib/my-feature/**"
-     bashPattern:
+     bashPatterns:
        - "\\bmy-tool\\s+run\\b"
      priority: 6
    ---
@@ -209,7 +211,7 @@ Dedup strategies are `env-file`, `memory-only`, and `disabled`.
 | `DEDUP_RESET_FAIL`     | Could not reset seen-skills text file      |
 | `DEDUP_WRITE_FAIL`     | Could not persist seen-skills dedup state  |
 | `SKILL_FILE_MISSING`   | `skills/<name>/SKILL.md` not found        |
-| `BASH_REGEX_INVALID`   | A bashPattern entry is not valid regex    |
+| `BASH_REGEX_INVALID`   | A bashPatterns entry is not valid regex    |
 
 ### Redaction behavior
 

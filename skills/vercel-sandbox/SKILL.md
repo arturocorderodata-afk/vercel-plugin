@@ -3,8 +3,8 @@ name: vercel-sandbox
 description: Vercel Sandbox guidance — ephemeral Firecracker microVMs for running untrusted code safely. Supports AI agents, code generation, and experimentation. Use when executing user-generated or AI-generated code in isolation.
 metadata:
   priority: 4
-  filePattern: []
-  bashPattern:
+  pathPatterns: []
+  bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/sandbox\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/sandbox\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@vercel/sandbox\b'

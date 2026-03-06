@@ -3,7 +3,7 @@ name: env-vars
 description: Vercel environment variable expert guidance. Use when working with .env files, vercel env commands, OIDC tokens, or managing environment-specific configuration.
 metadata:
   priority: 7
-  filePattern:
+  pathPatterns:
     - '.env'
     - '.env.*'
     - '.env.local'
@@ -14,7 +14,7 @@ metadata:
     - '.env.development.local'
     - '.env.test.local'
     - '.env.example'
-  bashPattern:
+  bashPatterns:
     - '\bvercel\s+env\s+pull\b'
     - '\bvercel\s+env\s+add\b'
     - '\bvercel\s+env\s+rm\b'

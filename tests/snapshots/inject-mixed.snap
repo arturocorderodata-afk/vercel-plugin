@@ -16,5 +16,6 @@
   "droppedByCap": [
     "routing-middleware",
     "vercel-cli"
-  ]
+  ],
+  "droppedByBudget": []
 }

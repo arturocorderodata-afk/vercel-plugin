@@ -45,7 +45,7 @@ export const KEY_SKILL_MAP = {
 };
 
 /**
- * Skills that claim vercel.json in their filePattern.
+ * Skills that claim vercel.json in their pathPatterns.
  * Used to identify candidates whose priority should be adjusted.
  */
 export const VERCEL_JSON_SKILLS = new Set([
