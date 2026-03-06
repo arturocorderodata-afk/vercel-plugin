@@ -178,7 +178,7 @@ for (const d of domains) {
 
 ### Drains (`/v1/drains`)
 
-Drains forward logs, traces, speed insights, and web analytics data to external endpoints. All drain management is REST API or Dashboard only — no CLI commands exist.
+Drains forward logs, traces, speed insights, and web analytics data to external endpoints. All drain management is REST API or Dashboard (`https://vercel.com/dashboard/{team}/~/settings/log-drains`) only — no CLI commands exist.
 
 ```typescript
 import { Vercel } from '@vercel/sdk';

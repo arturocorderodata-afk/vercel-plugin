@@ -62,7 +62,7 @@ For the smoothest experience, link to a Vercel project so AI Gateway credentials
 
 ```bash
 vercel link                    # Connect to your Vercel project
-# Enable AI Gateway in Vercel dashboard
+# Enable AI Gateway at https://vercel.com/{team}/{project}/settings → AI Gateway
 vercel env pull .env.local     # Provisions VERCEL_OIDC_TOKEN automatically
 npm install ai                 # Gateway is built in
 npx ai-elements                # Optional: install chat UI components
@@ -418,7 +418,7 @@ npx @ai-sdk/devtools
 ## Key Patterns
 
 1. **Default to AI Gateway with OIDC** — use `import { gateway } from 'ai'` for all AI features. `vercel env pull` provisions OIDC tokens automatically. No manual API keys needed.
-2. **Set up a Vercel project for AI** — `vercel link` → enable AI Gateway in dashboard → `vercel env pull` to get OIDC credentials. Never manually create `.env.local` with provider-specific API keys.
+2. **Set up a Vercel project for AI** — `vercel link` → enable AI Gateway at `https://vercel.com/{team}/{project}/settings` → **AI Gateway** → `vercel env pull` to get OIDC credentials. Never manually create `.env.local` with provider-specific API keys.
 3. **Use AI Elements for chat UIs** — `npx ai-elements` installs production-ready Message, Conversation, and Tool components that handle UIMessage parts automatically. ⤳ skill: ai-elements
 4. **Always stream for user-facing AI** — use `streamText` + `useChat`, not `generateText`
 5. **Server: `convertToModelMessages()` (async) + `toUIMessageStreamResponse()`** — not `toDataStreamResponse()`. Client: `DefaultChatTransport` with `useChat`.

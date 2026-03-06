@@ -50,7 +50,7 @@ Vercel Agent is a suite of **AI-powered development tools** that leverage deep c
 
 ## Configuration
 
-Vercel Agent is configured at the team/project level in the Vercel Dashboard. No npm package required — it is a platform-level service.
+Vercel Agent is configured at `https://vercel.com/{team}/{project}/settings` → **AI** section. No npm package required — it is a platform-level service.
 
 ## When to Use
 

@@ -131,10 +131,10 @@ vercel ls
 ```
 
 > **Note:** `vercel logs` shows runtime request logs only. For build output, use
-> `vercel inspect <deployment-url>` or view build logs in the Vercel Dashboard.
+> `vercel inspect <deployment-url>` or view build logs at `https://vercel.com/{team}/{project}/deployments` → select deployment → **Build Logs**.
 >
 > **Drains and advanced observability:** Log drains, trace export, and analytics data forwarding are
-> configured via the Vercel Dashboard or REST API (`/v1/drains`), not the CLI. See `⤳ skill: observability`
+> configured via the Vercel Dashboard at `https://vercel.com/dashboard/{team}/~/settings/log-drains` or REST API (`/v1/drains`), not the CLI. See `⤳ skill: observability`
 > for drain setup, payload schemas, and signature verification.
 
 ### Domains

@@ -234,7 +234,7 @@ Install via Vercel Marketplace for automatic environment variable provisioning.
 
 ## Installing Marketplace Storage
 
-Use the Vercel CLI or Marketplace dashboard:
+Use the Vercel CLI or the Marketplace dashboard at `https://vercel.com/dashboard/{team}/stores`:
 
 ```bash
 # Install a storage integration (auto-provisions env vars)
@@ -245,7 +245,7 @@ vercel integration add upstash
 vercel integration list
 ```
 
-Browse additional storage options at the [Vercel Marketplace](https://vercel.com/marketplace). Installing via the CLI or dashboard automatically provisions accounts, creates databases, and sets environment variables.
+Browse additional storage options at the [Vercel Marketplace](https://vercel.com/marketplace). Installing via the CLI or dashboard (`https://vercel.com/dashboard/{team}/integrations`) automatically provisions accounts, creates databases, and sets environment variables.
 
 ## Official Documentation
 

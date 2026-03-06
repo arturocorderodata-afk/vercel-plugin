@@ -73,7 +73,7 @@ export async function processOrder(orderId: string) {
 
 Each step is:
 - **Retryable**: Automatically retried on transient failures
-- **Observable**: Step-level visibility in the dashboard
+- **Observable**: Step-level visibility at `https://vercel.com/{team}/{project}/logs` → filter by workflow function
 - **Durable**: State persisted between steps
 - **Isolated**: Runs as its own API route
 

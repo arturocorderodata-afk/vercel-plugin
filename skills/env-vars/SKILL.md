@@ -149,14 +149,14 @@ const result = await generateText({
 
 | Use Case | Where to Set |
 |----------|-------------|
-| Secrets (API keys, tokens) | Vercel Dashboard or `vercel env add` |
+| Secrets (API keys, tokens) | Vercel Dashboard (`https://vercel.com/{team}/{project}/settings/environment-variables`) or `vercel env add` |
 | Public config (site URL, feature flags) | `.env` or `.env.[environment]` files |
 | Local-only overrides | `.env.local` |
-| CI/CD secrets | Vercel Dashboard with environment scoping |
+| CI/CD secrets | Vercel Dashboard (`https://vercel.com/{team}/{project}/settings/environment-variables`) with environment scoping |
 
 ### Environment Scoping on Vercel
 
-Variables set in the Vercel Dashboard can be scoped to:
+Variables set in the Vercel Dashboard at `https://vercel.com/{team}/{project}/settings/environment-variables` can be scoped to:
 
 - **Production** — only `vercel.app` production deployments
 - **Preview** — branch/PR deployments
