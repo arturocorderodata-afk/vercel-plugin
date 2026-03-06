@@ -5,14 +5,15 @@ using SKILL.md frontmatter without reading the hook source code.
 
 ## How the Hook Works (30-second overview)
 
-When Claude uses a Read/Edit/Write/Bash tool, the PreToolUse hook:
+SessionStart and PreToolUse run in sequence:
 
-1. Parses SKILL.md frontmatter from each `skills/<name>/SKILL.md`
-2. Matches the tool target (file path or bash command) against every skill's patterns
-3. Sorts matches by **priority DESC**, then **skill name ASC** (deterministic)
-4. Caps at **3 skills** per invocation
-5. Reads each matched skill's `skills/<name>/SKILL.md` and injects it as `additionalContext`
-6. Deduplicates per session — a skill is only injected once
+1. SessionStart creates a temp seen-skills text file and appends `export VERCEL_PLUGIN_SEEN_SKILLS=...` to `CLAUDE_ENV_FILE`
+2. PreToolUse parses SKILL.md frontmatter from each `skills/<name>/SKILL.md`
+3. PreToolUse matches the tool target (file path or bash command) against every skill's patterns
+4. PreToolUse sorts matches by **priority DESC**, then **skill name ASC** (deterministic)
+5. PreToolUse caps at **3 skills** per invocation
+6. PreToolUse reads each matched skill's `skills/<name>/SKILL.md` and injects it as `additionalContext`
+7. PreToolUse reads and appends `VERCEL_PLUGIN_SEEN_SKILLS` for dedup, so a skill is only injected once per session unless dedup is reset
 
 ---
 
@@ -180,17 +181,20 @@ VERCEL_PLUGIN_HOOK_DEBUG=1
 
 ### Debug events emitted
 
-| Event               | When                                        | Key fields                          |
-|---------------------|---------------------------------------------|-------------------------------------|
-| `input-parsed`      | After reading stdin                         | `toolName`, `sessionId`             |
-| `tool-target`       | After parsing tool target (redacted)        | `toolName`, `target`                |
-| `skillmap-loaded`   | After building skill map from frontmatter   | `skillCount`                        |
-| `matches-found`     | After pattern matching                      | `matched[]`, `reasons{}`            |
-| `dedup-filtered`    | After filtering already-injected skills     | `newSkills[]`, `previouslyInjected[]` |
-| `cap-applied`       | When matches exceed MAX_SKILLS (3)          | `selected[]`, `dropped[]`           |
-| `skills-injected`   | After reading SKILL.md files                | `injected[]`, `totalParts`          |
-| `complete`          | At the end of every invocation              | `result`, `elapsed_ms`, `timing_ms` |
-| `issue`             | On any warning or error                     | `code`, `message`, `hint`           |
+| Event               | When                                        | Key fields                                      |
+|---------------------|---------------------------------------------|-------------------------------------------------|
+| `input-parsed`      | After reading stdin                         | `toolName`, `sessionId`                         |
+| `tool-target`       | After parsing tool target (redacted)        | `toolName`, `target`                            |
+| `skillmap-loaded`   | After building skill map from frontmatter   | `skillCount`                                    |
+| `matches-found`     | After pattern matching                      | `matched[]`, `reasons{}`                        |
+| `dedup-strategy`    | After choosing dedup mode                   | `strategy` (`env-file`|`memory-only`|`disabled`) |
+| `dedup-filtered`    | After filtering already-injected skills     | `newSkills[]`, `previouslyInjected[]`             |
+| `cap-applied`       | When matches exceed MAX_SKILLS (3)          | `selected[]`, `dropped[]`                       |
+| `skills-injected`   | After reading SKILL.md files                | `injected[]`, `totalParts`                      |
+| `complete`          | At the end of every invocation              | `result`, `elapsed_ms`, `timing_ms`             |
+| `issue`             | On any warning or error                     | `code`, `message`, `hint`                       |
+
+Dedup strategies are `env-file`, `memory-only`, and `disabled`.
 
 ### Issue codes
 
@@ -201,9 +205,9 @@ VERCEL_PLUGIN_HOOK_DEBUG=1
 | `SKILLMAP_LOAD_FAIL`   | SKILL.md frontmatter scan failed          |
 | `SKILLMAP_VALIDATE_FAIL` | Skill map validation failed after build |
 | `SKILLMAP_EMPTY`       | No skills found with frontmatter          |
-| `DEDUP_READ_FAIL`      | Could not read session dedup state        |
-| `DEDUP_RESET_FAIL`     | Could not reset dedup file                |
-| `DEDUP_WRITE_FAIL`     | Could not persist session dedup state     |
+| `DEDUP_READ_FAIL`      | Could not read seen-skills dedup state     |
+| `DEDUP_RESET_FAIL`     | Could not reset seen-skills text file      |
+| `DEDUP_WRITE_FAIL`     | Could not persist seen-skills dedup state  |
 | `SKILL_FILE_MISSING`   | `skills/<name>/SKILL.md` not found        |
 | `BASH_REGEX_INVALID`   | A bashPattern entry is not valid regex    |
 
@@ -223,8 +227,8 @@ Redaction only applies to debug logs — actual tool commands are never modified
 
 ## Other Environment Variables
 
-| Variable                       | Effect                                          |
-|--------------------------------|-------------------------------------------------|
-| `VERCEL_PLUGIN_HOOK_DEDUP=off` | Disable session dedup (every match re-injects)  |
-| `RESET_DEDUP=1`               | Clear the dedup file before matching             |
-| `SESSION_ID`                   | Override session ID (fallback if stdin omits it) |
+| Variable                          | Effect                                                        |
+|-----------------------------------|---------------------------------------------------------------|
+| `VERCEL_PLUGIN_SEEN_SKILLS`      | Inherited env var set by SessionStart via `CLAUDE_ENV_FILE` |
+| `VERCEL_PLUGIN_HOOK_DEDUP=off`   | Disable dedup (every match re-injects)                        |
+| `RESET_DEDUP=1`                  | Truncate the seen-skills text file before matching            |
