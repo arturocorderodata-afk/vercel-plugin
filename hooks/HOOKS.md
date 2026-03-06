@@ -7,13 +7,21 @@ using SKILL.md frontmatter without reading the hook source code.
 
 SessionStart and PreToolUse run in sequence:
 
-1. SessionStart creates a temp seen-skills text file and appends `export VERCEL_PLUGIN_SEEN_SKILLS=...` to `CLAUDE_ENV_FILE`
+1. SessionStart appends `export VERCEL_PLUGIN_SEEN_SKILLS=""` to `CLAUDE_ENV_FILE`
 2. PreToolUse parses SKILL.md frontmatter from each `skills/<name>/SKILL.md`
 3. PreToolUse matches the tool target (file path or bash command) against every skill's patterns
 4. PreToolUse sorts matches by **priority DESC**, then **skill name ASC** (deterministic)
 5. PreToolUse caps at **3 skills** per invocation
 6. PreToolUse reads each matched skill's `skills/<name>/SKILL.md` and injects it as `additionalContext`
-7. PreToolUse reads and appends `VERCEL_PLUGIN_SEEN_SKILLS` for dedup, so a skill is only injected once per session unless dedup is reset
+7. PreToolUse reads and appends `VERCEL_PLUGIN_SEEN_SKILLS` for dedup, so a skill is only injected once per process unless dedup is disabled
+
+## Subagents and dedup state
+
+`VERCEL_PLUGIN_SEEN_SKILLS` is a comma-delimited environment variable, not a temp file.
+
+Each Agent subagent runs as a separate process, so PreToolUse runs independently for the lead agent and each subagent. A fresh subagent should get its own skill injections even if the lead agent already injected the same skills.
+
+If a subagent explicitly inherits a non-empty `VERCEL_PLUGIN_SEEN_SKILLS`, dedup applies inside that subagent using the inherited slug list. This behavior is intentional because each independent worker should receive its own relevant skill context.
 
 ---
 
@@ -189,14 +197,14 @@ VERCEL_PLUGIN_HOOK_DEBUG=1
 | `tool-target`       | After parsing tool target (redacted)        | `toolName`, `target`                            |
 | `skillmap-loaded`   | After building skill map from frontmatter   | `skillCount`                                    |
 | `matches-found`     | After pattern matching                      | `matched[]`, `reasons{}`                        |
-| `dedup-strategy`    | After choosing dedup mode                   | `strategy` (`env-file`|`memory-only`|`disabled`) |
-| `dedup-filtered`    | After filtering already-injected skills     | `newSkills[]`, `previouslyInjected[]`             |
+| `dedup-strategy`    | After choosing dedup mode                   | `strategy` (`env-var`|`memory-only`|`disabled`) |
+| `dedup-filtered`    | After filtering already-injected skills     | `rankedSkills[]`, `previouslyInjected[]`             |
 | `cap-applied`       | When matches exceed MAX_SKILLS (3)          | `selected[]`, `dropped[]`                       |
 | `skills-injected`   | After reading SKILL.md files                | `injected[]`, `totalParts`                      |
 | `complete`          | At the end of every invocation              | `result`, `elapsed_ms`, `timing_ms`             |
 | `issue`             | On any warning or error                     | `code`, `message`, `hint`                       |
 
-Dedup strategies are `env-file`, `memory-only`, and `disabled`.
+Dedup strategies are `env-var`, `memory-only`, and `disabled`.
 
 ### Issue codes
 
@@ -207,10 +215,8 @@ Dedup strategies are `env-file`, `memory-only`, and `disabled`.
 | `SKILLMAP_LOAD_FAIL`   | SKILL.md frontmatter scan failed          |
 | `SKILLMAP_VALIDATE_FAIL` | Skill map validation failed after build |
 | `SKILLMAP_EMPTY`       | No skills found with frontmatter          |
-| `DEDUP_READ_FAIL`      | Could not read seen-skills dedup state     |
-| `DEDUP_RESET_FAIL`     | Could not reset seen-skills text file      |
-| `DEDUP_WRITE_FAIL`     | Could not persist seen-skills dedup state  |
 | `SKILL_FILE_MISSING`   | `skills/<name>/SKILL.md` not found        |
+| `PATH_GLOB_INVALID`    | A pathPatterns entry is not a valid glob   |
 | `BASH_REGEX_INVALID`   | A bashPatterns entry is not valid regex    |
 
 ### Redaction behavior
@@ -231,6 +237,5 @@ Redaction only applies to debug logs — actual tool commands are never modified
 
 | Variable                          | Effect                                                        |
 |-----------------------------------|---------------------------------------------------------------|
-| `VERCEL_PLUGIN_SEEN_SKILLS`      | Inherited env var set by SessionStart via `CLAUDE_ENV_FILE` |
+| `VERCEL_PLUGIN_SEEN_SKILLS`      | Comma-delimited slug list initialized by SessionStart via `CLAUDE_ENV_FILE` |
 | `VERCEL_PLUGIN_HOOK_DEDUP=off`   | Disable dedup (every match re-injects)                        |
-| `RESET_DEDUP=1`                  | Truncate the seen-skills text file before matching            |
