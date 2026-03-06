@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const HOOKS_JSON = join(ROOT, "hooks", "hooks.json");
-const SCRIPT = join(ROOT, "hooks", "session-start-seen-skills.sh");
+const SCRIPT = join(ROOT, "hooks", "session-start-seen-skills.mjs");
 
 async function runSessionStart(env: Record<string, string | undefined>): Promise<{ code: number; stdout: string; stderr: string }> {
   const mergedEnv: Record<string, string> = { ...(process.env as Record<string, string>) };
@@ -18,7 +18,7 @@ async function runSessionStart(env: Record<string, string | undefined>): Promise
     mergedEnv[key] = value;
   }
 
-  const proc = Bun.spawn(["bash", SCRIPT], {
+  const proc = Bun.spawn(["node", SCRIPT], {
     stdout: "pipe",
     stderr: "pipe",
     env: mergedEnv,
@@ -61,11 +61,15 @@ describe("session-start-seen-skills hook", () => {
     expect(sessionStart.matcher).toBe("startup|resume|clear|compact");
     expect(sessionStart.hooks[0].type).toBe("command");
     expect(sessionStart.hooks[0].command).toBe(
-      'bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-start-seen-skills.sh"',
+      'node "${CLAUDE_PLUGIN_ROOT}/hooks/session-start-seen-skills.mjs"',
     );
     expect(sessionStart.hooks[1].type).toBe("command");
     expect(sessionStart.hooks[1].command).toBe(
-      'bash "${CLAUDE_PLUGIN_ROOT}/hooks/inject-claude-md.sh"',
+      'node "${CLAUDE_PLUGIN_ROOT}/hooks/session-start-profiler.mjs"',
+    );
+    expect(sessionStart.hooks[2].type).toBe("command");
+    expect(sessionStart.hooks[2].command).toBe(
+      'node "${CLAUDE_PLUGIN_ROOT}/hooks/inject-claude-md.mjs"',
     );
   });
 

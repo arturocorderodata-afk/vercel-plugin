@@ -292,6 +292,7 @@ WORKFLOW DEVKIT (WDK)                      ⤳ skill: workflow  📖 docs: https
     ↔ AI SDK 6 (DurableAgent)
     ↔ Vercel Functions (automatic step isolation)
     ↔ Next.js (API routes as workflow endpoints)
+    ↔ Inngest (event-driven alternative)          ⤳ skill: inngest
 
 v0 (AI Development Agent)                  ⤳ skill: v0-dev  📖 docs: https://v0.dev/docs
 ├── Capabilities
@@ -500,6 +501,25 @@ SIGN IN WITH VERCEL                        ⤳ skill: sign-in-with-vercel  📖 
     ↔ Teams & Access Control (team-scoped auth)
     ↔ Vercel REST API (token exchange)
     ↔ Next.js (auth route handlers)
+
+AUTHENTICATION INTEGRATIONS                ⤳ skill: auth
+├── Clerk (native Vercel Marketplace)
+│   ⊃ Auto-provisioned env vars
+│   ⊃ Middleware auth patterns
+│   ⊃ Pre-built UI components
+│
+├── Descope (Vercel Marketplace)
+│   ⊃ Passwordless / social login flows
+│   ⊃ Visual flow builder
+│
+├── Auth0
+│   ⊃ Enterprise SSO / SAML
+│   ⊃ Multi-tenant identity
+│
+└── Integrations
+    ↔ Vercel Marketplace (provisioning)
+    ↔ Next.js Middleware (route protection)
+    ↔ Sign in with Vercel (Vercel OAuth)
 ```
 
 ---
@@ -628,9 +648,10 @@ VERCEL REST API / @vercel/sdk               ⤳ skill: vercel-api  📖 docs: ht
 VERCEL MARKETPLACE                          ⤳ skill: marketplace  📖 docs: https://vercel.com/marketplace
 ├── Categories
 │   ⊃ Databases (Neon, MongoDB, Supabase, PlanetScale)
-│   ⊃ CMS (Sanity, Contentful, Storyblok)
+│   ⊃ CMS (Sanity, Contentful, Storyblok)      ⤳ skill: cms
 │   ⊃ Auth (Clerk, Auth0)
-│   ⊃ Payments (Stripe)
+│   ⊃ Payments (Stripe)                       ⤳ skill: payments
+│   ⊃ Email (Resend)                          ⤳ skill: email
 │   ⊃ Feature Flags (LaunchDarkly, Statsig)
 │   ⊃ AI Agents (CodeRabbit, Corridor, Sourcery, Parallel)
 │   ⊃ Storage (Upstash Redis, Cloudinary)
@@ -901,11 +922,11 @@ This document is part of the **Vercel plugin for Claude Code**. The plugin uses 
 
 ### SessionStart — Baseline injection
 
-On every session event (`startup`, `resume`, `clear`, `compact`), the `inject-claude-md.sh` hook runs and feeds the entire contents of `vercel.md` (this file) into the conversation as foundational context. This ensures every session starts with the full Vercel ecosystem knowledge graph.
+On every session event (`startup`, `resume`, `clear`, `compact`), the `inject-claude-md.mjs` hook runs and feeds the entire contents of `vercel.md` (this file) into the conversation as foundational context. This ensures every session starts with the full Vercel ecosystem knowledge graph.
 
 **Hook config** (`hooks/hooks.json`):
 ```json
-"SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/inject-claude-md.sh\"" }] }]
+"SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/inject-claude-md.mjs\"" }] }]
 ```
 
 ### PreToolUse — Skill-map matching

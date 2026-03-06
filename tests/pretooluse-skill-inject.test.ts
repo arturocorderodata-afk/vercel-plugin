@@ -2041,9 +2041,11 @@ describe("invalid glob pattern handling", () => {
 
     // Patched patterns.mjs: throws on "__THROW__" sentinel, delegates otherwise
     const realPatterns = readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8");
+    // Match both tsc output ("export function globToRegex(pattern)") and
+    // tsup output ("function globToRegex(pattern)") since bundlers may strip export keywords
     const patchedPatterns = realPatterns.replace(
-      'export function globToRegex(pattern) {',
-      'export function globToRegex(pattern) {\n  if (pattern === "__THROW__") throw new Error("simulated glob compile failure");',
+      /^(\s*(?:export\s+)?function globToRegex\(pattern\)\s*\{)/m,
+      '$1\n  if (pattern === "__THROW__") throw new Error("simulated glob compile failure");',
     );
     writeFileSync(join(tempHooksDir, "patterns.mjs"), patchedPatterns);
     writeFileSync(

@@ -462,13 +462,13 @@ describe("session-start-profiler", () => {
 
     // Profiler must come after seen-skills and before inject-claude-md
     const seenIdx = commands.findIndex((c: string) =>
-      c.includes("session-start-seen-skills.sh"),
+      c.includes("session-start-seen-skills.mjs"),
     );
     const profilerIdx = commands.findIndex((c: string) =>
       c.includes("session-start-profiler.mjs"),
     );
     const injectIdx = commands.findIndex((c: string) =>
-      c.includes("inject-claude-md.sh"),
+      c.includes("inject-claude-md.mjs"),
     );
 
     expect(seenIdx).toBeGreaterThanOrEqual(0);

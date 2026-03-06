@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const HOOK_SCRIPT = join(ROOT, "hooks", "pretooluse-skill-inject.mjs");
-const SESSION_START_SCRIPT = join(ROOT, "hooks", "session-start-seen-skills.sh");
+const SESSION_START_SCRIPT = join(ROOT, "hooks", "session-start-seen-skills.mjs");
 const UNLIMITED_BUDGET = "999999";
 let testSession: string;
 
@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 
 async function runSessionStart(envFilePath: string): Promise<{ code: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["bash", SESSION_START_SCRIPT], {
+  const proc = Bun.spawn(["node", SESSION_START_SCRIPT], {
     stdout: "pipe",
     stderr: "pipe",
     env: { ...process.env, CLAUDE_ENV_FILE: envFilePath },
@@ -65,10 +65,11 @@ function readSeenSkillsExport(envFilePath: string): string {
 }
 
 function parseInjectedSkills(stdout: string): string[] {
-  const parsed = JSON.parse(stdout) as {
-    hookSpecificOutput?: { skillInjection?: { injectedSkills?: unknown } };
-  };
-  const injectedSkills = parsed?.hookSpecificOutput?.skillInjection?.injectedSkills;
+  const parsed = JSON.parse(stdout);
+  const ctx = parsed?.hookSpecificOutput?.additionalContext || "";
+  const match = ctx.match(/<!-- skillInjection: (\{.*?\}) -->/);
+  const si = match ? JSON.parse(match[1]) : {};
+  const injectedSkills = si.injectedSkills;
 
   if (!Array.isArray(injectedSkills)) {
     return [];
@@ -92,7 +93,7 @@ function parseDebugLines(stderr: string): Array<Record<string, unknown>> {
 }
 
 describe("session timeline subagent integration", () => {
-  test("session-start-seen-skills.sh appends an empty-string seen-skills export to CLAUDE_ENV_FILE", async () => {
+  test("session-start-seen-skills.mjs appends an empty-string seen-skills export to CLAUDE_ENV_FILE", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "session-timeline-lead-"));
     const leadEnvPath = join(tempDir, "lead.env");
 

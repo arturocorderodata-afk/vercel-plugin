@@ -5,7 +5,7 @@
     "vercel-plugin": "src/cli/index.ts"
   },
   "scripts": {
-    "build:hooks": "tsc -p hooks/tsconfig.json && cp hooks/compiled/*.mjs hooks/",
+    "build:hooks": "tsup --config hooks/tsup.config.ts",
     "build:manifest": "bun run scripts/build-manifest.ts",
     "build": "bun run build:hooks && bun run build:manifest",
     "validate": "bun run scripts/validate.ts",
@@ -16,6 +16,7 @@
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.70",
     "@types/node": "^25.3.5",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }
 }

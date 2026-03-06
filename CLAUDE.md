@@ -15,7 +15,7 @@
 Hook source lives in `hooks/src/*.mts` (TypeScript) and compiles to `hooks/*.mjs` (ESM, committed).
 Run `bun run build:hooks` after editing any `.mts` file. A pre-commit hook auto-compiles when `.mts` files are staged.
 
-1. `session-start-seen-skills.sh` — runs on SessionStart, exports `VERCEL_PLUGIN_SEEN_SKILLS=""` into `CLAUDE_ENV_FILE`
+1. `session-start-seen-skills.mjs` — runs on SessionStart, exports `VERCEL_PLUGIN_SEEN_SKILLS=""` into `CLAUDE_ENV_FILE`
 2. `pretooluse-skill-inject.mts` → `.mjs` — PreToolUse hook, matches tool calls to skills and injects SKILL.md content
 3. `skill-map-frontmatter.mts` → `.mjs` — parses SKILL.md frontmatter into the skill map
 4. `patterns.mts` → `.mjs` — glob-to-regex conversion and seen-skills env var helpers
@@ -31,7 +31,7 @@ Deduplication prevents the same skill from being injected twice in a session.
 **Mechanism**: Environment variable `VERCEL_PLUGIN_SEEN_SKILLS`
 
 - **Format**: Comma-delimited string of skill slugs (e.g., `"nextjs,turbopack,ai-sdk"`)
-- **Initialization**: `session-start-seen-skills.sh` appends `export VERCEL_PLUGIN_SEEN_SKILLS=""` to `CLAUDE_ENV_FILE`
+- **Initialization**: `session-start-seen-skills.mjs` appends `export VERCEL_PLUGIN_SEEN_SKILLS=""` to `CLAUDE_ENV_FILE`
 - **Read**: `parseSeenSkills(envValue)` in `patterns.mjs` splits on commas into a `Set`
 - **Write**: `appendSeenSkill(envValue, skill)` in `patterns.mjs` appends to the comma-delimited string
 - **Strategy detection** (debug mode):

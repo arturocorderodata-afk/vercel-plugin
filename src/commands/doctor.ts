@@ -229,7 +229,7 @@ export function doctor(projectRoot: string): DoctorResult {
       check: "dedup",
       message:
         "VERCEL_PLUGIN_SEEN_SKILLS is not set — dedup limited to single invocation",
-      hint: "Ensure session-start-seen-skills.sh runs on SessionStart to set the env var",
+      hint: "Ensure session-start-seen-skills.mjs runs on SessionStart to set the env var",
     });
   }
 
