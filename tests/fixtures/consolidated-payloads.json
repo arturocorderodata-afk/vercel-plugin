@@ -74,6 +74,42 @@
       }
     },
     {
+      "name": "Read app/api/chat/route.ts — AI SDK route",
+      "input": {
+        "tool_name": "Read",
+        "tool_input": { "file_path": "/Users/me/project/app/api/chat/route.ts" }
+      },
+      "expected": {
+        "skillInjection": {
+          "version": 1,
+          "toolName": "Read",
+          "toolTarget": "/Users/me/project/app/api/chat/route.ts",
+          "matchedSkills": ["nextjs", "ai-sdk", "vercel-functions"],
+          "injectedSkills": ["ai-sdk", "vercel-functions", "nextjs"],
+          "droppedByCap": [],
+          "droppedByBudget": []
+        }
+      }
+    },
+    {
+      "name": "Write middleware.ts — routing middleware",
+      "input": {
+        "tool_name": "Write",
+        "tool_input": { "file_path": "/Users/me/project/middleware.ts" }
+      },
+      "expected": {
+        "skillInjection": {
+          "version": 1,
+          "toolName": "Write",
+          "toolTarget": "/Users/me/project/middleware.ts",
+          "matchedSkills": ["routing-middleware", "auth"],
+          "injectedSkills": ["auth", "routing-middleware"],
+          "droppedByCap": [],
+          "droppedByBudget": []
+        }
+      }
+    },
+    {
       "name": "bash cap collision — npm install triggers 4 skills",
       "input": {
         "tool_name": "Bash",

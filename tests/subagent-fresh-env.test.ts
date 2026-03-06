@@ -42,7 +42,10 @@ async function runHookEnv(
 
 function parseInjectedSkills(stdout: string): string[] {
   const parsed = JSON.parse(stdout);
-  const injectedSkills = parsed?.hookSpecificOutput?.skillInjection?.injectedSkills;
+  const ctx = parsed?.hookSpecificOutput?.additionalContext || "";
+  const match = ctx.match(/<!-- skillInjection: (\{.*?\}) -->/);
+  const si = match ? JSON.parse(match[1]) : {};
+  const injectedSkills = si.injectedSkills;
   return Array.isArray(injectedSkills) ? injectedSkills : [];
 }
 

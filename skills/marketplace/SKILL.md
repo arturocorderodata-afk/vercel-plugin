@@ -7,6 +7,8 @@ metadata:
     - "integration.json"
   bashPatterns:
     - '\bvercel\s+integration\b'
+    - '\bvercel\s+integration\s+add\b'
+    - '\bvercel\s+integration\s+discover\b'
 ---
 
 # Vercel Marketplace
@@ -322,15 +324,20 @@ vercel integration remove <name>
 
 ## Common Integration Categories
 
-| Category      | Popular Integrations                 | Auto-Provisioned Env Vars               |
-| ------------- | ------------------------------------ | --------------------------------------- |
-| Databases     | Neon, Supabase, PlanetScale, MongoDB | `POSTGRES_URL`, `DATABASE_URL`          |
-| Cache/KV      | Upstash Redis                        | `KV_REST_API_URL`, `KV_REST_API_TOKEN`  |
-| Auth          | Clerk, Auth0                         | `CLERK_SECRET_KEY`, `AUTH0_SECRET`      |
-| CMS           | Sanity, Contentful, Storyblok        | `SANITY_PROJECT_ID`, `CONTENTFUL_TOKEN` |
-| Monitoring    | Datadog, Sentry                      | `SENTRY_DSN`, `DD_API_KEY`              |
-| Payments      | Stripe                               | `STRIPE_SECRET_KEY`                     |
-| Feature Flags | LaunchDarkly, Statsig                | `LAUNCHDARKLY_SDK_KEY`                  |
+| Category              | Popular Integrations                          | Auto-Provisioned Env Vars               |
+| --------------------- | --------------------------------------------- | --------------------------------------- |
+| Databases             | Neon, Supabase, PlanetScale, MongoDB, Turso   | `POSTGRES_URL`, `DATABASE_URL`          |
+| Cache/KV              | Upstash Redis                                 | `KV_REST_API_URL`, `KV_REST_API_TOKEN`  |
+| Auth                  | Clerk, Auth0, Descope                         | `CLERK_SECRET_KEY`, `AUTH0_SECRET`      |
+| CMS                   | Sanity, Contentful, Storyblok, DatoCMS        | `SANITY_PROJECT_ID`, `CONTENTFUL_TOKEN` |
+| Monitoring            | Datadog, Sentry, Checkly, New Relic           | `SENTRY_DSN`, `DD_API_KEY`             |
+| Payments              | Stripe                                        | `STRIPE_SECRET_KEY`                     |
+| Feature Flags         | LaunchDarkly, Statsig, Hypertune              | `LAUNCHDARKLY_SDK_KEY`                  |
+| AI Agents & Services  | CodeRabbit, Braintrust, Sourcery, Chatbase    | varies by integration                   |
+| Video                 | Mux                                           | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`     |
+| Messaging             | Resend, Knock, Novu                           | `RESEND_API_KEY`                        |
+| Searching             | Algolia, Meilisearch                          | `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`    |
+| Commerce              | Shopify, Swell, BigCommerce                   | `SHOPIFY_ACCESS_TOKEN`                  |
 
 ## Observability Integration Path
 
@@ -444,6 +451,7 @@ curl -X POST -H "Authorization: Bearer $VERCEL_TOKEN" \
 - **Drains REST API endpoints** → `⤳ skill: vercel-api`
 - **CLI log streaming (`--follow`, `--since`, `--level`)** → `⤳ skill: vercel-cli`
 - **Safe project setup sequencing (link, env pull, then run db/dev)** → `⤳ skill:bootstrap`
+- **Headless CMS integrations (Sanity, Contentful)** → `⤳ skill:cms`
 
 ## Official Documentation
 

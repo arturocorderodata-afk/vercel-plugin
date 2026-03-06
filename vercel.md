@@ -292,7 +292,6 @@ WORKFLOW DEVKIT (WDK)                      ⤳ skill: workflow  📖 docs: https
     ↔ AI SDK 6 (DurableAgent)
     ↔ Vercel Functions (automatic step isolation)
     ↔ Next.js (API routes as workflow endpoints)
-    ↔ Inngest (event-driven alternative)          ⤳ skill: inngest
 
 v0 (AI Development Agent)                  ⤳ skill: v0-dev  📖 docs: https://v0.dev/docs
 ├── Capabilities

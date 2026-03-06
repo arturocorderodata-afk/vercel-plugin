@@ -25,6 +25,17 @@ const UPDATE_SNAPSHOTS =
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Extract skillInjection metadata from the HTML comment in additionalContext. */
+function parseSkillInjection(additionalContext: string): Record<string, unknown> | null {
+  const match = additionalContext.match(/<!-- skillInjection: (\{.*?\}) -->/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
 /** Run the hook and return the parsed skillInjection metadata. */
 async function runHook(input: object): Promise<{
   code: number;
@@ -50,7 +61,8 @@ async function runHook(input: object): Promise<{
   let skillInjection: Record<string, unknown> | null = null;
   try {
     const parsed = JSON.parse(stdout);
-    skillInjection = parsed?.hookSpecificOutput?.skillInjection ?? null;
+    const ctx = parsed?.hookSpecificOutput?.additionalContext ?? "";
+    skillInjection = parseSkillInjection(ctx);
   } catch {}
 
   return { code, skillInjection };

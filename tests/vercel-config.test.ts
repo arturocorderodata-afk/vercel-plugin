@@ -49,8 +49,10 @@ async function runHook(input: object): Promise<{
   try {
     parsed = JSON.parse(stdout);
   } catch {}
-  const injectedSkills =
-    parsed?.hookSpecificOutput?.skillInjection?.injectedSkills ?? [];
+  const ctx = parsed?.hookSpecificOutput?.additionalContext || "";
+  const siMatch = ctx.match(/<!-- skillInjection: (\{.*?\}) -->/);
+  const si = siMatch ? JSON.parse(siMatch[1]) : {};
+  const injectedSkills = si.injectedSkills ?? [];
   return { code, stdout, stderr, parsed, injectedSkills };
 }
 

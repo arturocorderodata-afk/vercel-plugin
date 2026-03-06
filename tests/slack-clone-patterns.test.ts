@@ -33,14 +33,11 @@ async function matchFile(filePath: string): Promise<string[]> {
     tool_input: { file_path: filePath },
   });
   expect(code).toBe(0);
-  const result = JSON.parse(stdout) as {
-    hookSpecificOutput?: {
-      skillInjection?: {
-        injectedSkills?: string[];
-      };
-    };
-  };
-  return result.hookSpecificOutput?.skillInjection?.injectedSkills ?? [];
+  const result = JSON.parse(stdout);
+  const ctx = result?.hookSpecificOutput?.additionalContext || "";
+  const match = ctx.match(/<!-- skillInjection: (\{.*?\}) -->/);
+  const si = match ? JSON.parse(match[1]) : {};
+  return si.injectedSkills ?? [];
 }
 
 const EXPECTED_SLACK_ROUTE_SKILLS = ["chat-sdk", "vercel-functions", "nextjs"] as const;

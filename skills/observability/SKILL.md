@@ -3,7 +3,7 @@ name: observability
 description: Vercel Observability expert guidance — Drains (logs, traces, speed insights, web analytics), Web Analytics, Speed Insights, runtime logs, custom events, OpenTelemetry integration, and monitoring dashboards. Use when instrumenting, debugging, or optimizing application performance and user experience on Vercel.
 metadata:
   priority: 6
-  pathPatterns: 
+  pathPatterns:
     - 'instrumentation.ts'
     - 'instrumentation.js'
     - 'src/instrumentation.ts'
@@ -18,6 +18,9 @@ metadata:
     - 'apps/*/src/app/layout.*'
     - 'apps/*/pages/_app.*'
     - 'apps/*/src/pages/_app.*'
+    - 'sentry.client.config.*'
+    - 'sentry.server.config.*'
+    - 'sentry.edge.config.*'
   bashPatterns: 
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/analytics\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/analytics\b'
@@ -27,6 +30,26 @@ metadata:
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/speed-insights\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@vercel/speed-insights\b'
     - '\byarn\s+add\s+[^\n]*@vercel/speed-insights\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@sentry/nextjs\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@sentry/nextjs\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@sentry/nextjs\b'
+    - '\byarn\s+add\s+[^\n]*@sentry/nextjs\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@sentry/node\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@sentry/node\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@sentry/node\b'
+    - '\byarn\s+add\s+[^\n]*@sentry/node\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@datadog/browser-rum\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@datadog/browser-rum\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@datadog/browser-rum\b'
+    - '\byarn\s+add\s+[^\n]*@datadog/browser-rum\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*\bcheckly\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*\bcheckly\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*\bcheckly\b'
+    - '\byarn\s+add\s+[^\n]*\bcheckly\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*\bnewrelic\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*\bnewrelic\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*\bnewrelic\b'
+    - '\byarn\s+add\s+[^\n]*\bnewrelic\b'
 ---
 
 # Vercel Observability
@@ -508,6 +531,69 @@ export async function reportError(error: unknown, context: Record<string, unknow
   }
 }
 ```
+
+## Marketplace Observability Integrations
+
+### Sentry — Error & Performance Monitoring
+
+Native Vercel Marketplace integration. Auto-configures source maps and release tracking.
+
+```bash
+npx @sentry/wizard@latest -i nextjs
+# Or install manually:
+npm install @sentry/nextjs
+```
+
+Sentry wizard creates `sentry.client.config.ts`, `sentry.server.config.ts`, and `sentry.edge.config.ts`. It also wraps `next.config.js` with `withSentryConfig`.
+
+Install via Marketplace: `vercel integration add sentry`
+
+### Datadog — Full-Stack Monitoring
+
+APM, logs, and Real User Monitoring (RUM). Auto-configures log drain on Marketplace install.
+
+```bash
+npm install @datadog/browser-rum
+```
+
+```ts
+import { datadogRum } from '@datadog/browser-rum'
+
+datadogRum.init({
+  applicationId: process.env.NEXT_PUBLIC_DD_APPLICATION_ID!,
+  clientToken: process.env.NEXT_PUBLIC_DD_CLIENT_TOKEN!,
+  site: 'datadoghq.com',
+  service: 'my-app',
+  sessionSampleRate: 100,
+  trackResources: true,
+  trackLongTasks: true,
+})
+```
+
+Install via Marketplace: `vercel integration add datadog`
+
+### Checkly — Synthetic Monitoring & Testing
+
+API and browser checks that run continuously against your deployments.
+
+```bash
+npm install -D checkly
+npx checkly init
+```
+
+Checkly integrates with Vercel deployment events to trigger checks on every deploy.
+
+Install via Marketplace: `vercel integration add checkly`
+
+### New Relic — Application Performance Monitoring
+
+Full-stack observability with distributed tracing and alerting.
+
+```bash
+npm install newrelic
+```
+
+Requires a `newrelic.js` config file at the project root. Install via Marketplace: `vercel integration add newrelic`
 
 ## Decision Matrix
 

@@ -47,6 +47,8 @@ export interface ExplainMatch {
   injectionMode: "full" | "summary" | "droppedByCap" | "droppedByBudget";
   /** Byte size of the SKILL.md body (null if file not found) */
   bodyBytes: number | null;
+  /** Human-readable explanation of why the skill was dropped or how it was injected */
+  capReason: string;
 }
 
 export interface ExplainCollision {
@@ -57,6 +59,7 @@ export interface ExplainCollision {
 export interface ExplainResult {
   target: string;
   targetType: "file" | "bash";
+  toolName?: string;
   matches: ExplainMatch[];
   collisions: ExplainCollision[];
   injectedCount: number;
@@ -75,13 +78,18 @@ export interface ExplainOptions {
   budgetBytes?: number;
   /** File content for import matching (reads from disk if target exists and not provided) */
   fileContent?: string;
+  /** Explicit tool name (Read, Edit, Write, Bash) — overrides auto-detection */
+  toolName?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Detect whether target looks like a bash command vs a file path
 // ---------------------------------------------------------------------------
 
-function detectTargetType(target: string): "file" | "bash" {
+function detectTargetType(target: string, toolName?: string): "file" | "bash" {
+  // Explicit tool name takes precedence
+  if (toolName === "Bash") return "bash";
+  if (toolName === "Read" || toolName === "Edit" || toolName === "Write") return "file";
   // If it contains spaces and starts with a known CLI tool, treat as bash
   if (/\s/.test(target) && /^(vercel|npm|npx|bun|pnpm|yarn|node|git)\b/.test(target)) {
     return "bash";
@@ -133,7 +141,7 @@ export function explain(target: string, projectRoot: string, options?: ExplainOp
     skillMap = validation.normalizedSkillMap.skills;
   }
 
-  const targetType = detectTargetType(target);
+  const targetType = detectTargetType(target, opts.toolName);
 
   // Compile patterns using the shared engine
   const compiled = compileSkillPatterns(skillMap);
@@ -230,6 +238,7 @@ export function explain(target: string, projectRoot: string, options?: ExplainOp
       capped: plan.mode === "droppedByCap" || plan.mode === "droppedByBudget",
       injectionMode: plan.mode,
       bodyBytes: plan.bodyBytes,
+      capReason: plan.capReason,
     };
   });
 
@@ -253,6 +262,7 @@ export function explain(target: string, projectRoot: string, options?: ExplainOp
   return {
     target,
     targetType,
+    ...(opts.toolName ? { toolName: opts.toolName } : {}),
     matches,
     collisions,
     injectedCount: matches.filter((m) => m.injected).length,
@@ -272,6 +282,7 @@ export function explain(target: string, projectRoot: string, options?: ExplainOp
 interface InjectionPlan {
   mode: "full" | "summary" | "droppedByCap" | "droppedByBudget";
   bodyBytes: number | null;
+  capReason: string;
 }
 
 function simulateInjection(
@@ -298,13 +309,13 @@ function simulateInjection(
       bodyBytes = wrappedBytes;
     } catch {
       // SKILL.md not found — would be skipped at runtime too
-      result.set(skill, { mode: "droppedByCap", bodyBytes: null });
+      result.set(skill, { mode: "droppedByCap", bodyBytes: null, capReason: "SKILL.md not found" });
       continue;
     }
 
     // Hard ceiling check (same as runtime)
     if (loadedCount >= MAX_SKILLS) {
-      result.set(skill, { mode: "droppedByCap", bodyBytes });
+      result.set(skill, { mode: "droppedByCap", bodyBytes, capReason: `exceeded MAX_SKILLS=${MAX_SKILLS} hard cap (${loadedCount} already injected)` });
       continue;
     }
 
@@ -316,17 +327,18 @@ function simulateInjection(
         const summaryWrapped = `<!-- skill:${skill} mode:summary -->\n${summary}\n<!-- /skill:${skill} -->`;
         const summaryBytes = Buffer.byteLength(summaryWrapped, "utf-8");
         if (usedBytes + summaryBytes <= budgetBytes) {
-          result.set(skill, { mode: "summary", bodyBytes });
+          result.set(skill, { mode: "summary", bodyBytes, capReason: `full body (${wrappedBytes}B) exceeds budget (${usedBytes}+${wrappedBytes} > ${budgetBytes}B); using summary (${summaryBytes}B)` });
           loadedCount++;
           usedBytes += summaryBytes;
           continue;
         }
       }
-      result.set(skill, { mode: "droppedByBudget", bodyBytes });
+      result.set(skill, { mode: "droppedByBudget", bodyBytes, capReason: `would exceed byte budget (${usedBytes}+${wrappedBytes} = ${usedBytes + wrappedBytes}B > ${budgetBytes}B)` });
       continue;
     }
 
-    result.set(skill, { mode: "full", bodyBytes });
+    const position = loadedCount + 1;
+    result.set(skill, { mode: "full", bodyBytes, capReason: `injected #${position} (${wrappedBytes}B, total ${usedBytes + wrappedBytes}B / ${budgetBytes}B)` });
     loadedCount++;
     usedBytes += wrappedBytes;
   }
@@ -342,7 +354,10 @@ function simulateInjection(
 export function formatExplainResult(result: ExplainResult): string {
   const lines: string[] = [];
 
-  lines.push(`Target: ${result.target} (${result.targetType})`);
+  const targetLabel = result.toolName
+    ? `Target: ${result.toolName} ${result.target} (${result.targetType})`
+    : `Target: ${result.target} (${result.targetType})`;
+  lines.push(targetLabel);
   lines.push(`Skills in manifest: ${result.skillCount}`);
   lines.push(`Budget: ${result.usedBytes} / ${result.budgetBytes} bytes`);
   lines.push("");
@@ -374,6 +389,7 @@ export function formatExplainResult(result: ExplainResult): string {
     lines.push(`  [${status}] ${m.skill}${bytesStr}`);
     lines.push(`          priority: ${priStr}`);
     lines.push(`          pattern:  ${m.matchedPattern} (${m.matchType})`);
+    lines.push(`          reason:   ${m.capReason}`);
   }
 
   if (result.collisions.length > 0) {

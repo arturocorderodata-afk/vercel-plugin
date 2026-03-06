@@ -26,7 +26,26 @@ beforeEach(() => {
 // High budget disables budget-based limiting so cap tests are unaffected
 const UNLIMITED_BUDGET = "999999";
 
-async function runHook(input: object): Promise<{ code: number; stdout: string; stderr: string }> {
+interface HookResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+  skillInjection: Record<string, unknown> | null;
+  additionalContext: string;
+}
+
+/** Extract skillInjection metadata from the HTML comment in additionalContext. */
+function parseSkillInjection(additionalContext: string): Record<string, unknown> | null {
+  const match = additionalContext.match(/<!-- skillInjection: (\{.*?\}) -->/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+async function runHook(input: object): Promise<HookResult> {
   const payload = JSON.stringify({ ...input, session_id: testSession });
   const proc = Bun.spawn(["node", HOOK_SCRIPT], {
     stdin: "pipe",
@@ -43,7 +62,16 @@ async function runHook(input: object): Promise<{ code: number; stdout: string; s
   const code = await proc.exited;
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
-  return { code, stdout, stderr };
+
+  let skillInjection: Record<string, unknown> | null = null;
+  let additionalContext = "";
+  try {
+    const parsed = JSON.parse(stdout);
+    additionalContext = parsed?.hookSpecificOutput?.additionalContext ?? "";
+    skillInjection = parseSkillInjection(additionalContext);
+  } catch {}
+
+  return { code, stdout, stderr, skillInjection, additionalContext };
 }
 
 // ---------------------------------------------------------------------------
@@ -80,51 +108,48 @@ const payloads: { fixtures: GoldenFixture[] } = JSON.parse(
 describe("golden payload snapshots", () => {
   for (const fixture of payloads.fixtures) {
     test(`golden: ${fixture.name}`, async () => {
-      const { code, stdout } = await runHook(fixture.input);
+      const { code, skillInjection: actual, additionalContext } = await runHook(fixture.input);
       expect(code).toBe(0);
+      expect(actual).not.toBeNull();
 
-      const result = JSON.parse(stdout);
-      expect(result).toHaveProperty("hookSpecificOutput");
-      expect(result.hookSpecificOutput).toHaveProperty("skillInjection");
-
-      const actual = result.hookSpecificOutput.skillInjection;
       const expected = fixture.expected.skillInjection;
 
       // Version and tool metadata must match exactly
-      expect(actual.version).toBe(expected.version);
-      expect(actual.toolName).toBe(expected.toolName);
-      expect(actual.toolTarget).toBe(expected.toolTarget);
+      expect(actual!.version).toBe(expected.version);
+      expect(actual!.toolName).toBe(expected.toolName);
+      expect(actual!.toolTarget).toBe(expected.toolTarget);
 
       // matchedSkills — same set (order may vary)
-      expect([...actual.matchedSkills].sort()).toEqual(
+      expect([...(actual!.matchedSkills as string[])].sort()).toEqual(
         [...expected.matchedSkills].sort(),
       );
 
       // injectedSkills — exact ordered list (ranking matters)
-      expect(actual.injectedSkills).toEqual(expected.injectedSkills);
+      expect(actual!.injectedSkills).toEqual(expected.injectedSkills);
 
       // droppedByCap — same set (order may vary)
-      expect([...actual.droppedByCap].sort()).toEqual(
+      expect([...(actual!.droppedByCap as string[])].sort()).toEqual(
         [...expected.droppedByCap].sort(),
       );
 
       // droppedByBudget — same set (order may vary)
-      expect([...(actual.droppedByBudget || [])].sort()).toEqual(
+      expect([...((actual!.droppedByBudget as string[]) || [])].sort()).toEqual(
         [...expected.droppedByBudget].sort(),
       );
 
-      // Invariant: injected + droppedByCap + droppedByBudget = matchedSkills
+      // Invariant: injected + droppedByCap + droppedByBudget + summaryOnly = matchedSkills
+      const summaryOnlyLen = Array.isArray(actual!.summaryOnly) ? (actual!.summaryOnly as string[]).length : 0;
       expect(
-        actual.injectedSkills.length +
-          actual.droppedByCap.length +
-          (actual.droppedByBudget?.length || 0),
-      ).toBe(actual.matchedSkills.length);
+        (actual!.injectedSkills as string[]).length +
+          (actual!.droppedByCap as string[]).length +
+          ((actual!.droppedByBudget as string[])?.length || 0) +
+          summaryOnlyLen,
+      ).toBe((actual!.matchedSkills as string[]).length);
 
       // Verify additionalContext contains skill markers for each injected skill
-      const ctx = result.hookSpecificOutput.additionalContext;
       for (const skill of expected.injectedSkills) {
-        expect(ctx).toContain(`<!-- skill:${skill} -->`);
-        expect(ctx).toContain(`<!-- /skill:${skill} -->`);
+        expect(additionalContext).toContain(`<!-- skill:${skill} -->`);
+        expect(additionalContext).toContain(`<!-- /skill:${skill} -->`);
       }
     });
   }

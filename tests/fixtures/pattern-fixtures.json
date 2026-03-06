@@ -1,0 +1,113 @@
+{
+  "$schema": "Pattern fixture dry-run: maps file paths and bash commands to expected skill matches",
+  "fixtures": [
+    {
+      "description": "vercel.json triggers multiple skills (routing, cron, deploy, cli, functions)",
+      "type": "path",
+      "input": "vercel.json",
+      "expectedSkills": ["routing-middleware", "deployments-cicd", "vercel-cli", "cron-jobs", "vercel-functions"]
+    },
+    {
+      "description": "next.config.ts triggers nextjs and turbopack",
+      "type": "path",
+      "input": "next.config.ts",
+      "expectedSkills": ["nextjs", "turbopack"]
+    },
+    {
+      "description": "middleware.ts triggers routing-middleware and auth",
+      "type": "path",
+      "input": "middleware.ts",
+      "expectedSkills": ["routing-middleware", "auth"]
+    },
+    {
+      "description": ".env.local triggers env-vars",
+      "type": "path",
+      "input": ".env.local",
+      "expectedSkills": ["env-vars"]
+    },
+    {
+      "description": "app/api/chat/route.ts triggers ai-sdk, nextjs, and vercel-functions",
+      "type": "path",
+      "input": "app/api/chat/route.ts",
+      "expectedSkills": ["ai-sdk", "nextjs", "vercel-functions"]
+    },
+    {
+      "description": "turbo.json triggers turborepo",
+      "type": "path",
+      "input": "turbo.json",
+      "expectedSkills": ["turborepo"]
+    },
+    {
+      "description": "instrumentation.ts triggers observability",
+      "type": "path",
+      "input": "instrumentation.ts",
+      "expectedSkills": ["observability"]
+    },
+    {
+      "description": "components.json triggers shadcn",
+      "type": "path",
+      "input": "components.json",
+      "expectedSkills": ["shadcn"]
+    },
+    {
+      "description": "prisma/schema.prisma triggers vercel-storage and bootstrap",
+      "type": "path",
+      "input": "prisma/schema.prisma",
+      "expectedSkills": ["vercel-storage", "bootstrap"]
+    },
+    {
+      "description": ".github/workflows/deploy.yml triggers deployments-cicd, vercel-agent, and workflow",
+      "type": "path",
+      "input": ".github/workflows/deploy.yml",
+      "expectedSkills": ["deployments-cicd", "vercel-agent", "workflow"]
+    },
+    {
+      "description": "flags.ts triggers vercel-flags",
+      "type": "path",
+      "input": "flags.ts",
+      "expectedSkills": ["vercel-flags"]
+    },
+    {
+      "description": "vercel deploy command triggers deployments-cicd and vercel-cli",
+      "type": "bash",
+      "input": "vercel deploy --prod",
+      "expectedSkills": ["deployments-cicd", "vercel-cli"]
+    },
+    {
+      "description": "npx shadcn add triggers shadcn",
+      "type": "bash",
+      "input": "npx shadcn@latest add button",
+      "expectedSkills": ["shadcn"]
+    },
+    {
+      "description": "next dev --turbo triggers turbopack, nextjs, and agent-browser",
+      "type": "bash",
+      "input": "next dev --turbo",
+      "expectedSkills": ["turbopack", "nextjs", "agent-browser"]
+    },
+    {
+      "description": "vercel env pull triggers env-vars, ai-gateway, and vercel-cli",
+      "type": "bash",
+      "input": "vercel env pull .env.local",
+      "expectedSkills": ["env-vars", "ai-gateway", "vercel-cli"]
+    },
+    {
+      "description": "npm install stripe triggers payments",
+      "type": "bash",
+      "input": "npm install stripe",
+      "expectedSkills": ["payments"]
+    },
+    {
+      "description": "turbo run build triggers turborepo",
+      "type": "bash",
+      "input": "turbo run build",
+      "expectedSkills": ["turborepo"]
+    },
+    {
+      "description": "vercel firewall triggers vercel-firewall and vercel-cli",
+      "type": "bash",
+      "input": "vercel firewall list",
+      "expectedSkills": ["vercel-firewall", "vercel-cli"]
+    }
+  ]
+}

@@ -147,8 +147,11 @@ describe("manifest-backed hook loading", () => {
     const output = JSON.parse(stdout);
     expect(output).toHaveProperty("hookSpecificOutput");
     expect(output.hookSpecificOutput).toHaveProperty("additionalContext");
-    expect(output.hookSpecificOutput).toHaveProperty("skillInjection");
-    expect(output.hookSpecificOutput.skillInjection.injectedSkills).toContain("nextjs");
+    const ctx = output.hookSpecificOutput?.additionalContext || "";
+    const siMatch = ctx.match(/<!-- skillInjection: (\{.*?\}) -->/);
+    expect(siMatch).not.toBeNull();
+    const si = JSON.parse(siMatch![1]);
+    expect(si.injectedSkills).toContain("nextjs");
   });
 
   test("hook produces same matches with and without manifest", async () => {
@@ -174,8 +177,12 @@ describe("manifest-backed hook loading", () => {
       const withoutOutput = JSON.parse(withoutManifest.stdout);
 
       // Both should inject the same skills
-      const withSkills = withOutput.hookSpecificOutput?.skillInjection?.injectedSkills ?? [];
-      const withoutSkills = withoutOutput.hookSpecificOutput?.skillInjection?.injectedSkills ?? [];
+      const withCtx = withOutput.hookSpecificOutput?.additionalContext || "";
+      const withMatch = withCtx.match(/<!-- skillInjection: (\{.*?\}) -->/);
+      const withSkills = withMatch ? JSON.parse(withMatch[1]).injectedSkills ?? [] : [];
+      const withoutCtx = withoutOutput.hookSpecificOutput?.additionalContext || "";
+      const withoutMatch = withoutCtx.match(/<!-- skillInjection: (\{.*?\}) -->/);
+      const withoutSkills = withoutMatch ? JSON.parse(withoutMatch[1]).injectedSkills ?? [] : [];
       expect(withSkills.sort()).toEqual(withoutSkills.sort());
     } finally {
       // Restore manifest

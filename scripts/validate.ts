@@ -17,7 +17,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkCoverage, type CoverageResult } from "./coverage-baseline";
 import { extractFrontmatter, parseSkillFrontmatter, buildSkillMap, validateSkillMap } from "../hooks/skill-map-frontmatter.mjs";
-import { globToRegex, importPatternToRegex } from "../hooks/patterns.mjs";
+import { globToRegex, importPatternToRegex, compileSkillPatterns, matchPathWithReason, matchBashWithReason } from "../hooks/patterns.mjs";
 import { buildManifest } from "./build-manifest";
 
 // ---------------------------------------------------------------------------
@@ -1080,6 +1080,91 @@ async function validateProfilerSkillSlugs() {
 }
 
 // ---------------------------------------------------------------------------
+// 12. Pattern fixture dry-run — assert expected skill matches
+// ---------------------------------------------------------------------------
+
+interface PatternFixture {
+  description: string;
+  type: "path" | "bash";
+  input: string;
+  expectedSkills: string[];
+}
+
+async function validatePatternFixtures() {
+  section("[12] Pattern fixture dry-run");
+
+  const fixturesPath = join(ROOT, "tests", "fixtures", "pattern-fixtures.json");
+  if (!(await exists(fixturesPath))) {
+    warn("FIXTURE_MISSING", "tests/fixtures/pattern-fixtures.json not found", {
+      file: "tests/fixtures/pattern-fixtures.json",
+      hint: "Create the pattern fixtures file with test cases for skill matching",
+    });
+    return;
+  }
+
+  let fixturesData: { fixtures: PatternFixture[] };
+  try {
+    fixturesData = JSON.parse(await readFile(fixturesPath, "utf-8"));
+  } catch (err: any) {
+    fail("FIXTURE_PARSE", `Failed to parse pattern-fixtures.json: ${err.message}`, {
+      file: "tests/fixtures/pattern-fixtures.json",
+    });
+    return;
+  }
+
+  if (!Array.isArray(fixturesData.fixtures) || fixturesData.fixtures.length === 0) {
+    fail("FIXTURE_EMPTY", "pattern-fixtures.json has no fixtures", {
+      file: "tests/fixtures/pattern-fixtures.json",
+      hint: "Add fixture entries with type, input, and expectedSkills",
+    });
+    return;
+  }
+
+  // Build skill map and compile patterns
+  const skillsDir = join(ROOT, "skills");
+  const built = buildSkillMap(skillsDir);
+  const compiled = compileSkillPatterns(built.skills);
+
+  let passed = 0;
+  let failed = 0;
+
+  for (const fixture of fixturesData.fixtures) {
+    const matched: string[] = [];
+    for (const entry of compiled) {
+      if (fixture.type === "path") {
+        const r = matchPathWithReason(fixture.input, entry.pathRegexes, entry.pathPatterns);
+        if (r) matched.push(entry.skill);
+      } else if (fixture.type === "bash") {
+        const r = matchBashWithReason(fixture.input, entry.bashRegexes, entry.bashPatterns);
+        if (r) matched.push(entry.skill);
+      }
+    }
+
+    const expected = new Set(fixture.expectedSkills);
+    const actual = new Set(matched);
+    const missing = [...expected].filter((s) => !actual.has(s));
+    const extra = [...actual].filter((s) => !expected.has(s));
+
+    if (missing.length > 0 || extra.length > 0) {
+      failed++;
+      const parts: string[] = [];
+      if (missing.length > 0) parts.push(`missing: ${missing.join(", ")}`);
+      if (extra.length > 0) parts.push(`extra: ${extra.join(", ")}`);
+      fail("FIXTURE_MISMATCH", `Fixture "${fixture.description}" (${fixture.type}: ${fixture.input}) — ${parts.join("; ")}`, {
+        file: "tests/fixtures/pattern-fixtures.json",
+        hint: "Update the fixture's expectedSkills or fix the skill's patterns",
+      });
+    } else {
+      passed++;
+    }
+  }
+
+  if (failed === 0) {
+    pass(`All ${passed} pattern fixtures match expected skills`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -1096,6 +1181,7 @@ const CHECK_LABELS: Record<string, string> = {
   patternCompilation: "Pattern compilation",
   catalogStaleness: "Skill catalog staleness",
   profilerSkillSlugs: "Profiler skill slug cross-references",
+  patternFixtures: "Pattern fixture dry-run",
 };
 
 async function timed<T>(name: string, fn: () => Promise<T>): Promise<T> {
@@ -1135,6 +1221,7 @@ async function main() {
   await timed("patternCompilation", () => validatePatternCompilation());
   await timed("catalogStaleness", () => validateCatalogStaleness());
   await timed("profilerSkillSlugs", () => validateProfilerSkillSlugs());
+  await timed("patternFixtures", () => validatePatternFixtures());
 
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const warnCount = issues.filter((i) => i.severity === "warning").length;

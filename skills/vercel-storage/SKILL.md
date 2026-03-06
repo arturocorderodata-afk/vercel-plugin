@@ -14,6 +14,11 @@ metadata:
     - 'src/lib/blob.*'
     - 'src/lib/storage.*'
     - 'src/lib/edge-config.*'
+    - 'supabase/**'
+    - 'lib/supabase.*'
+    - 'src/lib/supabase.*'
+    - 'prisma/schema.prisma'
+    - 'prisma/**'
   bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/blob\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/blob\b'
@@ -39,6 +44,30 @@ metadata:
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/postgres\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@vercel/postgres\b'
     - '\byarn\s+add\s+[^\n]*@vercel/postgres\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@supabase/supabase-js\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@supabase/supabase-js\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@supabase/supabase-js\b'
+    - '\byarn\s+add\s+[^\n]*@supabase/supabase-js\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@supabase/ssr\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@supabase/ssr\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@supabase/ssr\b'
+    - '\byarn\s+add\s+[^\n]*@supabase/ssr\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@prisma/client\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@prisma/client\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@prisma/client\b'
+    - '\byarn\s+add\s+[^\n]*@prisma/client\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*\bmongodb\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*\bmongodb\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*\bmongodb\b'
+    - '\byarn\s+add\s+[^\n]*\bmongodb\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*\bconvex\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*\bconvex\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*\bconvex\b'
+    - '\byarn\s+add\s+[^\n]*\bconvex\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@libsql/client\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@libsql/client\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@libsql/client\b'
+    - '\byarn\s+add\s+[^\n]*@libsql/client\b'
 ---
 
 # Vercel Storage
@@ -224,6 +253,105 @@ const { success } = await ratelimit.limit('user:123')
 
 Install via Vercel Marketplace for automatic environment variable provisioning.
 
+### Supabase (Marketplace Native)
+
+Full Postgres database with built-in auth, realtime subscriptions, and storage. Native Vercel Marketplace integration.
+
+```bash
+npm install @supabase/supabase-js @supabase/ssr
+```
+
+```ts
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+const { data, error } = await supabase.from('users').select('*')
+```
+
+Install via Vercel Marketplace: `vercel integration add supabase`
+
+### Prisma ORM (Marketplace Native)
+
+Type-safe ORM with auto-generated client, migrations, and Prisma Accelerate for connection pooling.
+
+```bash
+npm install prisma @prisma/client
+npx prisma init
+```
+
+```ts
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+const users = await prisma.user.findMany()
+```
+
+Install via Vercel Marketplace: `vercel integration add prisma`
+
+### MongoDB Atlas
+
+Document database with flexible schemas. Available via Vercel Marketplace.
+
+```bash
+npm install mongodb
+```
+
+```ts
+import { MongoClient } from 'mongodb'
+
+const client = new MongoClient(process.env.MONGODB_URI!)
+const db = client.db('myapp')
+const users = await db.collection('users').find({}).toArray()
+```
+
+Install via Vercel Marketplace: `vercel integration add mongodb-atlas`
+
+### Convex
+
+Reactive backend-as-a-service with real-time sync, serverless functions, and file storage.
+
+```bash
+npm install convex
+npx convex dev
+```
+
+```ts
+import { query } from './_generated/server'
+import { v } from 'convex/values'
+
+export const getUsers = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query('users').collect()
+  },
+})
+```
+
+### Turso (libSQL)
+
+Edge-native SQLite database with embedded replicas for ultra-low latency reads.
+
+```bash
+npm install @libsql/client
+```
+
+```ts
+import { createClient } from '@libsql/client'
+
+const turso = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN!,
+})
+
+const result = await turso.execute('SELECT * FROM users')
+```
+
+Install via Vercel Marketplace: `vercel integration add turso`
+
 ## Storage Decision Matrix
 
 | Need | Use | Package |
@@ -232,6 +360,11 @@ Install via Vercel Marketplace for automatic environment variable provisioning.
 | Feature flags, A/B config | Edge Config | `@vercel/edge-config` |
 | Relational data, SQL queries | Neon Postgres | `@neondatabase/serverless` |
 | Key-value cache, sessions, rate limiting | Upstash Redis | `@upstash/redis` |
+| Postgres + auth + realtime + storage | Supabase | `@supabase/supabase-js` |
+| Type-safe ORM with migrations | Prisma | `@prisma/client` |
+| Document database, flexible schemas | MongoDB Atlas | `mongodb` |
+| Reactive backend with real-time sync | Convex | `convex` |
+| Edge-native SQLite with replicas | Turso | `@libsql/client` |
 | Full-text search | Neon Postgres (pg_trgm) or Elasticsearch (Marketplace) | varies |
 | Vector embeddings | Neon Postgres (pgvector) or Pinecone (Marketplace) | varies |
 

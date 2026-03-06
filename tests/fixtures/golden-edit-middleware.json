@@ -9,8 +9,8 @@
       "version": 1,
       "toolName": "Edit",
       "toolTarget": "/Users/me/project/middleware.ts",
-      "matchedSkills": ["routing-middleware"],
-      "injectedSkills": ["routing-middleware"],
+      "matchedSkills": ["auth", "routing-middleware"],
+      "injectedSkills": ["auth", "routing-middleware"],
       "droppedByCap": [],
       "droppedByBudget": []
     }
