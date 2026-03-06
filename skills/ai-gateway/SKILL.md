@@ -4,6 +4,8 @@ description: Vercel AI Gateway expert guidance. Use when configuring model routi
 metadata:
   priority: 7
   pathPatterns: []
+  importPatterns:
+    - '@ai-sdk/gateway'
   bashPatterns:
     - '\bvercel\s+env\s+pull\b'
     - '\bnpm\s+(install|i|add)\s+[^\n]*@ai-sdk/gateway\b'

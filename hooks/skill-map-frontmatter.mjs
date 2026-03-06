@@ -303,6 +303,7 @@ export function parseSkillFrontmatter(yamlStr) {
   return {
     name: doc?.name ?? "",
     description: doc?.description ?? "",
+    summary: typeof doc?.summary === "string" ? doc.summary : "",
     metadata: (doc?.metadata != null && typeof doc.metadata === "object" && !Array.isArray(doc.metadata)) ? doc.metadata : {},
   };
 }
@@ -357,6 +358,7 @@ export function scanSkillsDir(rootDir) {
       dir: entry,
       name: parsed.name || entry,
       description: parsed.description,
+      summary: parsed.summary,
       metadata: parsed.metadata,
     });
   }
@@ -498,12 +500,47 @@ export function buildSkillMap(rootDir) {
       return true;
     });
 
+    // Read importPatterns (optional — regex patterns matched against file content imports)
+    let importPatterns = meta.importPatterns !== undefined ? meta.importPatterns : [];
+    if (typeof importPatterns === "string") {
+      addWarning(
+        `skill "${skill.dir}": metadata.importPatterns is a string, coercing to array`,
+        { code: "COERCE_STRING_TO_ARRAY", skill: skill.dir, field: "importPatterns", valueType: "string", hint: "Change metadata.importPatterns to a YAML list" },
+      );
+      importPatterns = [importPatterns];
+    } else if (!Array.isArray(importPatterns)) {
+      addWarning(
+        `skill "${skill.dir}": metadata.importPatterns is not an array (${typeof importPatterns}), defaulting to []`,
+        { code: "INVALID_TYPE", skill: skill.dir, field: "importPatterns", valueType: typeof importPatterns, hint: "metadata.importPatterns must be an array of package name strings" },
+      );
+      importPatterns = [];
+    }
+    importPatterns = importPatterns.filter((p, i) => {
+      if (typeof p !== "string") {
+        addWarning(
+          `skill "${skill.dir}": metadata.importPatterns[${i}] is not a string (${typeof p}), removing`,
+          { code: "ENTRY_NOT_STRING", skill: skill.dir, field: `importPatterns[${i}]`, valueType: typeof p, hint: "Each importPatterns entry must be a string" },
+        );
+        return false;
+      }
+      if (p === "") {
+        addWarning(
+          `skill "${skill.dir}": metadata.importPatterns[${i}] is empty, removing`,
+          { code: "ENTRY_EMPTY", skill: skill.dir, field: `importPatterns[${i}]`, valueType: "string", hint: "Remove empty entries from metadata.importPatterns" },
+        );
+        return false;
+      }
+      return true;
+    });
+
     // Key by directory name — the canonical identity of a skill.
     // Frontmatter `name` may differ; directory name is authoritative.
     skills[skill.dir] = {
       priority: meta.priority ?? 5,
+      summary: skill.summary || "",
       pathPatterns,
       bashPatterns,
+      importPatterns,
     };
   }
 
@@ -519,7 +556,7 @@ export function buildSkillMap(rootDir) {
 // Shared skill-map validator / normalizer
 // ---------------------------------------------------------------------------
 
-const KNOWN_KEYS = new Set(["priority", "pathPatterns", "bashPatterns"]);
+const KNOWN_KEYS = new Set(["priority", "summary", "pathPatterns", "bashPatterns", "importPatterns"]);
 
 /**
  * Validate and normalize a skill-map object (as produced by buildSkillMap).
@@ -662,7 +699,39 @@ export function validateSkillMap(raw) {
       }
     }
 
-    normalizedSkills[skill] = { priority, pathPatterns, bashPatterns };
+    // Normalize importPatterns
+    let importPatterns = [];
+    if ("importPatterns" in config) {
+      if (!Array.isArray(config.importPatterns)) {
+        addWarning(
+          `skill "${skill}": importPatterns is not an array, defaulting to []`,
+          { code: "INVALID_TYPE", skill, field: "importPatterns", valueType: typeof config.importPatterns, hint: "importPatterns must be an array of package name strings" },
+        );
+      } else {
+        importPatterns = config.importPatterns.filter((p, i) => {
+          if (typeof p !== "string") {
+            addWarning(
+              `skill "${skill}": importPatterns[${i}] is not a string, removing`,
+              { code: "ENTRY_NOT_STRING", skill, field: `importPatterns[${i}]`, valueType: typeof p, hint: "Each importPatterns entry must be a string" },
+            );
+            return false;
+          }
+          if (p === "") {
+            addWarning(
+              `skill "${skill}": importPatterns[${i}] is empty, removing`,
+              { code: "ENTRY_EMPTY", skill, field: `importPatterns[${i}]`, valueType: "string", hint: "Remove empty entries from importPatterns" },
+            );
+            return false;
+          }
+          return true;
+        });
+      }
+    }
+
+    // Normalize summary (optional string, default "")
+    const summary = typeof config.summary === "string" ? config.summary : "";
+
+    normalizedSkills[skill] = { priority, summary, pathPatterns, bashPatterns, importPatterns };
   }
 
   if (errors.length > 0) {

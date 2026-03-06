@@ -163,12 +163,21 @@ export function getDb() {
 }
 ```
 
-**Drizzle Kit migrations**: `drizzle-kit` does NOT auto-load `.env.local`. Source env vars manually:
+**WARNING: Do NOT use JavaScript `Proxy` wrappers around the DB client.** A common pattern is wrapping `db` in a `Proxy` for lazy initialization. This breaks libraries like NextAuth/Auth.js that inspect the DB adapter object (e.g., checking method existence, iterating properties). The Proxy intercepts those checks and breaks the auth request chain, causing hangs with no error. Use a plain `getDb()` function or a simple module-level lazy `let` instead.
+
+**Drizzle Kit migrations**: `drizzle-kit` and `tsx` do NOT auto-load `.env.local`. Source env vars manually or use `dotenv`:
 
 ```bash
-# Load .env.local before running drizzle-kit
+# Option 1: Source env vars before running
 source <(grep -v '^#' .env.local | sed 's/^/export /') && npx drizzle-kit push
+
+# Option 2: Use dotenv-cli (recommended for scripts)
+npm install -D dotenv-cli
+npx dotenv -e .env.local -- npx drizzle-kit push
+npx dotenv -e .env.local -- npx tsx scripts/seed.ts
 ```
+
+This applies to any Node script that needs Vercel-provisioned env vars — only Next.js auto-loads `.env.local`.
 
 Install via Vercel Marketplace for automatic environment variable provisioning.
 

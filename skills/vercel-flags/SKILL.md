@@ -195,7 +195,7 @@ export function createExampleAdapter() {
 
 ## Key Features
 
-- **Unified Dashboard**: All flags across all providers in one place
+- **Unified Dashboard** at `https://vercel.com/{team}/{project}/flags`: All flags across all providers in one place
 - **Flags Explorer**: Override flags locally via Vercel Toolbar (no code changes)
 - **Entities & Segments**: Define user/team attributes, create reusable targeting segments
 - **Analytics Integration**: Track flag impact via Web Analytics and Runtime Logs

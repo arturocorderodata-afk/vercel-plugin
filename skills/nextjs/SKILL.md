@@ -164,6 +164,24 @@ export const config = { matcher: ['/dashboard/:path*'] }
 3. **Turbopack is top-level config**: Move from `experimental.turbopack` to `turbopack` in `next.config`
 4. **View Transitions**: Built-in support for animating elements across navigations
 
+## React 19 Gotchas
+
+### `useRef()` Requires an Initial Value
+
+React 19 strict mode enforces that `useRef()` must be called with an explicit initial value. Omitting it causes a type error or runtime warning:
+
+```tsx
+// WRONG — React 19 strict mode complains
+const ref = useRef()       // ❌ missing initial value
+const ref = useRef<HTMLDivElement>()  // ❌ still missing
+
+// CORRECT
+const ref = useRef<HTMLDivElement>(null)  // ✅
+const ref = useRef(0)                     // ✅
+```
+
+This affects all `useRef` calls in client components. The fix is always to pass an explicit initial value (usually `null` for DOM refs).
+
 ## Rendering Strategy Decision
 
 | Strategy | When to Use |

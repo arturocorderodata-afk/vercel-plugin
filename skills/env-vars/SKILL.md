@@ -173,6 +173,35 @@ Preview environment variables can be scoped to specific Git branches:
 echo "staging-value" | vercel env add DATABASE_URL preview --git-branch=staging
 ```
 
+## Gotchas
+
+### `vercel env pull` Overwrites Custom Variables
+
+`vercel env pull .env.local` **replaces the entire file** — any manually added variables (custom secrets, local overrides, debug flags) are lost. Always back up or re-add custom vars after pulling:
+
+```bash
+# Save custom vars before pulling
+grep -v '^#' .env.local | grep -v '^VERCEL_\|^POSTGRES_\|^NEXT_PUBLIC_' > .env.custom.bak
+vercel env pull .env.local --yes
+cat .env.custom.bak >> .env.local  # Re-append custom vars
+```
+
+Or maintain custom vars in a separate `.env.development.local` file (loaded after `.env.local` by Next.js).
+
+### Scripts Don't Auto-Load `.env.local`
+
+Only Next.js auto-loads `.env.local`. Standalone scripts (`drizzle-kit`, `tsx`, custom Node scripts) need explicit loading:
+
+```bash
+# Use dotenv-cli
+npm install -D dotenv-cli
+npx dotenv -e .env.local -- npx drizzle-kit push
+npx dotenv -e .env.local -- npx tsx scripts/seed.ts
+
+# Or source manually
+source <(grep -v '^#' .env.local | sed 's/^/export /') && node scripts/migrate.js
+```
+
 ## Best Practices
 
 1. **Use `vercel env pull` as part of your setup workflow** — document it in your README
@@ -181,6 +210,7 @@ echo "staging-value" | vercel env add DATABASE_URL preview --git-branch=staging
 4. **Rotate OIDC tokens regularly in local dev** — re-pull when you see auth errors
 5. **Use `.env.example`** — commit a template with empty values so teammates know which vars are needed
 6. **Prefix client-side vars with `NEXT_PUBLIC_`** — and never put secrets in them
+7. **Keep custom vars in `.env.development.local`** — protects them from `vercel env pull` overwrites
 
 ## Official Documentation
 

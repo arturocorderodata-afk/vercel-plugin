@@ -278,6 +278,28 @@ npx shadcn@latest build
 npx shadcn@latest add https://your-domain.com/r/my-component.json
 ```
 
+## Component Gotchas
+
+### Avatar Has No `size` Prop
+
+The shadcn Avatar component does **not** accept a `size` variant prop. Control size with Tailwind classes:
+
+```tsx
+// WRONG — no size variant exists
+<Avatar size="lg" />  // ❌ TypeScript error / silently ignored
+
+// CORRECT — use Tailwind
+<Avatar className="h-12 w-12">
+  <AvatarImage src={user.image} />
+  <AvatarFallback>JD</AvatarFallback>
+</Avatar>
+
+// Small avatar
+<Avatar className="h-6 w-6"> ... </Avatar>
+```
+
+This applies to most shadcn components — they use Tailwind classes for sizing, not variant props. If you need reusable size variants, add them yourself via `cva` in the component source.
+
 ## Common Patterns
 
 ### cn() Utility

@@ -81,10 +81,37 @@ export function appendSeenSkill(envValue, skill) {
 // ---------------------------------------------------------------------------
 
 /**
+ * @typedef {Object} SkillEntry
+ * Canonical skill-map entry shape. The only recognized pattern keys are
+ * `pathPatterns` (glob strings), `bashPatterns` (regex strings), and
+ * `importPatterns` (package name strings matched against file imports).
+ * Deprecated aliases `filePattern` / `bashPattern` are normalized to
+ * canonical names by the compat shim in `buildSkillMap()`.
+ * @property {number} priority  — Higher wins during ranking (default 5).
+ * @property {string[]} pathPatterns — Glob patterns matched against file paths.
+ * @property {string[]} bashPatterns — Regex patterns matched against bash commands.
+ * @property {string[]} importPatterns — Package names matched against file imports/requires.
+ */
+
+/**
+ * @typedef {Object} CompiledSkillEntry
+ * Runtime form of a SkillEntry with precompiled regexes.
+ * @property {string} skill
+ * @property {number} priority
+ * @property {string[]} pathPatterns
+ * @property {RegExp[]} pathRegexes
+ * @property {string[]} bashPatterns
+ * @property {RegExp[]} bashRegexes
+ * @property {string[]} importPatterns
+ * @property {RegExp[]} importRegexes
+ * @property {number} [effectivePriority] — Set by vercel.json key-aware routing.
+ */
+
+/**
  * Compile a skill map into entries with precompiled regexes.
- * @param {Record<string, { priority: number, pathPatterns: string[], bashPatterns: string[] }>} skillMap
+ * @param {Record<string, SkillEntry>} skillMap
  * @param {{ onPathGlobError?: (skill: string, pattern: string, err: Error) => void, onBashRegexError?: (skill: string, pattern: string, err: Error) => void }} [callbacks]
- * @returns {Array<{ skill: string, priority: number, pathPatterns: string[], pathRegexes: RegExp[], bashPatterns: string[], bashRegexes: RegExp[] }>}
+ * @returns {CompiledSkillEntry[]}
  */
 export function compileSkillPatterns(skillMap, callbacks) {
   const cb = callbacks || {};
@@ -105,7 +132,54 @@ export function compileSkillPatterns(skillMap, callbacks) {
         return null;
       }
     }).filter(Boolean),
+    importPatterns: config.importPatterns || [],
+    importRegexes: (config.importPatterns || []).map((p) => {
+      try { return importPatternToRegex(p); } catch (err) {
+        if (cb.onImportPatternError) cb.onImportPatternError(skill, p, err);
+        return null;
+      }
+    }).filter(Boolean),
   }));
+}
+
+/**
+ * Convert an import pattern (package name, possibly with wildcard) to a regex
+ * that matches ESM import/require statements in file content.
+ * Supports patterns like "ai", "@ai-sdk/*", "@vercel/oidc".
+ * The wildcard * matches any sub-path segment.
+ * @param {string} pattern  Package name or scoped package pattern
+ * @returns {RegExp}
+ */
+export function importPatternToRegex(pattern) {
+  if (typeof pattern !== "string") {
+    throw new TypeError(`importPatternToRegex: expected string, got ${typeof pattern}`);
+  }
+  if (pattern === "") {
+    throw new Error("importPatternToRegex: pattern must not be empty");
+  }
+  // Escape regex metacharacters, then replace * with [^'"]*
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^'\"]*");
+  // Match: import ... from 'pattern' | require('pattern') | import('pattern')
+  // Also matches sub-paths like '@ai-sdk/gateway/foo'
+  return new RegExp(`(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['"]${escaped}(?:/[^'"]*)?['"]`, "m");
+}
+
+/**
+ * Match file content against precompiled import regexes, returning the first
+ * matching pattern and match type, or null.
+ * @param {string} content  File content to search for imports
+ * @param {RegExp[]} regexes  Precompiled import regexes
+ * @param {string[]} patterns  Original import pattern strings
+ * @returns {{ pattern: string, matchType: string } | null}
+ */
+export function matchImportWithReason(content, regexes, patterns) {
+  if (!content || regexes.length === 0) return null;
+  for (let idx = 0; idx < regexes.length; idx++) {
+    if (regexes[idx].test(content)) {
+      return { pattern: patterns[idx], matchType: "import" };
+    }
+  }
+  return null;
 }
 
 /**

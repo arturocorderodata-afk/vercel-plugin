@@ -468,7 +468,8 @@ describe("skill-map from frontmatter", () => {
     for (const [skill, config] of Object.entries(map.skills) as [string, any][]) {
       const pathCount = (config.pathPatterns || []).length;
       const bashCount = (config.bashPatterns || []).length;
-      if (pathCount === 0 && bashCount === 0) noTriggers.push(skill);
+      const importCount = (config.importPatterns || []).length;
+      if (pathCount === 0 && bashCount === 0 && importCount === 0) noTriggers.push(skill);
     }
     expect(noTriggers).toEqual([]);
   });
@@ -1621,6 +1622,189 @@ describe("injection byte budget", () => {
   });
 });
 
+describe("sectional injection (summary fallback)", () => {
+  function createTempPlugin(skills: Array<{ name: string; summary?: string; body: string; patterns: string[] }>) {
+    const tempRoot = join(tmpdir(), `vp-test-sectional-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const tempHooksDir = join(tempRoot, "hooks");
+    const tempSkillsDir = join(tempRoot, "skills");
+    mkdirSync(tempHooksDir, { recursive: true });
+    mkdirSync(tempSkillsDir, { recursive: true });
+
+    // Copy hook modules
+    for (const mod of ["pretooluse-skill-inject.mjs", "skill-map-frontmatter.mjs", "patterns.mjs", "vercel-config.mjs", "logger.mjs"]) {
+      writeFileSync(
+        join(tempHooksDir, mod),
+        readFileSync(join(ROOT, "hooks", mod), "utf-8"),
+      );
+    }
+    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
+
+    // Create skills
+    for (const skill of skills) {
+      const skillDir = join(tempSkillsDir, skill.name);
+      mkdirSync(skillDir, { recursive: true });
+      const summaryLine = skill.summary ? `summary: '${skill.summary}'\n` : "";
+      const patterns = skill.patterns.map((p) => `    - '${p}'`).join("\n");
+      writeFileSync(
+        join(skillDir, "SKILL.md"),
+        `---\nname: ${skill.name}\n${summaryLine}description: Test skill\nmetadata:\n  priority: 5\n  pathPatterns:\n${patterns}\n  bashPatterns: []\n---\n${skill.body}`,
+      );
+    }
+
+    return { tempRoot, tempHooksDir, cleanup: () => rmSync(tempRoot, { recursive: true, force: true }) };
+  }
+
+  async function runTempHook(
+    tempHooksDir: string,
+    input: object,
+    env: Record<string, string>,
+  ) {
+    const payload = JSON.stringify({ ...input, session_id: `test-${Date.now()}` });
+    const proc = Bun.spawn(["node", join(tempHooksDir, "pretooluse-skill-inject.mjs")], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, ...env },
+    });
+    proc.stdin.write(payload);
+    proc.stdin.end();
+    const code = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    return { code, stdout };
+  }
+
+  test("skills without summary are dropped by budget as before", async () => {
+    // Create 2 skills with large bodies, no summaries
+    const bigBody = "X".repeat(5000);
+    const { tempHooksDir, cleanup } = createTempPlugin([
+      { name: "skill-a", body: bigBody, patterns: ["src/**"] },
+      { name: "skill-b", body: bigBody, patterns: ["src/**"] },
+    ]);
+
+    const { code, stdout } = await runTempHook(
+      tempHooksDir,
+      { tool_name: "Read", tool_input: { file_path: "/project/src/index.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "6000" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    // First skill always allowed, second dropped by budget
+    expect(si.injectedSkills.length).toBe(1);
+    expect(si.droppedByBudget.length).toBe(1);
+    expect(si.summaryOnly).toEqual([]);
+
+    cleanup();
+  });
+
+  test("summary is injected when full body exceeds budget", async () => {
+    // skill-a: large body, no summary → always gets full injection (first skill)
+    // skill-b: large body + short summary → should get summary fallback
+    const bigBody = "X".repeat(5000);
+    const { tempHooksDir, cleanup } = createTempPlugin([
+      { name: "skill-a", body: bigBody, patterns: ["src/**"] },
+      { name: "skill-b", summary: "Short summary for skill-b.", body: bigBody, patterns: ["src/**"] },
+    ]);
+
+    const { code, stdout } = await runTempHook(
+      tempHooksDir,
+      { tool_name: "Read", tool_input: { file_path: "/project/src/index.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "6000" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    // Both skills should be injected
+    expect(si.injectedSkills.length).toBe(2);
+    expect(si.summaryOnly).toContain("skill-b");
+    expect(si.droppedByBudget.length).toBe(0);
+    // The context should contain the summary marker
+    expect(result.hookSpecificOutput.additionalContext).toContain("mode:summary");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Short summary for skill-b.");
+
+    cleanup();
+  });
+
+  test("summary also dropped when it exceeds remaining budget", async () => {
+    // skill-a: large body (first, always allowed)
+    // skill-b: large body + large summary → both exceed budget
+    const bigBody = "X".repeat(5000);
+    const bigSummary = "Y".repeat(5000);
+    const { tempHooksDir, cleanup } = createTempPlugin([
+      { name: "skill-a", body: bigBody, patterns: ["src/**"] },
+      { name: "skill-b", summary: bigSummary, body: bigBody, patterns: ["src/**"] },
+    ]);
+
+    const { code, stdout } = await runTempHook(
+      tempHooksDir,
+      { tool_name: "Read", tool_input: { file_path: "/project/src/index.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "6000" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    expect(si.injectedSkills.length).toBe(1);
+    expect(si.droppedByBudget.length).toBe(1);
+    expect(si.summaryOnly).toEqual([]);
+
+    cleanup();
+  });
+
+  test("total injected bytes stay within budget with summary fallback", async () => {
+    const bigBody = "X".repeat(4000);
+    const shortSummary = "Brief help for this skill.";
+    const { tempHooksDir, cleanup } = createTempPlugin([
+      { name: "skill-a", body: bigBody, patterns: ["src/**"] },
+      { name: "skill-b", summary: shortSummary, body: bigBody, patterns: ["src/**"] },
+      { name: "skill-c", summary: shortSummary, body: bigBody, patterns: ["src/**"] },
+    ]);
+
+    const budget = 5000;
+    const { code, stdout } = await runTempHook(
+      tempHooksDir,
+      { tool_name: "Read", tool_input: { file_path: "/project/src/index.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: String(budget) },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const ctx = result.hookSpecificOutput?.additionalContext || "";
+    // Total bytes must not exceed budget (first skill exempted, but subsequent ones
+    // including summaries should keep total within budget)
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    // All injected + summaryOnly + dropped should account for all matched
+    expect(si.injectedSkills.length + si.droppedByCap.length + si.droppedByBudget.length).toBe(
+      si.matchedSkills.length,
+    );
+
+    cleanup();
+  });
+
+  test("summaryOnly array in skillInjection metadata", async () => {
+    const bigBody = "X".repeat(5000);
+    const { tempHooksDir, cleanup } = createTempPlugin([
+      { name: "skill-a", body: bigBody, patterns: ["src/**"] },
+      { name: "skill-b", summary: "A brief summary.", body: bigBody, patterns: ["src/**"] },
+    ]);
+
+    const { code, stdout } = await runTempHook(
+      tempHooksDir,
+      { tool_name: "Read", tool_input: { file_path: "/project/src/index.ts" } },
+      { VERCEL_PLUGIN_HOOK_DEDUP: "off", VERCEL_PLUGIN_INJECTION_BUDGET: "6000" },
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = result.hookSpecificOutput?.skillInjection;
+    expect(si).toBeDefined();
+    expect(Array.isArray(si.summaryOnly)).toBe(true);
+
+    cleanup();
+  });
+});
+
 describe("per-phase timing_ms (debug mode)", () => {
   test("complete event includes timing_ms with required phase keys", async () => {
     const { stderr } = await runHookDebug({
@@ -1814,7 +1998,7 @@ describe("invalid glob pattern handling", () => {
     );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
-    // Skill with a __THROW__ filePattern that will trigger the patched globToRegex to throw
+    // Skill with a __THROW__ pathPattern that will trigger the patched globToRegex to throw
     const badSkillDir = join(tempRoot, "skills", "bad-glob-skill");
     mkdirSync(badSkillDir, { recursive: true });
     writeFileSync(
@@ -3118,6 +3302,267 @@ describe("debug mode tool-target redaction", () => {
     );
     // stderr should be empty (no debug output)
     expect(stderr.trim()).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Import matching — importPatterns trigger skills from file content
+// ---------------------------------------------------------------------------
+
+describe("import matching", () => {
+  test("Edit with @ai-sdk/gateway import in old_string triggers ai-gateway skill", async () => {
+    const { code, stdout } = await runHook({
+      tool_name: "Edit",
+      tool_input: {
+        file_path: "/Users/me/project/src/utils/models.ts",
+        old_string: `import { gateway } from '@ai-sdk/gateway';\nconst g = gateway("openai/gpt-4o");`,
+        new_string: `import { gateway } from '@ai-sdk/gateway';\nconst g = gateway("anthropic/claude-sonnet-4-5-20250514");`,
+      },
+    });
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-gateway");
+  });
+
+  test("Write with ai import in content triggers ai-sdk skill", async () => {
+    const { code, stdout } = await runHook({
+      tool_name: "Write",
+      tool_input: {
+        file_path: "/Users/me/project/src/helpers/generate.ts",
+        content: `import { generateText } from 'ai';\n\nexport async function gen() { return generateText({ model: 'gpt-4o', prompt: 'hi' }); }`,
+      },
+    });
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-sdk");
+  });
+
+  test("Edit with require('@ai-sdk/gateway') triggers ai-gateway skill", async () => {
+    const { code, stdout } = await runHook({
+      tool_name: "Edit",
+      tool_input: {
+        file_path: "/Users/me/project/src/config.js",
+        old_string: `const { gateway } = require('@ai-sdk/gateway');`,
+        new_string: `const { gateway } = require('@ai-sdk/gateway');\nconst model = gateway("openai/gpt-4o");`,
+      },
+    });
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-gateway");
+  });
+
+  test("Edit without import content does not trigger import-based skill", async () => {
+    const { code, stdout } = await runHook({
+      tool_name: "Edit",
+      tool_input: {
+        file_path: "/Users/me/project/src/utils/helpers.ts",
+        old_string: "const x = 1;",
+        new_string: "const x = 2;",
+      },
+    });
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result).toEqual({});
+  });
+
+  test("Read tool does not trigger import matching (no file content in input)", async () => {
+    const { code, stdout } = await runHook({
+      tool_name: "Read",
+      tool_input: {
+        file_path: "/Users/me/project/src/utils/models.ts",
+      },
+    });
+    expect(code).toBe(0);
+    // Read has no content in tool_input, so import matching should not fire
+    const result = JSON.parse(stdout);
+    expect(result).toEqual({});
+  });
+
+  test("path match takes precedence over import match (no double injection)", async () => {
+    // app/api/chat/route.ts matches ai-sdk by path pattern — import matching
+    // should not cause it to be added twice
+    const { code, stdout } = await runHook({
+      tool_name: "Edit",
+      tool_input: {
+        file_path: "/Users/me/project/app/api/chat/route.ts",
+        old_string: `import { generateText } from 'ai';`,
+        new_string: `import { streamText } from 'ai';`,
+      },
+    });
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+    // ai-sdk should appear exactly once (matched by path, not duplicated by import)
+    const context = result.hookSpecificOutput.additionalContext;
+    const aiSdkMatches = context.match(/<!-- skill:ai-sdk -->/g) || [];
+    expect(aiSdkMatches.length).toBe(1);
+  });
+
+  test("import match reason has matchType 'import'", async () => {
+    const { stderr } = await runHookEnv(
+      {
+        tool_name: "Write",
+        tool_input: {
+          file_path: "/Users/me/project/src/gateway-config.ts",
+          content: `import { gateway } from '@ai-sdk/gateway';\nexport const gw = gateway("openai/gpt-4o");`,
+        },
+      },
+      { VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+    );
+    const lines = stderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const matchesFound = lines.find((l: any) => l.event === "matches-found");
+    expect(matchesFound).toBeDefined();
+    expect(matchesFound.reasons).toBeDefined();
+    // ai-gateway should have matchType "import"
+    expect(matchesFound.reasons["ai-gateway"]).toBeDefined();
+    expect(matchesFound.reasons["ai-gateway"].matchType).toBe("import");
+  });
+
+  test("Write with @ai-sdk/react sub-path import triggers ai-sdk skill", async () => {
+    const { code, stdout } = await runHook({
+      tool_name: "Write",
+      tool_input: {
+        file_path: "/Users/me/project/src/hooks/use-chat.ts",
+        content: `import { useChat } from '@ai-sdk/react';\n\nexport function ChatHook() { return useChat(); }`,
+      },
+    });
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-sdk");
+  });
+
+  test("dynamic import() triggers import matching", async () => {
+    const { code, stdout } = await runHook({
+      tool_name: "Write",
+      tool_input: {
+        file_path: "/Users/me/project/src/lazy.ts",
+        content: `const mod = await import('@ai-sdk/gateway');\nconst gw = mod.gateway("openai/gpt-4o");`,
+      },
+    });
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-gateway");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// importPatternToRegex unit tests
+// ---------------------------------------------------------------------------
+
+describe("importPatternToRegex", () => {
+  let importPatternToRegex: (pattern: string) => RegExp;
+
+  beforeEach(async () => {
+    const mod = await import("../hooks/patterns.mjs");
+    importPatternToRegex = mod.importPatternToRegex;
+  });
+
+  test("matches ESM import from 'ai'", () => {
+    const re = importPatternToRegex("ai");
+    expect(re.test(`import { generateText } from 'ai'`)).toBe(true);
+  });
+
+  test("matches ESM import from \"ai\"", () => {
+    const re = importPatternToRegex("ai");
+    expect(re.test(`import { generateText } from "ai"`)).toBe(true);
+  });
+
+  test("matches require('ai')", () => {
+    const re = importPatternToRegex("ai");
+    expect(re.test(`const { generateText } = require('ai')`)).toBe(true);
+  });
+
+  test("matches scoped package @ai-sdk/gateway", () => {
+    const re = importPatternToRegex("@ai-sdk/gateway");
+    expect(re.test(`import { gateway } from '@ai-sdk/gateway'`)).toBe(true);
+  });
+
+  test("matches sub-path import @ai-sdk/gateway/foo", () => {
+    const re = importPatternToRegex("@ai-sdk/gateway");
+    expect(re.test(`import { thing } from '@ai-sdk/gateway/providers'`)).toBe(true);
+  });
+
+  test("wildcard pattern @ai-sdk/* matches @ai-sdk/react", () => {
+    const re = importPatternToRegex("@ai-sdk/*");
+    expect(re.test(`import { useChat } from '@ai-sdk/react'`)).toBe(true);
+  });
+
+  test("wildcard pattern @ai-sdk/* matches @ai-sdk/gateway", () => {
+    const re = importPatternToRegex("@ai-sdk/*");
+    expect(re.test(`import { gateway } from '@ai-sdk/gateway'`)).toBe(true);
+  });
+
+  test("does not match partial package name", () => {
+    const re = importPatternToRegex("ai");
+    // 'ai-sdk' is a different package — should not match 'ai' pattern
+    expect(re.test(`import { thing } from 'ai-sdk'`)).toBe(false);
+  });
+
+  test("matches dynamic import()", () => {
+    const re = importPatternToRegex("@ai-sdk/gateway");
+    expect(re.test(`const mod = await import('@ai-sdk/gateway')`)).toBe(true);
+  });
+
+  test("throws on empty string", () => {
+    expect(() => importPatternToRegex("")).toThrow("pattern must not be empty");
+  });
+
+  test("throws on non-string input", () => {
+    expect(() => (importPatternToRegex as any)(42)).toThrow("expected string");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchImportWithReason unit tests
+// ---------------------------------------------------------------------------
+
+describe("matchImportWithReason", () => {
+  let matchImportWithReason: any;
+  let importPatternToRegex: any;
+
+  beforeEach(async () => {
+    const mod = await import("../hooks/patterns.mjs");
+    matchImportWithReason = mod.matchImportWithReason;
+    importPatternToRegex = mod.importPatternToRegex;
+  });
+
+  test("returns match with matchType 'import' for matching content", () => {
+    const patterns = ["@ai-sdk/gateway"];
+    const regexes = patterns.map(importPatternToRegex);
+    const content = `import { gateway } from '@ai-sdk/gateway';\nconst g = gateway("openai/gpt-4o");`;
+    const result = matchImportWithReason(content, regexes, patterns);
+    expect(result).toEqual({ pattern: "@ai-sdk/gateway", matchType: "import" });
+  });
+
+  test("returns null for non-matching content", () => {
+    const patterns = ["@ai-sdk/gateway"];
+    const regexes = patterns.map(importPatternToRegex);
+    const content = `const x = 1;\nconst y = 2;`;
+    const result = matchImportWithReason(content, regexes, patterns);
+    expect(result).toBeNull();
+  });
+
+  test("returns null for empty content", () => {
+    const patterns = ["@ai-sdk/gateway"];
+    const regexes = patterns.map(importPatternToRegex);
+    expect(matchImportWithReason("", regexes, patterns)).toBeNull();
+  });
+
+  test("returns null for empty regexes", () => {
+    expect(matchImportWithReason("import { x } from 'ai'", [], [])).toBeNull();
+  });
+
+  test("returns first matching pattern", () => {
+    const patterns = ["ai", "@ai-sdk/gateway"];
+    const regexes = patterns.map(importPatternToRegex);
+    const content = `import { generateText } from 'ai';\nimport { gateway } from '@ai-sdk/gateway';`;
+    const result = matchImportWithReason(content, regexes, patterns);
+    expect(result).toEqual({ pattern: "ai", matchType: "import" });
   });
 });
 

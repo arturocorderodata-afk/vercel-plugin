@@ -63,6 +63,8 @@ vercel integration add datadog       # Observability (auto-configures drain)
 
 When you install a Marketplace integration, Vercel automatically provisions the required environment variables for all linked projects.
 
+**IMPORTANT: Provisioning delay after install.** After installing a database integration (especially Neon), the resource may take **1–3 minutes** to fully provision. During this window, connection attempts return HTTP 500 errors. Do NOT debug the connection string or code — just wait and retry. Run `vercel env pull .env.local --yes` after a brief wait to get the finalized credentials.
+
 ```bash
 # View environment variables added by integrations
 vercel env ls

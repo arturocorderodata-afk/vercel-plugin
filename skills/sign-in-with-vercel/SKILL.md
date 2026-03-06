@@ -40,7 +40,7 @@ Sign in with Vercel lets users log in to your application using their **Vercel a
 
 ## Configuration
 
-1. Register your app in the Vercel Dashboard
+1. Register your app at `https://vercel.com/dashboard/{team}/integrations/console` (the Integrations Console). Click **Create Integration** → fill in the OAuth details → note the Client ID and Client Secret.
 2. Configure redirect URIs and scopes
 3. Use any standard OAuth 2.0 client library (no Vercel-specific SDK required)
 

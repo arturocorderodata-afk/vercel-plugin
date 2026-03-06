@@ -4,7 +4,10 @@ description: v0 by Vercel expert guidance. Use when discussing AI code generatio
 metadata:
   priority: 5
   pathPatterns: []
-  bashPatterns: 
+  importPatterns:
+    - '@v0/sdk'
+    - 'v0'
+  bashPatterns:
     - '\bnpx\s+v0\b'
     - '\bbunx\s+v0\b'
     - '\bv0\s+(generate|dev|chat)\b'

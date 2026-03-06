@@ -16,7 +16,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkCoverage, type CoverageResult } from "./coverage-baseline";
 import { extractFrontmatter, parseSkillFrontmatter, buildSkillMap, validateSkillMap } from "../hooks/skill-map-frontmatter.mjs";
-import { globToRegex } from "../hooks/patterns.mjs";
+import { globToRegex, importPatternToRegex } from "../hooks/patterns.mjs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -315,6 +315,13 @@ async function validateSkillFrontmatter(): Promise<void> {
         file: `skills/${skillName}/SKILL.md`,
         line: 1,
         hint: d.hint || "Change metadata.bashPatterns to a YAML list (e.g., bashPatterns:\\n  - '\\\\bvercel\\\\b')",
+      });
+    } else if (d.field === "importPatterns" && (d.code === "INVALID_TYPE" || d.code === "COERCE_STRING_TO_ARRAY")) {
+      const suffix = d.code === "COERCE_STRING_TO_ARRAY" ? ", got string" : "";
+      fail("FM_IMPORTPATTERNS_TYPE", `skills/${skillName}/SKILL.md — metadata.importPatterns must be an array${suffix}`, {
+        file: `skills/${skillName}/SKILL.md`,
+        line: 1,
+        hint: d.hint || "Change metadata.importPatterns to a YAML list (e.g., importPatterns:\\n  - '@ai-sdk/gateway')",
       });
     } else if (d.code === "DEPRECATED_FIELD") {
       warn("FM_DEPRECATED_FIELD", `skills/${skillName}/SKILL.md — ${d.message}`, {
@@ -737,16 +744,17 @@ async function validatePreToolUseHook() {
     if (!fm) continue; // frontmatter presence already checked in section [2]
 
     const meta = fm.metadata ?? {};
-    const hasPathPatterns = (Array.isArray(meta.pathPatterns) && meta.pathPatterns.length > 0)
-      || (Array.isArray(meta.filePattern) && meta.filePattern.length > 0);
-    const hasBashPatterns = (Array.isArray(meta.bashPatterns) && meta.bashPatterns.length > 0)
-      || (Array.isArray(meta.bashPattern) && meta.bashPattern.length > 0);
+    // Check canonical names only — deprecated filePattern/bashPattern are
+    // normalized by buildSkillMap's compat shim and warned about in section [2].
+    const hasPathPatterns = Array.isArray(meta.pathPatterns) && meta.pathPatterns.length > 0;
+    const hasBashPatterns = Array.isArray(meta.bashPatterns) && meta.bashPatterns.length > 0;
+    const hasImportPatterns = Array.isArray(meta.importPatterns) && meta.importPatterns.length > 0;
 
-    if (!hasPathPatterns && !hasBashPatterns) {
+    if (!hasPathPatterns && !hasBashPatterns && !hasImportPatterns) {
       noTriggers.push(dir);
-      fail("SKILL_NO_TRIGGERS", `skills/${dir}/SKILL.md has no pathPatterns or bashPatterns in frontmatter metadata`, {
+      fail("SKILL_NO_TRIGGERS", `skills/${dir}/SKILL.md has no pathPatterns, bashPatterns, or importPatterns in frontmatter metadata`, {
         file: `skills/${dir}/SKILL.md`,
-        hint: `Add metadata.pathPatterns or metadata.bashPatterns to the YAML frontmatter`,
+        hint: `Add metadata.pathPatterns, metadata.bashPatterns, or metadata.importPatterns to the YAML frontmatter`,
       });
     }
   }
@@ -817,9 +825,9 @@ async function validatePatternCompilation() {
 
     const meta = fm.metadata ?? {};
 
-    // Compile pathPatterns via globToRegex (check canonical name first, fall back to deprecated filePattern)
-    const pathPatternsRaw: unknown[] = Array.isArray(meta.pathPatterns) ? meta.pathPatterns
-      : Array.isArray(meta.filePattern) ? meta.filePattern : [];
+    // Compile pathPatterns via globToRegex (canonical name only —
+    // deprecated filePattern is normalized by buildSkillMap's compat shim)
+    const pathPatternsRaw: unknown[] = Array.isArray(meta.pathPatterns) ? meta.pathPatterns : [];
     for (let idx = 0; idx < pathPatternsRaw.length; idx++) {
       const pat = pathPatternsRaw[idx];
       if (typeof pat !== "string") {
@@ -850,9 +858,9 @@ async function validatePatternCompilation() {
       }
     }
 
-    // Compile bashPatterns as RegExp (check canonical name first, fall back to deprecated bashPattern)
-    const bashPatternsRaw: unknown[] = Array.isArray(meta.bashPatterns) ? meta.bashPatterns
-      : Array.isArray(meta.bashPattern) ? meta.bashPattern : [];
+    // Compile bashPatterns as RegExp (canonical name only —
+    // deprecated bashPattern is normalized by buildSkillMap's compat shim)
+    const bashPatternsRaw: unknown[] = Array.isArray(meta.bashPatterns) ? meta.bashPatterns : [];
     for (let idx = 0; idx < bashPatternsRaw.length; idx++) {
       const pat = bashPatternsRaw[idx];
       if (typeof pat !== "string") {
@@ -893,12 +901,99 @@ async function validatePatternCompilation() {
         });
       }
     }
+
+    // Compile importPatterns via importPatternToRegex
+    const importPatternsRaw: unknown[] = Array.isArray(meta.importPatterns) ? meta.importPatterns : [];
+    for (let idx = 0; idx < importPatternsRaw.length; idx++) {
+      const pat = importPatternsRaw[idx];
+      if (typeof pat !== "string") {
+        failures++;
+        fail("PATTERN_IMPORT_COMPILE", `skills/${dir}/SKILL.md — importPatterns[${idx}] is not a string (${typeof pat})`, {
+          file: `skills/${dir}/SKILL.md`,
+          hint: "Each importPatterns entry must be a string package name",
+        });
+        continue;
+      }
+      if (pat === "") {
+        failures++;
+        fail("PATTERN_IMPORT_COMPILE", `skills/${dir}/SKILL.md — importPatterns[${idx}] is empty`, {
+          file: `skills/${dir}/SKILL.md`,
+          hint: "Remove empty entries from metadata.importPatterns",
+        });
+        continue;
+      }
+      try {
+        importPatternToRegex(pat);
+        compiled++;
+      } catch (err: any) {
+        failures++;
+        fail("PATTERN_IMPORT_COMPILE", `skills/${dir}/SKILL.md — importPatterns "${pat}" failed to compile: ${err.message}`, {
+          file: `skills/${dir}/SKILL.md`,
+          hint: "Fix the import pattern in metadata.importPatterns",
+        });
+      }
+    }
   }
 
   if (failures === 0 && redosWarnings === 0 && compiled > 0) {
     pass(`All ${compiled} patterns compiled successfully (no ReDoS risks detected)`);
   } else if (failures === 0 && redosWarnings > 0 && compiled > 0) {
     pass(`All ${compiled} patterns compiled, but ${redosWarnings} ReDoS warning(s)`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 10. Validate skill catalog is not stale vs skills/ directory
+// ---------------------------------------------------------------------------
+
+async function validateCatalogStaleness() {
+  section("[10] Skill catalog staleness");
+
+  const catalogPath = join(ROOT, "generated", "skill-catalog.md");
+  if (!(await exists(catalogPath))) {
+    fail("CATALOG_MISSING", "generated/skill-catalog.md not found", {
+      file: "generated/skill-catalog.md",
+      hint: "Run: bun run scripts/generate-catalog.ts",
+    });
+    return;
+  }
+
+  const catalog = await readFile(catalogPath, "utf-8");
+
+  // Extract skill slugs from the catalog Skill Index table only
+  // The table starts after "## Skill Index" and ends before the next "##" heading
+  const indexMatch = catalog.match(/## Skill Index\n[\s\S]*?\n\|[-|\s]+\|\n([\s\S]*?)(?:\n##|\n$)/);
+  const indexSection = indexMatch ? indexMatch[1] : "";
+  const catalogSlugs = new Set(
+    [...indexSection.matchAll(/^\| `([^`]+)` \|/gm)].map((m) => m[1]),
+  );
+
+  // Get current skills from the skills/ directory
+  const skillsDir = join(ROOT, "skills");
+  const built = buildSkillMap(skillsDir);
+  const currentSlugs = new Set(Object.keys(built.skills));
+
+  // Check for missing skills (in skills/ but not in catalog)
+  const missing = [...currentSlugs].filter((s) => !catalogSlugs.has(s));
+  // Check for stale skills (in catalog but not in skills/)
+  const stale = [...catalogSlugs].filter((s) => !currentSlugs.has(s));
+
+  if (missing.length > 0) {
+    fail("CATALOG_STALE", `Skill catalog is missing ${missing.length} skill(s): ${missing.join(", ")}`, {
+      file: "generated/skill-catalog.md",
+      hint: "Run: bun run scripts/generate-catalog.ts to regenerate",
+    });
+  }
+
+  if (stale.length > 0) {
+    fail("CATALOG_STALE", `Skill catalog has ${stale.length} stale skill(s) no longer in skills/: ${stale.join(", ")}`, {
+      file: "generated/skill-catalog.md",
+      hint: "Run: bun run scripts/generate-catalog.ts to regenerate",
+    });
+  }
+
+  if (missing.length === 0 && stale.length === 0) {
+    pass(`Skill catalog lists all ${currentSlugs.size} skills (up to date)`);
   }
 }
 
@@ -917,6 +1012,7 @@ const CHECK_LABELS: Record<string, string> = {
   cliBannedPatterns: "CLI banned-pattern scan",
   preToolUseHook: "PreToolUse hook and skill coverage",
   patternCompilation: "Pattern compilation",
+  catalogStaleness: "Skill catalog staleness",
 };
 
 async function timed<T>(name: string, fn: () => Promise<T>): Promise<T> {
@@ -954,6 +1050,7 @@ async function main() {
   await timed("cliBannedPatterns", () => validateCliBannedPatterns());
   await timed("preToolUseHook", () => validatePreToolUseHook());
   await timed("patternCompilation", () => validatePatternCompilation());
+  await timed("catalogStaleness", () => validateCatalogStaleness());
 
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const warnCount = issues.filter((i) => i.severity === "warning").length;

@@ -637,7 +637,7 @@ Declaratively define firewall rules in `vercel.json` using the `mitigate` key:
 }
 ```
 
-Supported actions in `vercel.json`: `"challenge"`, `"deny"` only. Rate limiting, `log`, and `bypass` require the dashboard or API.
+Supported actions in `vercel.json`: `"challenge"`, `"deny"` only. Rate limiting, `log`, and `bypass` require the Vercel Firewall dashboard at `https://vercel.com/{team}/{project}/firewall` or the REST API.
 
 ## Attack Challenge Mode
 
@@ -646,7 +646,7 @@ Supported actions in `vercel.json`: `"challenge"`, `"deny"` only. Rate limiting,
 - Legitimate bots (Googlebot, webhook providers) automatically pass through
 - Internal Function-to-Function calls within the same account bypass automatically
 - Blocked requests don't count toward CDN/traffic usage
-- Configured via dashboard only: Project → Firewall → Bot Management → Attack Challenge Mode
+- Configured via dashboard only: open `https://vercel.com/{team}/{project}/firewall` → **Bot Management** → **Attack Challenge Mode**
 
 ## Plan Availability
 

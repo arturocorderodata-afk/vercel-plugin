@@ -146,6 +146,25 @@ describe("parseSkillFrontmatter", () => {
     expect(result.metadata).toEqual({});
     expect(typeof result.metadata).toBe("object");
   });
+
+  test("parses summary field from frontmatter", () => {
+    const yamlStr = `name: test-skill\nsummary: A short summary of the skill.\nmetadata:\n  priority: 5\n  pathPatterns: []`;
+    const result = parseSkillFrontmatter(yamlStr);
+    expect(result.summary).toBe("A short summary of the skill.");
+  });
+
+  test("summary defaults to empty string when missing", () => {
+    const yamlStr = `name: no-summary\nmetadata:\n  pathPatterns: []`;
+    const result = parseSkillFrontmatter(yamlStr);
+    expect(result.summary).toBe("");
+  });
+
+  test("non-string summary defaults to empty string", () => {
+    const yamlStr = `name: bad-summary\nsummary: 42\nmetadata:\n  pathPatterns: []`;
+    const result = parseSkillFrontmatter(yamlStr);
+    // 42 is parsed as a number by the YAML parser, so summary becomes ""
+    expect(result.summary).toBe("");
+  });
 });
 
 // ─── scanSkillsDir ────────────────────────────────────────────────
@@ -430,6 +449,37 @@ describe("buildSkillMap", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  test("summary field is propagated to skill map entry", () => {
+    const tmp = join(tmpdir(), `skill-summary-${Date.now()}`);
+    const skillDir = join(tmp, "summary-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      `---\nname: summary-skill\nsummary: This skill provides X guidance.\ndescription: Full description\nmetadata:\n  priority: 5\n  pathPatterns:\n    - 'src/**'\n  bashPatterns: []\n---\n# Test`,
+    );
+
+    const map = buildSkillMap(tmp);
+    expect(map.skills["summary-skill"]).toBeDefined();
+    expect(map.skills["summary-skill"].summary).toBe("This skill provides X guidance.");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("missing summary defaults to empty string in skill map", () => {
+    const tmp = join(tmpdir(), `skill-no-summary-${Date.now()}`);
+    const skillDir = join(tmp, "no-summary-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      `---\nname: no-summary-skill\ndescription: No summary\nmetadata:\n  priority: 3\n  pathPatterns:\n    - 'lib/**'\n  bashPatterns: []\n---\n# Test`,
+    );
+
+    const map = buildSkillMap(tmp);
+    expect(map.skills["no-summary-skill"].summary).toBe("");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   test("blank/missing frontmatter name falls back to directory name as key", () => {
     const tmp = join(tmpdir(), `skill-no-name-${Date.now()}`);
     const skillDir = join(tmp, "unnamed-skill");
@@ -487,7 +537,7 @@ describe("buildSkillMap — BOM and metadata edge cases", () => {
   });
 
   test("leading whitespace before --- fence results in fallback (no frontmatter)", () => {
-    const content = "  ---\nname: ws-skill\ndescription: whitespace\nmetadata:\n  filePattern:\n    - 'src/**'\n---\n# Test";
+    const content = "  ---\nname: ws-skill\ndescription: whitespace\nmetadata:\n  pathPatterns:\n    - 'src/**'\n---\n# Test";
     const map = buildWithContent("ws-skill", content);
     // Leading whitespace means no frontmatter is parsed → name falls back to dir
     expect(map.skills["ws-skill"]).toBeDefined();
@@ -495,6 +545,60 @@ describe("buildSkillMap — BOM and metadata edge cases", () => {
     expect(map.skills["ws-skill"].pathPatterns).toEqual([]);
     expect(map.skills["ws-skill"].bashPatterns).toEqual([]);
     expect(map.skills["ws-skill"].priority).toBe(5);
+  });
+});
+
+// ─── Deprecated key compat shim (filePattern → pathPatterns, bashPattern → bashPatterns) ─
+
+describe("buildSkillMap — deprecated key compat", () => {
+  function buildWithFrontmatter(metadata: string) {
+    const tmp = join(tmpdir(), `skill-compat-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const skillDir = join(tmp, "compat-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      `---\nname: compat-skill\ndescription: test deprecated keys\nmetadata:\n${metadata}\n---\n# Test`,
+    );
+    const result = buildSkillMap(tmp);
+    rmSync(tmp, { recursive: true, force: true });
+    return result;
+  }
+
+  test("filePattern is normalized to pathPatterns with DEPRECATED_FIELD warning", () => {
+    const map = buildWithFrontmatter("  filePattern:\n    - 'src/**'\n  bashPatterns: []");
+    const skill = map.skills["compat-skill"];
+    expect(skill).toBeDefined();
+    expect(skill.pathPatterns).toEqual(["src/**"]);
+    // Should emit a deprecation warning
+    expect(map.warnings.some((w: string) => w.includes("filePattern") && w.includes("deprecated"))).toBe(true);
+    const detail = map.warningDetails.find((d: any) => d.code === "DEPRECATED_FIELD" && d.field === "filePattern");
+    expect(detail).toBeDefined();
+    expect(detail.skill).toBe("compat-skill");
+  });
+
+  test("bashPattern is normalized to bashPatterns with DEPRECATED_FIELD warning", () => {
+    const map = buildWithFrontmatter("  pathPatterns: []\n  bashPattern:\n    - '\\bmy-cmd\\b'");
+    const skill = map.skills["compat-skill"];
+    expect(skill).toBeDefined();
+    expect(skill.bashPatterns).toEqual(["\\bmy-cmd\\b"]);
+    expect(map.warnings.some((w: string) => w.includes("bashPattern") && w.includes("deprecated"))).toBe(true);
+    const detail = map.warningDetails.find((d: any) => d.code === "DEPRECATED_FIELD" && d.field === "bashPattern");
+    expect(detail).toBeDefined();
+  });
+
+  test("canonical pathPatterns takes precedence over deprecated filePattern", () => {
+    const map = buildWithFrontmatter("  pathPatterns:\n    - 'canonical/**'\n  filePattern:\n    - 'deprecated/**'\n  bashPatterns: []");
+    const skill = map.skills["compat-skill"];
+    expect(skill.pathPatterns).toEqual(["canonical/**"]);
+    // No deprecation warning since canonical is present
+    expect(map.warnings.some((w: string) => w.includes("filePattern"))).toBe(false);
+  });
+
+  test("canonical bashPatterns takes precedence over deprecated bashPattern", () => {
+    const map = buildWithFrontmatter("  pathPatterns: []\n  bashPatterns:\n    - '\\bcanonical\\b'\n  bashPattern:\n    - '\\bdeprecated\\b'");
+    const skill = map.skills["compat-skill"];
+    expect(skill.bashPatterns).toEqual(["\\bcanonical\\b"]);
+    expect(map.warnings.some((w: string) => w.includes("bashPattern") && w.includes("deprecated"))).toBe(false);
   });
 });
 
@@ -665,6 +769,30 @@ describe("validateSkillMap — structured errorDetails and warningDetails", () =
     });
     expect(result.ok).toBe(true);
     expect(result.warningDetails.length).toBe(result.warnings.length);
+  });
+
+  test("summary field is preserved through validateSkillMap", () => {
+    const result = validateSkillMap({
+      skills: { "s1": { priority: 5, summary: "Short summary.", pathPatterns: [], bashPatterns: [] } },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.normalizedSkillMap.skills["s1"].summary).toBe("Short summary.");
+  });
+
+  test("summary is not a known key warning (recognized field)", () => {
+    const result = validateSkillMap({
+      skills: { "s1": { priority: 5, summary: "A summary", pathPatterns: [], bashPatterns: [] } },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.warnings.length).toBe(0);
+  });
+
+  test("non-string summary defaults to empty string", () => {
+    const result = validateSkillMap({
+      skills: { "s1": { priority: 5, summary: 42, pathPatterns: [], bashPatterns: [] } },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.normalizedSkillMap.skills["s1"].summary).toBe("");
   });
 
   test("config not object produces CONFIG_NOT_OBJECT errorDetail", () => {

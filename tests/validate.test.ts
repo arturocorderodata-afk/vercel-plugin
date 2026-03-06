@@ -531,11 +531,11 @@ describe("validate.ts — focused frontmatter validation", () => {
     });
   }, 30_000);
 
-  test("bashPattern with nested quantifiers produces PATTERN_BASH_REDOS", async () => {
+  test("bashPatterns with nested quantifiers produces PATTERN_BASH_REDOS", async () => {
     await withTempSkill("zzz-test-redos-pattern", [
       "---",
       "name: redos-pattern",
-      "description: bashPattern with catastrophic backtracking",
+      "description: bashPatterns with catastrophic backtracking",
       "metadata:",
       "  pathPatterns:",
       "    - '**/*.ts'",
@@ -555,6 +555,91 @@ describe("validate.ts — focused frontmatter validation", () => {
       expect(issue.hint).toMatch(/rewrite/i);
     });
   }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// Catalog staleness tests
+// ---------------------------------------------------------------------------
+
+describe("validate.ts — catalog staleness", () => {
+  test("generate-catalog.ts runs successfully", async () => {
+    const proc = Bun.spawn(
+      ["bun", "run", join(ROOT, "scripts", "generate-catalog.ts")],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const code = await proc.exited;
+    if (code !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      console.error(stderr);
+    }
+    expect(code).toBe(0);
+    expect(await exists(join(ROOT, "generated", "skill-catalog.md"))).toBe(true);
+  }, 30_000);
+
+  test("generated catalog lists every skill from skills/ directory", async () => {
+    // First regenerate to ensure freshness
+    const gen = Bun.spawn(
+      ["bun", "run", join(ROOT, "scripts", "generate-catalog.ts")],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    await gen.exited;
+
+    const catalog = await readFile(join(ROOT, "generated", "skill-catalog.md"), "utf-8");
+    const skillsDir = join(ROOT, "skills");
+    const dirs = await readdir(skillsDir);
+    const skillDirs: string[] = [];
+    for (const dir of dirs) {
+      if (await exists(join(skillsDir, dir, "SKILL.md"))) {
+        skillDirs.push(dir);
+      }
+    }
+
+    // Every skill directory should appear in the catalog
+    for (const dir of skillDirs) {
+      expect(catalog).toContain(`\`${dir}\``);
+    }
+  }, 30_000);
+
+  test("generated catalog contains overlap matrix sections", async () => {
+    const catalog = await readFile(join(ROOT, "generated", "skill-catalog.md"), "utf-8");
+    expect(catalog).toContain("## Path Overlap Matrix");
+    expect(catalog).toContain("## Bash Overlap Matrix");
+    expect(catalog).toContain("## Skills by Priority");
+  });
+
+  test("stale catalog (missing skill) triggers CATALOG_STALE in validation", async () => {
+    // Create a temp skill that won't be in the existing catalog
+    await withTempSkill("zzz-test-catalog-stale", [
+      "---",
+      "name: catalog-stale-test",
+      "description: test catalog staleness detection",
+      "metadata:",
+      "  pathPatterns:",
+      "    - '**/*.test-catalog-stale'",
+      "---",
+      "# Stale catalog test",
+    ].join("\n"), async () => {
+      // Do NOT regenerate the catalog — it should be stale now
+      const { code, report } = await runValidateJson();
+      expect(code).not.toBe(0);
+
+      const issue = report.issues.find(
+        (i: any) => i.code === "CATALOG_STALE" && i.message.includes("zzz-test-catalog-stale"),
+      );
+      expect(issue).toBeDefined();
+      expect(issue.hint).toMatch(/generate-catalog/);
+    });
+  }, 30_000);
+
+  test("catalog overlap matrix detects vercel.json contention", async () => {
+    const catalog = await readFile(join(ROOT, "generated", "skill-catalog.md"), "utf-8");
+    // vercel.json should have multiple competing skills
+    const vercelJsonRow = catalog.match(/^\| `vercel\.json` \| (.+) \|$/m);
+    expect(vercelJsonRow).not.toBeNull();
+    // Should list at least 3 skills competing on vercel.json
+    const skills = vercelJsonRow![1].split(",");
+    expect(skills.length).toBeGreaterThanOrEqual(3);
+  });
 });
 
 // ---------------------------------------------------------------------------

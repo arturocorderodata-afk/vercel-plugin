@@ -21,7 +21,7 @@ import { readFileSync, realpathSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSkillMap, validateSkillMap } from "./skill-map-frontmatter.mjs";
-import { globToRegex, parseSeenSkills, appendSeenSkill, compileSkillPatterns, matchPathWithReason, matchBashWithReason, rankEntries } from "./patterns.mjs";
+import { globToRegex, parseSeenSkills, appendSeenSkill, compileSkillPatterns, matchPathWithReason, matchBashWithReason, matchImportWithReason, rankEntries } from "./patterns.mjs";
 import { resolveVercelJsonSkills, isVercelJsonPath, VERCEL_JSON_SKILLS } from "./vercel-config.mjs";
 import { createLogger } from "./logger.mjs";
 
@@ -179,6 +179,9 @@ export function loadSkills(pluginRoot, logger) {
     onBashRegexError(skill, p, err) {
       l.issue("BASH_REGEX_INVALID", `Invalid bash regex pattern in skill "${skill}": ${p}`, `Fix or remove the invalid bashPatterns entry in skills/${skill}/SKILL.md frontmatter`, { skill, pattern: p, error: String(err) });
     },
+    onImportPatternError(skill, p, err) {
+      l.issue("IMPORT_PATTERN_INVALID", `Invalid import pattern in skill "${skill}": ${p}`, `Fix or remove the invalid importPatterns entry in skills/${skill}/SKILL.md frontmatter`, { skill, pattern: p, error: String(err) });
+    },
   });
 
   return { skillMap, compiledSkills, usedManifest };
@@ -210,6 +213,13 @@ export function matchSkills(toolName, toolInput, compiledSkills, logger) {
 
   if (["Read", "Edit", "Write"].includes(toolName)) {
     const filePath = toolInput.file_path || "";
+    // Gather available file content from tool input for import matching
+    const contentParts = [];
+    if (toolInput.content) contentParts.push(toolInput.content);
+    if (toolInput.old_string) contentParts.push(toolInput.old_string);
+    if (toolInput.new_string) contentParts.push(toolInput.new_string);
+    const fileContent = contentParts.join("\n");
+
     for (const entry of compiledSkills) {
       l.trace("pattern-eval-start", { skill: entry.skill, target: filePath, patternCount: entry.pathPatterns.length });
       const reason = matchPathWithReason(filePath, entry.pathRegexes, entry.pathPatterns);
@@ -217,6 +227,14 @@ export function matchSkills(toolName, toolInput, compiledSkills, logger) {
       if (reason) {
         matchedEntries.push(entry);
         matchReasons[entry.skill] = reason;
+      } else if (fileContent && entry.importRegexes && entry.importRegexes.length > 0) {
+        // Fall back to import matching when path matching produces no hit
+        const importReason = matchImportWithReason(fileContent, entry.importRegexes, entry.importPatterns);
+        l.trace("import-eval-result", { skill: entry.skill, matched: !!importReason, reason: importReason || null });
+        if (importReason) {
+          matchedEntries.push(entry);
+          matchReasons[entry.skill] = importReason;
+        }
       }
     }
   } else if (toolName === "Bash") {
@@ -309,6 +327,7 @@ export function deduplicateSkills({ matchedEntries, matched, toolName, toolInput
 /**
  * Load SKILL.md files for the ranked skills, enforcing byte budget and MAX_SKILLS ceiling.
  * Skills are loaded in priority order until the next would exceed the budget or the ceiling.
+ * When a full body would exceed the budget but a summary exists, the summary is injected instead.
  * @param {string[]} rankedSkills - Skill slugs in priority order (all candidates)
  * @param {object} [options]
  * @param {string} [options.pluginRoot] - Plugin root directory
@@ -316,17 +335,19 @@ export function deduplicateSkills({ matchedEntries, matched, toolName, toolInput
  * @param {Set} [options.injectedSkills] - Mutable set to track injected skills
  * @param {number} [options.budgetBytes] - Injection byte budget (defaults to getInjectionBudget())
  * @param {number} [options.maxSkills] - Hard ceiling on skill count (defaults to MAX_SKILLS)
+ * @param {object} [options.skillMap] - Skill map with summary fields (used for sectional injection)
  * @param {object} [options.logger] - Logger instance
- * @returns {{ parts: string[], loaded: string[], droppedByCap: string[], droppedByBudget: string[] }}
+ * @returns {{ parts: string[], loaded: string[], summaryOnly: string[], droppedByCap: string[], droppedByBudget: string[] }}
  */
 export function injectSkills(rankedSkills, options) {
-  const { pluginRoot, hasEnvDedup, injectedSkills, budgetBytes, maxSkills, logger } = options || {};
+  const { pluginRoot, hasEnvDedup, injectedSkills, budgetBytes, maxSkills, skillMap, logger } = options || {};
   const root = pluginRoot || PLUGIN_ROOT;
   const l = logger || log;
   const budget = budgetBytes ?? getInjectionBudget();
   const ceiling = maxSkills ?? MAX_SKILLS;
   const parts = [];
   const loaded = [];
+  const summaryOnly = [];
   const droppedByCap = [];
   const droppedByBudget = [];
   let usedBytes = 0;
@@ -350,8 +371,28 @@ export function injectSkills(rankedSkills, options) {
     const wrapped = `<!-- skill:${skill} -->\n${content}\n<!-- /skill:${skill} -->`;
     const byteLen = Buffer.byteLength(wrapped, "utf-8");
 
-    // Budget check: always allow the first skill, then enforce budget
+    // Budget check: always allow the first skill full body, then enforce budget
     if (loaded.length > 0 && usedBytes + byteLen > budget) {
+      // Try summary fallback if available
+      const summary = skillMap?.[skill]?.summary;
+      if (summary) {
+        const summaryWrapped = `<!-- skill:${skill} mode:summary -->\n${summary}\n<!-- /skill:${skill} -->`;
+        const summaryByteLen = Buffer.byteLength(summaryWrapped, "utf-8");
+        if (usedBytes + summaryByteLen <= budget) {
+          parts.push(summaryWrapped);
+          loaded.push(skill);
+          summaryOnly.push(skill);
+          usedBytes += summaryByteLen;
+          if (injectedSkills) injectedSkills.add(skill);
+          if (hasEnvDedup) {
+            process.env.VERCEL_PLUGIN_SEEN_SKILLS = appendSeenSkill(
+              process.env.VERCEL_PLUGIN_SEEN_SKILLS, skill
+            );
+          }
+          l.debug("summary-fallback", { skill, fullBytes: byteLen, summaryBytes: summaryByteLen });
+          continue;
+        }
+      }
       droppedByBudget.push(skill);
       continue;
     }
@@ -367,21 +408,22 @@ export function injectSkills(rankedSkills, options) {
     }
   }
 
-  if (droppedByCap.length > 0 || droppedByBudget.length > 0) {
+  if (droppedByCap.length > 0 || droppedByBudget.length > 0 || summaryOnly.length > 0) {
     l.debug("cap-applied", {
       max: ceiling,
       budgetBytes: budget,
       usedBytes,
       totalCandidates: rankedSkills.length,
-      selected: loaded.map((s) => ({ skill: s })),
+      selected: loaded.map((s) => ({ skill: s, mode: summaryOnly.includes(s) ? "summary" : "full" })),
       droppedByCap,
       droppedByBudget,
+      summaryOnly,
     });
   }
 
-  l.debug("skills-injected", { injected: loaded, totalParts: parts.length, usedBytes, budgetBytes: budget });
+  l.debug("skills-injected", { injected: loaded, summaryOnly, totalParts: parts.length, usedBytes, budgetBytes: budget });
 
-  return { parts, loaded, droppedByCap, droppedByBudget };
+  return { parts, loaded, summaryOnly, droppedByCap, droppedByBudget };
 }
 
 // ---------------------------------------------------------------------------
@@ -400,7 +442,7 @@ export function injectSkills(rankedSkills, options) {
  * @param {string} params.toolTarget - Tool target (file path or command)
  * @returns {string} JSON string to write to stdout
  */
-export function formatOutput({ parts, matched, injectedSkills, droppedByCap, droppedByBudget, toolName, toolTarget }) {
+export function formatOutput({ parts, matched, injectedSkills, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget }) {
   if (parts.length === 0) {
     return "{}";
   }
@@ -411,6 +453,7 @@ export function formatOutput({ parts, matched, injectedSkills, droppedByCap, dro
     toolTarget: toolName === "Bash" ? redactCommand(toolTarget) : toolTarget,
     matchedSkills: [...matched],
     injectedSkills,
+    summaryOnly: summaryOnly || [],
     droppedByCap,
     droppedByBudget: droppedByBudget || [],
   };
@@ -492,10 +535,11 @@ function run() {
 
   // Stage 5: injectSkills (enforces byte budget + MAX_SKILLS ceiling)
   let tSkillRead = log.active ? log.now() : 0;
-  const { parts, loaded, droppedByCap, droppedByBudget } = injectSkills(rankedSkills, {
+  const { parts, loaded, summaryOnly, droppedByCap, droppedByBudget } = injectSkills(rankedSkills, {
     pluginRoot: PLUGIN_ROOT,
     hasEnvDedup,
     injectedSkills,
+    skillMap: skills.skillMap,
     logger: log,
   });
   if (log.active) timing.skill_read = Math.round(log.now() - tSkillRead);
@@ -520,7 +564,7 @@ function run() {
   }, log.active ? timing : null);
 
   // Stage 6: formatOutput
-  return formatOutput({ parts, matched, injectedSkills: loaded, droppedByCap, droppedByBudget, toolName, toolTarget });
+  return formatOutput({ parts, matched, injectedSkills: loaded, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget });
 }
 
 // ---------------------------------------------------------------------------

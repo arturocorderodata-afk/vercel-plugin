@@ -27,6 +27,9 @@ metadata:
     - 'apps/*/src/app/api/completion/**'
     - 'apps/*/lib/ai/**'
     - 'apps/*/src/lib/ai/**'
+  importPatterns:
+    - 'ai'
+    - '@ai-sdk/*'
   bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*\bai\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*\bai\b'
@@ -426,6 +429,25 @@ npx @ai-sdk/devtools
 7. **Use the Agent class** for multi-step reasoning — not manual loops
 8. **Use DurableAgent** (from Workflow DevKit) for production agents that must survive crashes
 9. **Use `mcp-to-ai-sdk`** to generate static tool definitions from MCP servers for security
+
+## Common Pitfall: Structured Output Property Name
+
+In v6, `generateText` with `Output.object()` returns the parsed result on the **`output`** property (NOT `object`):
+
+```ts
+// CORRECT — v6
+const { output } = await generateText({
+  model: gateway('openai/gpt-5.2'),
+  output: Output.object({ schema: mySchema }),
+  prompt: '...',
+})
+console.log(output) // ✅ parsed object
+
+// WRONG — v5 habit
+const { object } = await generateText({ ... }) // ❌ undefined — `object` doesn't exist in v6
+```
+
+This is one of the most common v5→v6 migration mistakes. The config key is `output` and the result key is also `output`.
 
 ## Migration from AI SDK 5
 
