@@ -54,6 +54,51 @@ const PACKAGE_MARKERS = {
   "turbo": ["turborepo"],
 };
 
+const SETUP_ENV_TEMPLATE_FILES = [
+  ".env.example",
+  ".env.sample",
+  ".env.template",
+];
+
+const SETUP_DB_SCRIPT_MARKERS = [
+  "db:push",
+  "db:seed",
+  "db:migrate",
+  "db:generate",
+];
+
+const SETUP_AUTH_DEPENDENCIES = new Set([
+  "next-auth",
+  "@auth/core",
+  "better-auth",
+]);
+
+const SETUP_RESOURCE_DEPENDENCIES = {
+  "@neondatabase/serverless": "postgres",
+  "drizzle-orm": "postgres",
+  "@upstash/redis": "redis",
+  "@vercel/blob": "blob",
+  "@vercel/edge-config": "edge-config",
+};
+
+const SETUP_MODE_THRESHOLD = 3;
+
+/**
+ * Safely parse package.json from project root.
+ *
+ * @param {string} projectRoot
+ * @returns {Record<string, any> | null}
+ */
+function readPackageJson(projectRoot) {
+  const pkgPath = join(projectRoot, "package.json");
+  if (!existsSync(pkgPath)) return null;
+  try {
+    return JSON.parse(readFileSync(pkgPath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Scan a project root and return a deduplicated, sorted list of likely skill slugs.
  * @param {string} projectRoot
@@ -70,21 +115,16 @@ export function profileProject(projectRoot) {
   }
 
   // 2. Check package.json dependencies
-  const pkgPath = join(projectRoot, "package.json");
-  if (existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-      const allDeps = {
-        ...(pkg.dependencies || {}),
-        ...(pkg.devDependencies || {}),
-      };
-      for (const [dep, skillSlugs] of Object.entries(PACKAGE_MARKERS)) {
-        if (dep in allDeps) {
-          for (const s of skillSlugs) skills.add(s);
-        }
+  const pkg = readPackageJson(projectRoot);
+  if (pkg) {
+    const allDeps = {
+      ...(pkg.dependencies || {}),
+      ...(pkg.devDependencies || {}),
+    };
+    for (const [dep, skillSlugs] of Object.entries(PACKAGE_MARKERS)) {
+      if (dep in allDeps) {
+        for (const s of skillSlugs) skills.add(s);
       }
-    } catch {
-      // Malformed package.json — skip silently
     }
   }
 
@@ -104,6 +144,83 @@ export function profileProject(projectRoot) {
   }
 
   return [...skills].sort();
+}
+
+/**
+ * Detect bootstrap/setup signals and infer likely resource categories.
+ *
+ * @param {string} projectRoot
+ * @returns {{ bootstrapHints: string[], resourceHints: string[], setupMode: boolean }}
+ */
+export function profileBootstrapSignals(projectRoot) {
+  const bootstrapHints = new Set();
+  const resourceHints = new Set();
+
+  // Env template signals
+  if (SETUP_ENV_TEMPLATE_FILES.some((file) => existsSync(join(projectRoot, file)))) {
+    bootstrapHints.add("env-example");
+  }
+
+  // README* signal
+  try {
+    const dirents = readdirSync(projectRoot, { withFileTypes: true });
+    if (dirents.some((d) => d.isFile() && d.name.toLowerCase().startsWith("readme"))) {
+      bootstrapHints.add("readme");
+    }
+    if (dirents.some((d) => d.isFile() && /^drizzle\.config\./i.test(d.name))) {
+      bootstrapHints.add("drizzle-config");
+      bootstrapHints.add("postgres");
+      resourceHints.add("postgres");
+    }
+  } catch {
+    // Ignore unreadable project roots
+  }
+
+  // Prisma schema signal
+  if (existsSync(join(projectRoot, "prisma", "schema.prisma"))) {
+    bootstrapHints.add("prisma-schema");
+    bootstrapHints.add("postgres");
+    resourceHints.add("postgres");
+  }
+
+  // package.json scripts + dependencies signals
+  const pkg = readPackageJson(projectRoot);
+  if (pkg) {
+    const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
+    const scriptEntries = Object.entries(scripts)
+      .map(([name, cmd]) => `${name} ${typeof cmd === "string" ? cmd : ""}`)
+      .join("\n");
+
+    for (const marker of SETUP_DB_SCRIPT_MARKERS) {
+      if (scriptEntries.includes(marker)) {
+        bootstrapHints.add(marker.replace(":", "-"));
+      }
+    }
+
+    const allDeps = {
+      ...(pkg.dependencies || {}),
+      ...(pkg.devDependencies || {}),
+    };
+
+    for (const dep of Object.keys(allDeps)) {
+      const resource = SETUP_RESOURCE_DEPENDENCIES[dep];
+      if (resource) {
+        bootstrapHints.add(resource);
+        resourceHints.add(resource);
+      }
+      if (SETUP_AUTH_DEPENDENCIES.has(dep)) {
+        bootstrapHints.add("auth-secret");
+      }
+    }
+  }
+
+  const hints = [...bootstrapHints].sort();
+  const resources = [...resourceHints].sort();
+  return {
+    bootstrapHints: hints,
+    resourceHints: resources,
+    setupMode: hints.length >= SETUP_MODE_THRESHOLD,
+  };
 }
 
 /**
@@ -164,15 +281,27 @@ function main() {
   }
 
   const likelySkills = profileProject(projectRoot);
-
-  if (likelySkills.length === 0) {
-    process.exit(0);
-  }
-
-  const value = likelySkills.join(",");
+  const setupSignals = profileBootstrapSignals(projectRoot);
 
   try {
-    appendFileSync(envFile, `export VERCEL_PLUGIN_LIKELY_SKILLS="${value}"\n`);
+    if (likelySkills.length > 0) {
+      appendFileSync(envFile, `export VERCEL_PLUGIN_LIKELY_SKILLS="${likelySkills.join(",")}"\n`);
+    }
+    if (setupSignals.bootstrapHints.length > 0) {
+      appendFileSync(
+        envFile,
+        `export VERCEL_PLUGIN_BOOTSTRAP_HINTS="${setupSignals.bootstrapHints.join(",")}"\n`,
+      );
+    }
+    if (setupSignals.resourceHints.length > 0) {
+      appendFileSync(
+        envFile,
+        `export VERCEL_PLUGIN_RESOURCE_HINTS="${setupSignals.resourceHints.join(",")}"\n`,
+      );
+    }
+    if (setupSignals.setupMode) {
+      appendFileSync(envFile, "export VERCEL_PLUGIN_SETUP_MODE=\"1\"\n");
+    }
   } catch {
     // Cannot write env file — exit silently
   }

@@ -54,6 +54,13 @@ function parseLikelySkills(envFileContent: string): string[] {
   return match[1].split(",").filter(Boolean);
 }
 
+function parseCsvEnvVar(envFileContent: string, key: string): string[] {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = envFileContent.match(new RegExp(`export ${escapedKey}="([^"]*)"`));
+  if (!match) return [];
+  return match[1].split(",").filter(Boolean);
+}
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -262,6 +269,77 @@ describe("session-start-profiler", () => {
     expect(result.code).toBe(0);
     const skills = parseLikelySkills(readFileSync(envFile, "utf-8"));
     expect(skills).toContain("env-vars");
+  });
+
+  test("detects setup signals and enables setup mode when threshold is met", async () => {
+    const projectDir = join(tempDir, "bootstrap-signals");
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, ".env.example"), "DATABASE_URL=");
+    writeFileSync(join(projectDir, "README.md"), "# Setup");
+    writeFileSync(join(projectDir, "drizzle.config.ts"), "export default {};");
+    mkdirSync(join(projectDir, "prisma"), { recursive: true });
+    writeFileSync(join(projectDir, "prisma", "schema.prisma"), "datasource db { provider = \"postgresql\" }");
+    writeFileSync(
+      join(projectDir, "package.json"),
+      JSON.stringify({
+        scripts: {
+          "db:push": "drizzle-kit push",
+          "db:seed": "tsx scripts/seed.ts",
+        },
+        dependencies: {
+          "@neondatabase/serverless": "^1.0.0",
+          "@upstash/redis": "^1.0.0",
+          "@vercel/blob": "^1.0.0",
+          "next-auth": "^5.0.0",
+        },
+      }),
+    );
+
+    const result = await runProfiler({
+      CLAUDE_ENV_FILE: envFile,
+      CLAUDE_PROJECT_ROOT: projectDir,
+    });
+
+    expect(result.code).toBe(0);
+    const content = readFileSync(envFile, "utf-8");
+    const bootstrapHints = parseCsvEnvVar(content, "VERCEL_PLUGIN_BOOTSTRAP_HINTS");
+    const resourceHints = parseCsvEnvVar(content, "VERCEL_PLUGIN_RESOURCE_HINTS");
+
+    expect(bootstrapHints).toContain("env-example");
+    expect(bootstrapHints).toContain("readme");
+    expect(bootstrapHints).toContain("drizzle-config");
+    expect(bootstrapHints).toContain("prisma-schema");
+    expect(bootstrapHints).toContain("db-push");
+    expect(bootstrapHints).toContain("db-seed");
+    expect(bootstrapHints).toContain("postgres");
+    expect(bootstrapHints).toContain("redis");
+    expect(bootstrapHints).toContain("blob");
+    expect(bootstrapHints).toContain("auth-secret");
+
+    expect(resourceHints).toContain("postgres");
+    expect(resourceHints).toContain("redis");
+    expect(resourceHints).toContain("blob");
+    expect(content).toContain('VERCEL_PLUGIN_SETUP_MODE="1"');
+  });
+
+  test("does not enable setup mode below threshold", async () => {
+    const projectDir = join(tempDir, "bootstrap-under-threshold");
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, ".env.example"), "FOO=bar");
+    writeFileSync(join(projectDir, "README.md"), "# Hello");
+
+    const result = await runProfiler({
+      CLAUDE_ENV_FILE: envFile,
+      CLAUDE_PROJECT_ROOT: projectDir,
+    });
+
+    expect(result.code).toBe(0);
+    const content = readFileSync(envFile, "utf-8");
+    const bootstrapHints = parseCsvEnvVar(content, "VERCEL_PLUGIN_BOOTSTRAP_HINTS");
+
+    expect(bootstrapHints).toEqual(["env-example", "readme"]);
+    expect(content).not.toContain("VERCEL_PLUGIN_SETUP_MODE");
+    expect(parseCsvEnvVar(content, "VERCEL_PLUGIN_RESOURCE_HINTS")).toEqual([]);
   });
 
   test("handles full Next.js + Turbo + AI stack", async () => {
@@ -503,6 +581,52 @@ describe("profileProject (unit)", () => {
     expect(result).toContain("turbopack");
     expect(result).toContain("turborepo");
     expect(result).toEqual([...result].sort());
+  });
+});
+
+describe("profileBootstrapSignals (unit)", () => {
+  test("collects script and dependency-derived hints", async () => {
+    const { profileBootstrapSignals } = await import("../hooks/session-start-profiler.mjs");
+    const projectDir = join(tempDir, "unit-bootstrap-signals");
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, ".env.sample"), "DATABASE_URL=");
+    writeFileSync(join(projectDir, "README.setup.md"), "# Setup");
+    writeFileSync(
+      join(projectDir, "package.json"),
+      JSON.stringify({
+        scripts: {
+          start: "npm run db:migrate",
+        },
+        dependencies: {
+          "@vercel/edge-config": "^1.0.0",
+          "@auth/core": "^1.0.0",
+        },
+      }),
+    );
+
+    const result = profileBootstrapSignals(projectDir);
+
+    expect(result.bootstrapHints).toContain("env-example");
+    expect(result.bootstrapHints).toContain("readme");
+    expect(result.bootstrapHints).toContain("db-migrate");
+    expect(result.bootstrapHints).toContain("edge-config");
+    expect(result.bootstrapHints).toContain("auth-secret");
+    expect(result.resourceHints).toContain("edge-config");
+    expect(result.setupMode).toBe(true);
+  });
+
+  test("handles malformed package.json without throwing", async () => {
+    const { profileBootstrapSignals } = await import("../hooks/session-start-profiler.mjs");
+    const projectDir = join(tempDir, "unit-bootstrap-bad-pkg");
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, "README.md"), "# Setup");
+    writeFileSync(join(projectDir, "package.json"), "{not valid json");
+
+    const result = profileBootstrapSignals(projectDir);
+
+    expect(result.bootstrapHints).toEqual(["readme"]);
+    expect(result.resourceHints).toEqual([]);
+    expect(result.setupMode).toBe(false);
   });
 });
 
