@@ -4,8 +4,5 @@
   "scripts": {
     "validate": "bun run scripts/validate.ts",
     "test": "bun test"
-  },
-  "dependencies": {
-    "js-yaml": "^4.1.1"
   }
 }
