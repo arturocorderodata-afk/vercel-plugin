@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "toolName": "Read",
+  "matchedSkills": [
+    "cron-jobs",
+    "deployments-cicd",
+    "routing-middleware",
+    "vercel-cli",
+    "vercel-functions"
+  ],
+  "injectedSkills": [
+    "vercel-functions",
+    "vercel-cli",
+    "cron-jobs"
+  ],
+  "droppedByCap": [
+    "deployments-cicd",
+    "routing-middleware"
+  ]
+}

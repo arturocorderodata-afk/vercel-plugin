@@ -1,7 +1,10 @@
 /**
- * Shared pattern utilities for converting glob patterns to RegExp.
- * Used by the PreToolUse hook and the validation script.
+ * Shared pattern utilities for converting glob patterns to RegExp,
+ * plus the canonical match/rank engine used by both the PreToolUse hook
+ * and the CLI explain command.
  */
+
+import { basename } from "node:path";
 
 /**
  * Convert a simple glob pattern to a regex.
@@ -71,4 +74,87 @@ export function appendSeenSkill(envValue, skill) {
   if (typeof skill !== "string" || skill.trim() === "") return envValue || "";
   const current = typeof envValue === "string" ? envValue.trim() : "";
   return current === "" ? skill : `${current},${skill}`;
+}
+
+// ---------------------------------------------------------------------------
+// Match engine — shared by pretooluse hook and CLI explain
+// ---------------------------------------------------------------------------
+
+/**
+ * Compile a skill map into entries with precompiled regexes.
+ * @param {Record<string, { priority: number, pathPatterns: string[], bashPatterns: string[] }>} skillMap
+ * @param {{ onPathGlobError?: (skill: string, pattern: string, err: Error) => void, onBashRegexError?: (skill: string, pattern: string, err: Error) => void }} [callbacks]
+ * @returns {Array<{ skill: string, priority: number, pathPatterns: string[], pathRegexes: RegExp[], bashPatterns: string[], bashRegexes: RegExp[] }>}
+ */
+export function compileSkillPatterns(skillMap, callbacks) {
+  const cb = callbacks || {};
+  return Object.entries(skillMap).map(([skill, config]) => ({
+    skill,
+    priority: typeof config.priority === "number" ? config.priority : 0,
+    pathPatterns: config.pathPatterns || [],
+    pathRegexes: (config.pathPatterns || []).map((p) => {
+      try { return globToRegex(p); } catch (err) {
+        if (cb.onPathGlobError) cb.onPathGlobError(skill, p, err);
+        return null;
+      }
+    }).filter(Boolean),
+    bashPatterns: config.bashPatterns || [],
+    bashRegexes: (config.bashPatterns || []).map((p) => {
+      try { return new RegExp(p); } catch (err) {
+        if (cb.onBashRegexError) cb.onBashRegexError(skill, p, err);
+        return null;
+      }
+    }).filter(Boolean),
+  }));
+}
+
+/**
+ * Match a file path against precompiled path regexes, returning the first
+ * matching pattern and match type, or null.
+ */
+export function matchPathWithReason(filePath, regexes, patterns) {
+  if (!filePath || regexes.length === 0) return null;
+
+  const normalized = filePath.replace(/\\/g, "/");
+
+  for (let idx = 0; idx < regexes.length; idx++) {
+    const regex = regexes[idx];
+    const pattern = patterns[idx];
+
+    if (regex.test(normalized)) return { pattern, matchType: "full" };
+
+    const base = basename(normalized);
+    if (regex.test(base)) return { pattern, matchType: "basename" };
+
+    const segments = normalized.split("/");
+    for (let i = 1; i < segments.length; i++) {
+      const suffix = segments.slice(-i).join("/");
+      if (regex.test(suffix)) return { pattern, matchType: "suffix" };
+    }
+  }
+  return null;
+}
+
+/**
+ * Match a bash command against precompiled bash regexes, returning the first
+ * matching pattern and match type, or null.
+ */
+export function matchBashWithReason(command, regexes, patterns) {
+  if (!command || regexes.length === 0) return null;
+  for (let idx = 0; idx < regexes.length; idx++) {
+    if (regexes[idx].test(command)) return { pattern: patterns[idx], matchType: "full" };
+  }
+  return null;
+}
+
+/**
+ * Sort compiled skill entries by effectivePriority (if set) or priority DESC,
+ * then skill name ASC.
+ */
+export function rankEntries(entries) {
+  return entries.slice().sort((a, b) => {
+    const aPri = typeof a.effectivePriority === "number" ? a.effectivePriority : a.priority;
+    const bPri = typeof b.effectivePriority === "number" ? b.effectivePriority : b.priority;
+    return (bPri - aPri) || a.skill.localeCompare(b.skill);
+  });
 }

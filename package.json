@@ -1,8 +1,14 @@
 {
   "name": "vercel-plugin",
   "private": true,
+  "bin": {
+    "vercel-plugin": "src/cli/index.ts"
+  },
   "scripts": {
+    "build:manifest": "bun run scripts/build-manifest.ts",
     "validate": "bun run scripts/validate.ts",
-    "test": "bun test"
+    "doctor": "bun run src/cli/index.ts doctor",
+    "test": "bun test",
+    "test:update-snapshots": "UPDATE_SNAPSHOTS=1 bun test tests/snapshot-runner.test.ts"
   }
 }

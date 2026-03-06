@@ -1,0 +1,64 @@
+# vercel-plugin Development Guide
+
+## Quick Reference
+
+- **Test**: `bun test` (runs all tests across 11 files)
+- **Single test file**: `bun test tests/<file>.test.ts`
+- **Validate skills**: `bun run scripts/validate.ts`
+
+## Architecture
+
+### Skill Injection Pipeline
+
+1. `session-start-seen-skills.sh` — runs on SessionStart, exports `VERCEL_PLUGIN_SEEN_SKILLS=""` into `CLAUDE_ENV_FILE`
+2. `pretooluse-skill-inject.mjs` — PreToolUse hook, matches tool calls to skills and injects SKILL.md content
+3. `skill-map-frontmatter.mjs` — parses SKILL.md frontmatter into the skill map
+4. `patterns.mjs` — glob-to-regex conversion and seen-skills env var helpers
+5. `vercel-config.mjs` — vercel.json key-aware skill routing
+6. `logger.mjs` — structured log levels (off/summary/debug/trace)
+
+### Dedup Contract (Canonical)
+
+Deduplication prevents the same skill from being injected twice in a session.
+
+**Mechanism**: Environment variable `VERCEL_PLUGIN_SEEN_SKILLS`
+
+- **Format**: Comma-delimited string of skill slugs (e.g., `"nextjs,turbopack,ai-sdk"`)
+- **Initialization**: `session-start-seen-skills.sh` appends `export VERCEL_PLUGIN_SEEN_SKILLS=""` to `CLAUDE_ENV_FILE`
+- **Read**: `parseSeenSkills(envValue)` in `patterns.mjs` splits on commas into a `Set`
+- **Write**: `appendSeenSkill(envValue, skill)` in `patterns.mjs` appends to the comma-delimited string
+- **Strategy detection** (debug mode):
+  - `"env-var"` — `VERCEL_PLUGIN_SEEN_SKILLS` is set (including empty string)
+  - `"memory-only"` — env var is not set; dedup only works within a single invocation
+  - `"disabled"` — `VERCEL_PLUGIN_HOOK_DEDUP=off`
+
+**There are no temp files for dedup.** All state lives in the env var.
+
+### YAML Parser
+
+The project uses an inline YAML parser (`parseSimpleYaml` in `skill-map-frontmatter.mjs`), not js-yaml. Key differences from js-yaml:
+
+- Bare `null` is parsed as the string `"null"`, not JavaScript `null`
+- Bare `true`/`false` are parsed as strings `"true"`/`"false"`, not booleans
+- Unclosed brackets `[` are treated as scalar strings, not parse errors
+- Tab indentation triggers an explicit error
+
+### Temp Dir Tests
+
+Tests that create temporary plugin directories must copy all hook modules:
+- `pretooluse-skill-inject.mjs`
+- `skill-map-frontmatter.mjs`
+- `patterns.mjs`
+- `vercel-config.mjs`
+- `logger.mjs`
+
+### Log Levels
+
+Set `VERCEL_PLUGIN_LOG_LEVEL` to control hook output verbosity (default: `off`):
+
+- **off** — no output (preserves existing behavior for users)
+- **summary** — outcome + latency + issues only
+- **debug** — adds match reasons, dedup info, skill map stats
+- **trace** — adds per-pattern evaluation details
+
+Legacy: `VERCEL_PLUGIN_DEBUG=1` or `VERCEL_PLUGIN_HOOK_DEBUG=1` maps to `debug` level. Explicit `LOG_LEVEL` takes precedence over legacy flags.

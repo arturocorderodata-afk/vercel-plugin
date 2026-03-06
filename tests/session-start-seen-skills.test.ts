@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const HOOKS_JSON = join(ROOT, "hooks", "hooks.json");
@@ -31,9 +31,9 @@ async function runSessionStart(env: Record<string, string | undefined>): Promise
   return { code, stdout, stderr };
 }
 
-async function resolveSeenSkillsPath(envFile: string): Promise<string> {
+async function resolveSeenSkillsValue(envFile: string): Promise<string | null> {
   const proc = Bun.spawn(
-    ["bash", "-lc", 'source "$TARGET_ENV_FILE"; printf "%s" "${VERCEL_PLUGIN_SEEN_SKILLS:-}"'],
+    ["bash", "-lc", 'source "$TARGET_ENV_FILE"; if [ -z "${VERCEL_PLUGIN_SEEN_SKILLS+x}" ]; then printf "UNSET"; else printf "%s" "$VERCEL_PLUGIN_SEEN_SKILLS"; fi'],
     {
       stdout: "pipe",
       stderr: "pipe",
@@ -45,7 +45,8 @@ async function resolveSeenSkillsPath(envFile: string): Promise<string> {
   );
 
   await proc.exited;
-  return (await new Response(proc.stdout).text()).trim();
+  const out = (await new Response(proc.stdout).text()).trim();
+  return out === "UNSET" ? null : out;
 }
 
 describe("session-start-seen-skills hook", () => {
@@ -82,14 +83,12 @@ describe("session-start-seen-skills hook", () => {
 
       const content = readFileSync(envFile, "utf-8");
       expect(content).toContain("export SEEDED=1\n");
-      expect(content).toMatch(/export VERCEL_PLUGIN_SEEN_SKILLS=.*/);
+      // Env-var based dedup: exports an empty comma-delimited string
+      expect(content).toMatch(/export VERCEL_PLUGIN_SEEN_SKILLS=""/);
 
-      const seenSkillsPath = await resolveSeenSkillsPath(envFile);
-      expect(seenSkillsPath.length).toBeGreaterThan(0);
-      expect(existsSync(seenSkillsPath)).toBe(true);
-      expect(basename(seenSkillsPath)).toMatch(/^vercel-plugin-seen-.*\.txt$/);
-
-      rmSync(seenSkillsPath, { force: true });
+      // Sourcing the env file should set VERCEL_PLUGIN_SEEN_SKILLS to empty string (not unset)
+      const seenValue = await resolveSeenSkillsValue(envFile);
+      expect(seenValue).toBe("");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

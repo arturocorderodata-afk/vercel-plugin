@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach } from "bun:test";
 import { readFileSync, writeFileSync, existsSync, rmSync, mkdirSync, symlinkSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -21,27 +21,9 @@ function countSkillDirs(): number {
 
 // Unique session ID per test run to avoid cross-test dedup conflicts
 let testSession: string;
-let tempSeenSkillsFiles: string[] = [];
-
-function createSeenSkillsFile(seed?: string): string {
-  const filePath = join(
-    tmpdir(),
-    `vp-seen-skills-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`,
-  );
-  writeFileSync(filePath, seed ?? "", "utf-8");
-  tempSeenSkillsFiles.push(filePath);
-  return filePath;
-}
 
 beforeEach(() => {
   testSession = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-});
-
-afterEach(() => {
-  for (const filePath of tempSeenSkillsFiles) {
-    rmSync(filePath, { force: true });
-  }
-  tempSeenSkillsFiles = [];
 });
 
 async function runHook(input: object): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -254,19 +236,20 @@ describe("pretooluse-skill-inject.mjs", () => {
   });
 
   test("deduplicates across invocations when VERCEL_PLUGIN_SEEN_SKILLS is set", async () => {
-    const seenSkillsFile = createSeenSkillsFile();
-    const env = { VERCEL_PLUGIN_SEEN_SKILLS: seenSkillsFile };
-
+    // First call: env var is empty string — skill should inject and be recorded
     const { stdout: first } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: "/project/app/page.tsx" } },
-      env,
+      { VERCEL_PLUGIN_SEEN_SKILLS: "" },
     );
     const r1 = JSON.parse(first);
     expect(r1.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
 
+    // Second call: pre-seed the env var with skills from first call
+    // The hook appends to VERCEL_PLUGIN_SEEN_SKILLS in-process, but across
+    // separate process invocations we must pass the updated value.
     const { stdout: second } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: "/project/app/page.tsx" } },
-      env,
+      { VERCEL_PLUGIN_SEEN_SKILLS: "nextjs" },
     );
     const r2 = JSON.parse(second);
     expect(r2).toEqual({});
@@ -347,7 +330,14 @@ describe("pretooluse-skill-inject.mjs", () => {
       join(tempHooksDir, "patterns.mjs"),
       readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
     );
-    // Symlink node_modules so js-yaml is resolvable
+    writeFileSync(
+      join(tempHooksDir, "vercel-config.mjs"),
+      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "logger.mjs"),
+      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     // Run the hook from the temp location
@@ -674,6 +664,14 @@ describe("issue events in debug mode", () => {
       join(tempHooksDir, "patterns.mjs"),
       readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
     );
+    writeFileSync(
+      join(tempHooksDir, "vercel-config.mjs"),
+      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "logger.mjs"),
+      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     const payload = JSON.stringify({
@@ -756,12 +754,12 @@ describe("issue events in debug mode", () => {
       `---\nname: valid-skill\nmetadata:\n  filePattern:\n    - '**/*.valid'\n---\n# Valid Skill\n`,
     );
 
-    // Create a malformed skill with invalid YAML frontmatter
+    // Create a malformed skill with invalid YAML frontmatter (tab indentation triggers parse error)
     const badSkillDir = join(tempSkillsDir, "bad-skill");
     mkdirSync(badSkillDir, { recursive: true });
     writeFileSync(
       join(badSkillDir, "SKILL.md"),
-      `---\nname: bad-skill\nmetadata: [invalid: yaml: :\n---\n# Bad Skill\n`,
+      `---\nname: bad-skill\n\tmetadata: foo\n---\n# Bad Skill\n`,
     );
 
     // Copy hook files and symlink node_modules
@@ -777,6 +775,14 @@ describe("issue events in debug mode", () => {
     writeFileSync(
       join(tempHooksDir, "patterns.mjs"),
       readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "vercel-config.mjs"),
+      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "logger.mjs"),
+      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
     );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
@@ -828,7 +834,7 @@ describe("issue events in debug mode", () => {
     mkdirSync(badSkillDir, { recursive: true });
     writeFileSync(
       join(badSkillDir, "SKILL.md"),
-      `---\nname: bad-skill\nmetadata: [invalid: yaml: :\n---\n# Bad Skill\n`,
+      `---\nname: bad-skill\n\tmetadata: foo\n---\n# Bad Skill\n`,
     );
 
     mkdirSync(tempHooksDir, { recursive: true });
@@ -843,6 +849,14 @@ describe("issue events in debug mode", () => {
     writeFileSync(
       join(tempHooksDir, "patterns.mjs"),
       readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "vercel-config.mjs"),
+      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "logger.mjs"),
+      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
     );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
@@ -911,40 +925,36 @@ describe("seen-skills env file and dedup controls", () => {
     expect(r2.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
   });
 
-  test("empty VERCEL_PLUGIN_SEEN_SKILLS file dedups across invocations", async () => {
-    const seenSkillsFile = createSeenSkillsFile();
-    const env = { VERCEL_PLUGIN_SEEN_SKILLS: seenSkillsFile };
-
+  test("empty VERCEL_PLUGIN_SEEN_SKILLS env var dedups across invocations", async () => {
+    // First call with empty env var — skill should inject
     const { stdout: first } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
-      env,
+      { VERCEL_PLUGIN_SEEN_SKILLS: "" },
     );
     const r1 = JSON.parse(first);
     expect(r1.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
 
+    // Second call with skill already seen — should be deduped
     const { stdout: second } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
-      env,
+      { VERCEL_PLUGIN_SEEN_SKILLS: "nextjs" },
     );
     const r2 = JSON.parse(second);
     expect(r2).toEqual({});
   });
 
-  test("pre-seeded seen-skills file skips first matching injection", async () => {
-    const seenSkillsFile = createSeenSkillsFile("nextjs\n");
-
+  test("pre-seeded VERCEL_PLUGIN_SEEN_SKILLS skips matching injection", async () => {
     const { stdout } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
-      { VERCEL_PLUGIN_SEEN_SKILLS: seenSkillsFile },
+      { VERCEL_PLUGIN_SEEN_SKILLS: "nextjs" },
     );
 
     expect(JSON.parse(stdout)).toEqual({});
   });
 
-  test("VERCEL_PLUGIN_HOOK_DEDUP=off injects every call even with pre-seeded seen-skills file", async () => {
-    const seenSkillsFile = createSeenSkillsFile("nextjs\n");
+  test("VERCEL_PLUGIN_HOOK_DEDUP=off injects every call even with pre-seeded env var", async () => {
     const env = {
-      VERCEL_PLUGIN_SEEN_SKILLS: seenSkillsFile,
+      VERCEL_PLUGIN_SEEN_SKILLS: "nextjs",
       VERCEL_PLUGIN_HOOK_DEDUP: "off",
     };
 
@@ -963,28 +973,31 @@ describe("seen-skills env file and dedup controls", () => {
     expect(r2.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
   });
 
-  test("RESET_DEDUP=1 clears a pre-seeded seen-skills file before matching", async () => {
-    const seenSkillsFile = createSeenSkillsFile("nextjs\n");
-
-    const { stdout } = await runHookEnv(
+  test("empty VERCEL_PLUGIN_SEEN_SKILLS resets dedup state", async () => {
+    // With pre-seeded skills, injection is skipped
+    const { stdout: skipped } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
-      { VERCEL_PLUGIN_SEEN_SKILLS: seenSkillsFile, RESET_DEDUP: "1" },
+      { VERCEL_PLUGIN_SEEN_SKILLS: "nextjs" },
     );
+    expect(JSON.parse(skipped)).toEqual({});
 
-    expect(JSON.parse(stdout).hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    // With empty env var, injection happens again
+    const { stdout: injected } = await runHookEnv(
+      { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
+      { VERCEL_PLUGIN_SEEN_SKILLS: "" },
+    );
+    expect(JSON.parse(injected).hookSpecificOutput.additionalContext).toContain("skill:nextjs");
   });
 
-  test("debug mode logs dedup strategy for env-file, memory-only, and disabled", async () => {
-    const seenSkillsFile = createSeenSkillsFile();
-
-    const { stderr: envFileStderr } = await runHookEnv(
+  test("debug mode logs dedup strategy for env-var, memory-only, and disabled", async () => {
+    const { stderr: envVarStderr } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
-      { VERCEL_PLUGIN_HOOK_DEBUG: "1", VERCEL_PLUGIN_SEEN_SKILLS: seenSkillsFile },
+      { VERCEL_PLUGIN_HOOK_DEBUG: "1", VERCEL_PLUGIN_SEEN_SKILLS: "" },
     );
-    const envFileLines = envFileStderr.trim().split("\n").map((l: string) => JSON.parse(l));
-    const envFileStrategy = envFileLines.find((l: any) => l.event === "dedup-strategy");
-    expect(envFileStrategy).toBeDefined();
-    expect(envFileStrategy.strategy).toBe("env-file");
+    const envVarLines = envVarStderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const envVarStrategy = envVarLines.find((l: any) => l.event === "dedup-strategy");
+    expect(envVarStrategy).toBeDefined();
+    expect(envVarStrategy.strategy).toBe("env-var");
 
     const { stderr: memoryOnlyStderr } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
@@ -1005,19 +1018,14 @@ describe("seen-skills env file and dedup controls", () => {
     expect(disabledStrategy.strategy).toBe("disabled");
   });
 
-  test("seen-skills file is newline-delimited text, not JSON", async () => {
-    const seenSkillsFile = createSeenSkillsFile();
-
+  test("VERCEL_PLUGIN_SEEN_SKILLS uses comma-delimited format", async () => {
+    // Verify the env var format is comma-delimited by pre-seeding with multiple skills
     const { stdout } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
-      { VERCEL_PLUGIN_SEEN_SKILLS: seenSkillsFile },
+      { VERCEL_PLUGIN_SEEN_SKILLS: "nextjs,turbopack" },
     );
-    expect(JSON.parse(stdout).hookSpecificOutput.additionalContext).toContain("skill:nextjs");
-
-    const seenText = readFileSync(seenSkillsFile, "utf-8");
-    expect(seenText.split("\n")).toContain("nextjs");
-    expect(seenText.trim().startsWith("[")).toBe(false);
-    expect(() => JSON.parse(seenText)).toThrow();
+    // nextjs is in the seen list, so it should be deduped
+    expect(JSON.parse(stdout)).toEqual({});
   });
 });
 
@@ -1571,8 +1579,14 @@ describe("invalid bash regex handling", () => {
       join(tempHooksDir, "patterns.mjs"),
       readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
     );
-
-    // Symlink node_modules so js-yaml is resolvable
+    writeFileSync(
+      join(tempHooksDir, "vercel-config.mjs"),
+      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "logger.mjs"),
+      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     // Write a SKILL.md with the given bashPatterns
@@ -1684,7 +1698,14 @@ describe("invalid glob pattern handling", () => {
       'export function globToRegex(pattern) {\n  if (pattern === "__THROW__") throw new Error("simulated glob compile failure");',
     );
     writeFileSync(join(tempHooksDir, "patterns.mjs"), patchedPatterns);
-
+    writeFileSync(
+      join(tempHooksDir, "vercel-config.mjs"),
+      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "logger.mjs"),
+      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     // Skill with a __THROW__ filePattern that will trigger the patched globToRegex to throw
@@ -2802,13 +2823,13 @@ describe("redactCommand", () => {
     expect(redactCommand("curl -H TOKEN=abc123secret https://api.example.com")).not.toContain("abc123secret");
   });
 
-  test("masks KEY= values", () => {
-    expect(redactCommand("VERCEL_API_KEY=sk_live_xyz deploy")).toContain("KEY=[REDACTED]");
+  test("masks KEY= values preserving full key name", () => {
+    expect(redactCommand("VERCEL_API_KEY=sk_live_xyz deploy")).toContain("VERCEL_API_KEY=[REDACTED]");
     expect(redactCommand("VERCEL_API_KEY=sk_live_xyz deploy")).not.toContain("sk_live_xyz");
   });
 
-  test("masks SECRET= values", () => {
-    expect(redactCommand("MY_SECRET=hunter2 run")).toContain("SECRET=[REDACTED]");
+  test("masks SECRET= values preserving full key name", () => {
+    expect(redactCommand("MY_SECRET=hunter2 run")).toContain("MY_SECRET=[REDACTED]");
     expect(redactCommand("MY_SECRET=hunter2 run")).not.toContain("hunter2");
   });
 
@@ -2854,6 +2875,17 @@ describe("redactCommand", () => {
     expect(result).not.toContain("aaa");
     expect(result).not.toContain("bbb");
     expect(result).not.toContain("ccc");
+  });
+
+  test("preserves full env var key name with prefix (regression)", () => {
+    // Previously, VERCEL_TOKEN=abc would become TOKEN=[REDACTED] instead of VERCEL_TOKEN=[REDACTED]
+    expect(redactCommand("VERCEL_TOKEN=abc123")).toBe("VERCEL_TOKEN=[REDACTED]");
+    expect(redactCommand("MY_API_KEY=secret")).toBe("MY_API_KEY=[REDACTED]");
+    expect(redactCommand("APP_SECRET=s3cret")).toBe("APP_SECRET=[REDACTED]");
+    // Simple key without prefix should still work
+    expect(redactCommand("TOKEN=abc123")).toBe("TOKEN=[REDACTED]");
+    expect(redactCommand("KEY=abc123")).toBe("KEY=[REDACTED]");
+    expect(redactCommand("SECRET=abc123")).toBe("SECRET=[REDACTED]");
   });
 });
 
@@ -3043,18 +3075,11 @@ describe("decision logging — reason codes", () => {
   });
 
   test("reason=all_deduped when matches exist but all were previously injected", async () => {
-    const seenSkillsFile = createSeenSkillsFile();
-    const baseEnv = { VERCEL_PLUGIN_SEEN_SKILLS: seenSkillsFile };
-
-    const { stdout: first } = await runHookEnv(
-      { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
-      baseEnv,
-    );
-    expect(JSON.parse(first).hookSpecificOutput.additionalContext).toContain("skill:nextjs");
-
+    // Pre-seed the env var with skills that match next.config.ts
+    // next.config.ts matches: nextjs, turbopack
     const { stderr } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: "/project/next.config.ts" } },
-      { ...baseEnv, VERCEL_PLUGIN_HOOK_DEBUG: "1" },
+      { VERCEL_PLUGIN_SEEN_SKILLS: "nextjs,turbopack", VERCEL_PLUGIN_HOOK_DEBUG: "1" },
     );
 
     const complete = parseComplete(stderr);
@@ -3087,6 +3112,8 @@ describe("decision logging — reason codes", () => {
     writeFileSync(join(tempHooksDir, "pretooluse-skill-inject.mjs"), readFileSync(HOOK_SCRIPT, "utf-8"));
     writeFileSync(join(tempHooksDir, "skill-map-frontmatter.mjs"), readFileSync(join(ROOT, "hooks", "skill-map-frontmatter.mjs"), "utf-8"));
     writeFileSync(join(tempHooksDir, "patterns.mjs"), readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"));
+    writeFileSync(join(tempHooksDir, "vercel-config.mjs"), readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"));
+    writeFileSync(join(tempHooksDir, "logger.mjs"), readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"));
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     const payload = JSON.stringify({

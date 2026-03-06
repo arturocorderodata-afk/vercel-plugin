@@ -353,10 +353,7 @@ describe("validate.ts — focused frontmatter validation", () => {
       "---",
       "name: broken",
       "description: bad yaml",
-      "metadata:",
-      "  filePattern:",
-      "    - 'ok'",
-      "  invalid: [unclosed bracket",
+      "\tmetadata: foo",
       "---",
       "# Broken",
     ].join("\n"), async () => {
