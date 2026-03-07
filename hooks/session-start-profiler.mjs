@@ -189,6 +189,19 @@ function checkVercelCli() {
   const needsUpdate = !!(currentVersion && latestVersion && currentVersion !== latestVersion);
   return { installed: true, currentVersion, latestVersion, needsUpdate };
 }
+const WHICH_ARGS = "agent-browser".split(" ");
+function checkAgentBrowser() {
+  try {
+    execFileSync("which", WHICH_ARGS, {
+      timeout: 3e3,
+      encoding: "utf-8",
+      stdio: SPAWN_STDIO
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 function main() {
   const envFile = requireEnvFile();
   const projectRoot = process.env.CLAUDE_PROJECT_ROOT || process.cwd();
@@ -229,7 +242,13 @@ Skip codebase exploration \u2014 there is no existing code to discover.
   }
   const likelySkills = profileProject(projectRoot);
   const setupSignals = profileBootstrapSignals(projectRoot);
+  const agentBrowserAvailable = checkAgentBrowser();
   try {
+    appendFileSync(
+      envFile,
+      `export VERCEL_PLUGIN_AGENT_BROWSER_AVAILABLE="${agentBrowserAvailable ? "1" : "0"}"
+`
+    );
     if (likelySkills.length > 0) {
       appendFileSync(envFile, `export VERCEL_PLUGIN_LIKELY_SKILLS="${likelySkills.join(",")}"
 `);
@@ -257,6 +276,7 @@ Skip codebase exploration \u2014 there is no existing code to discover.
 }
 main();
 export {
+  checkAgentBrowser,
   checkGreenfield,
   profileBootstrapSignals,
   profileProject

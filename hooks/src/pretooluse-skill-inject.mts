@@ -48,6 +48,40 @@ const SETUP_MODE_PRIORITY_BOOST = 50;
 const PLUGIN_ROOT = resolvePluginRoot();
 const SUPPORTED_TOOLS = ["Read", "Edit", "Write", "Bash"];
 
+// TSX review trigger constants
+const TSX_REVIEW_SKILL = "react-best-practices";
+const DEFAULT_REVIEW_THRESHOLD = 3;
+const TSX_REVIEW_PRIORITY_BOOST = 40;
+const REVIEW_MARKER = "<!-- marker:review-injected -->";
+
+// Dev-server verification constants
+const DEV_SERVER_VERIFY_SKILL = "agent-browser-verify";
+const DEV_SERVER_VERIFY_PRIORITY_BOOST = 45;
+const DEV_SERVER_VERIFY_MAX_ITERATIONS = 2;
+const DEV_SERVER_VERIFY_MARKER = "<!-- marker:dev-server-verify -->";
+const DEV_SERVER_UNAVAILABLE_WARNING = `<!-- agent-browser-unavailable -->
+**Note**: \`agent-browser\` CLI is not installed. Browser-based dev server verification is unavailable.
+Install it with \`npm install -g agent-browser && agent-browser install\` to enable automatic visual verification.
+<!-- /agent-browser-unavailable -->`;
+
+/**
+ * Regex patterns to detect dev-server startup commands.
+ * These match the same patterns as agent-browser-verify's bashPatterns
+ * plus vercel.json devCommand support via env var.
+ */
+const DEV_SERVER_PATTERNS: RegExp[] = [
+  /\bnext\s+dev\b/,
+  /\bnpm\s+run\s+dev\b/,
+  /\bpnpm\s+dev\b/,
+  /\bbun\s+(run\s+)?dev\b/,
+  /\byarn\s+dev\b/,
+  /\bvite\s+dev\b/,
+  /\bvite\b(?!.*build)/,
+  /\bnuxt\s+dev\b/,
+  /\bvercel\s+dev\b/,
+  /\bastro\s+dev\b/,
+];
+
 /** Resolve the injection byte budget from env or default. */
 function getInjectionBudget(): number {
   const envVal = process.env.VERCEL_PLUGIN_INJECTION_BUDGET;
@@ -69,6 +103,199 @@ function getSeenSkillsEnv(): string {
   return typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string"
     ? process.env.VERCEL_PLUGIN_SEEN_SKILLS
     : "";
+}
+
+// ---------------------------------------------------------------------------
+// TSX review trigger: env-var-backed edit counter
+// ---------------------------------------------------------------------------
+
+/** Get the configured review threshold from env or default. */
+export function getReviewThreshold(): number {
+  const envVal = process.env.VERCEL_PLUGIN_REVIEW_THRESHOLD;
+  if (envVal != null && envVal !== "") {
+    const parsed = parseInt(envVal, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return DEFAULT_REVIEW_THRESHOLD;
+}
+
+/** Read current TSX edit count from env var. */
+function getTsxEditCount(): number {
+  const raw = process.env.VERCEL_PLUGIN_TSX_EDIT_COUNT;
+  if (raw == null || raw === "") return 0;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Increment and persist TSX edit count. Returns new count. */
+function incrementTsxEditCount(): number {
+  const current = getTsxEditCount();
+  const next = current + 1;
+  process.env.VERCEL_PLUGIN_TSX_EDIT_COUNT = String(next);
+  return next;
+}
+
+/** Reset TSX edit count after review injection. */
+function resetTsxEditCount(): void {
+  process.env.VERCEL_PLUGIN_TSX_EDIT_COUNT = "0";
+}
+
+/** Check if the current tool call is an Edit/Write on a .tsx file. */
+function isTsxEditTool(toolName: string, toolInput: Record<string, unknown>): boolean {
+  if (toolName !== "Edit" && toolName !== "Write") return false;
+  const filePath = (toolInput.file_path as string) || "";
+  return /\.tsx$/.test(filePath);
+}
+
+export interface TsxReviewTriggerResult {
+  triggered: boolean;
+  count: number;
+  threshold: number;
+  debounced: boolean;
+}
+
+/**
+ * Check and potentially trigger TSX review injection.
+ * Increments counter on .tsx edits, triggers when threshold reached.
+ *
+ * Dedup bypass: This trigger is decoupled from SEEN_SKILLS dedup.
+ * The counter resets after each injection, so re-injection happens naturally
+ * when the counter reaches the threshold again — even if the slug is already
+ * in SEEN_SKILLS. The counter itself prevents duplicate injection within a cycle.
+ */
+export function checkTsxReviewTrigger(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  _injectedSkills: Set<string>,
+  dedupOff: boolean,
+  logger?: Logger,
+): TsxReviewTriggerResult {
+  const l = logger || log;
+  const threshold = getReviewThreshold();
+
+  // Disabled when dedup is off
+  if (dedupOff) {
+    l.summary("tsx-review-not-fired", { reason: "dedup-off" });
+    return { triggered: false, count: 0, threshold, debounced: false };
+  }
+
+  // Only count Edit/Write on .tsx files
+  if (!isTsxEditTool(toolName, toolInput)) {
+    l.summary("tsx-review-not-fired", { reason: "not-tsx-edit", tool: toolName });
+    return { triggered: false, count: getTsxEditCount(), threshold, debounced: false };
+  }
+
+  const prevCount = getTsxEditCount();
+  const count = incrementTsxEditCount();
+  const delta = count - prevCount;
+  l.debug("tsx-edit-count", { count, threshold, file: (toolInput.file_path as string) || "" });
+  l.trace("tsx-edit-counter-state", { previous: prevCount, current: count, delta, threshold, remaining: Math.max(0, threshold - count), file: (toolInput.file_path as string) || "" });
+
+  if (count >= threshold) {
+    l.summary("tsx-review-triggered", { count, threshold });
+    l.debug("tsx-review-triggered", { count, threshold });
+    return { triggered: true, count, threshold, debounced: false };
+  }
+
+  l.summary("tsx-review-not-fired", { reason: "below-threshold", count, threshold });
+  return { triggered: false, count, threshold, debounced: false };
+}
+
+// ---------------------------------------------------------------------------
+// Dev-server verification trigger
+// ---------------------------------------------------------------------------
+
+/** Read current dev-server verify iteration count from env var. */
+export function getDevServerVerifyCount(): number {
+  const raw = process.env.VERCEL_PLUGIN_DEV_VERIFY_COUNT;
+  if (raw == null || raw === "") return 0;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Increment and persist dev-server verify count. Returns new count. */
+export function incrementDevServerVerifyCount(): number {
+  const current = getDevServerVerifyCount();
+  const next = current + 1;
+  process.env.VERCEL_PLUGIN_DEV_VERIFY_COUNT = String(next);
+  return next;
+}
+
+/** Reset dev-server verify count. */
+export function resetDevServerVerifyCount(): void {
+  process.env.VERCEL_PLUGIN_DEV_VERIFY_COUNT = "0";
+}
+
+/** Check if a Bash command is a dev-server startup command. */
+export function isDevServerCommand(command: string): boolean {
+  if (!command) return false;
+  // Check vercel.json devCommand if set
+  const devCommand = process.env.VERCEL_PLUGIN_DEV_COMMAND;
+  if (devCommand && command.includes(devCommand)) return true;
+  return DEV_SERVER_PATTERNS.some((re) => re.test(command));
+}
+
+export interface DevServerVerifyResult {
+  triggered: boolean;
+  unavailable: boolean;
+  loopGuardHit: boolean;
+  iterationCount: number;
+}
+
+/**
+ * Check if dev-server verification should be injected.
+ * Triggers when a Bash command matches dev-server patterns.
+ * Loop guard: max DEV_SERVER_VERIFY_MAX_ITERATIONS per session.
+ * Graceful degradation: if agent-browser is unavailable, returns unavailable=true.
+ *
+ * Dedup bypass: This trigger is decoupled from SEEN_SKILLS dedup.
+ * The iteration counter (DEV_VERIFY_COUNT) is the sole gate — it allows
+ * re-injection up to MAX_ITERATIONS even when the slug is in SEEN_SKILLS.
+ * The loop guard (count >= max) is the hard stop.
+ */
+export function checkDevServerVerify(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  _injectedSkills: Set<string>,
+  _dedupOff: boolean,
+  logger?: Logger,
+): DevServerVerifyResult {
+  const l = logger || log;
+  const noResult: DevServerVerifyResult = { triggered: false, unavailable: false, loopGuardHit: false, iterationCount: 0 };
+
+  // Only applies to Bash commands
+  if (toolName !== "Bash") {
+    l.summary("dev-server-verify-not-fired", { reason: "not-bash", tool: toolName });
+    return noResult;
+  }
+
+  const command = (toolInput.command as string) || "";
+  if (!isDevServerCommand(command)) {
+    l.summary("dev-server-verify-not-fired", { reason: "not-dev-server-command" });
+    return noResult;
+  }
+
+  l.debug("dev-server-detected", { command: command.slice(0, 100) });
+
+  // Check agent-browser availability
+  const available = process.env.VERCEL_PLUGIN_AGENT_BROWSER_AVAILABLE;
+  if (available === "0") {
+    l.summary("dev-server-verify-not-fired", { reason: "agent-browser-unavailable" });
+    l.debug("dev-server-verify-unavailable", { reason: "agent-browser not installed" });
+    return { triggered: false, unavailable: true, loopGuardHit: false, iterationCount: 0 };
+  }
+
+  // Loop guard: max iterations (hard stop, regardless of dedup state)
+  const count = getDevServerVerifyCount();
+  l.trace("dev-server-verify-counter-state", { current: count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS, remaining: Math.max(0, DEV_SERVER_VERIFY_MAX_ITERATIONS - count), command: command.slice(0, 100) });
+  if (count >= DEV_SERVER_VERIFY_MAX_ITERATIONS) {
+    l.summary("dev-server-verify-not-fired", { reason: "loop-guard", count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
+    l.debug("dev-server-verify-loop-guard", { count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
+    return { triggered: false, unavailable: false, loopGuardHit: true, iterationCount: count };
+  }
+
+  l.summary("dev-server-verify-triggered", { iterationCount: count });
+  return { triggered: true, unavailable: false, loopGuardHit: false, iterationCount: count };
 }
 
 // ---------------------------------------------------------------------------
@@ -703,6 +930,23 @@ function run(): string {
 
   const { matchedEntries, matched } = matchResult;
 
+  // Stage 3.5: TSX review trigger — check before dedup to inform synthetic injection
+  const tsxReview = checkTsxReviewTrigger(toolName, toolInput, injectedSkills, dedupOff, log);
+
+  // Stage 3.6: Dev-server verification trigger
+  const devServerVerify = checkDevServerVerify(toolName, toolInput, injectedSkills, dedupOff, log);
+
+  // Stage 3.7: Boost agent-browser-verify priority when dev-server detected
+  if (devServerVerify.triggered) {
+    for (const entry of matchedEntries) {
+      if (entry.skill === DEV_SERVER_VERIFY_SKILL) {
+        entry.effectivePriority = DEV_SERVER_VERIFY_PRIORITY_BOOST;
+        log.debug("dev-server-verify-priority-boost", { skill: entry.skill, effectivePriority: entry.effectivePriority });
+        break;
+      }
+    }
+  }
+
   // Stage 4: deduplicateSkills
   const dedupResult = deduplicateSkills({
     matchedEntries,
@@ -718,7 +962,73 @@ function run(): string {
 
   const { newEntries, rankedSkills } = dedupResult;
 
-  if (rankedSkills.length === 0) {
+  // Stage 4.5: Synthetically inject react-best-practices if TSX review triggered
+  let tsxReviewInjected = false;
+  if (tsxReview.triggered && !rankedSkills.includes(TSX_REVIEW_SKILL)) {
+    // Find or create the react-best-practices entry
+    const reviewTemplate = compiledSkills.find((e) => e.skill === TSX_REVIEW_SKILL);
+    const reviewEntry: CompiledSkillEntry = reviewTemplate
+      ? { ...reviewTemplate, effectivePriority: TSX_REVIEW_PRIORITY_BOOST }
+      : {
+          skill: TSX_REVIEW_SKILL,
+          priority: 0,
+          compiledPaths: [],
+          compiledBash: [],
+          compiledImports: [],
+          effectivePriority: TSX_REVIEW_PRIORITY_BOOST,
+        };
+    // Insert at the beginning (highest priority for this injection)
+    rankedSkills.unshift(TSX_REVIEW_SKILL);
+    matched.add(TSX_REVIEW_SKILL);
+    tsxReviewInjected = true;
+    log.debug("tsx-review-synthetic-inject", { skill: TSX_REVIEW_SKILL, count: tsxReview.count });
+  } else if (tsxReview.triggered && rankedSkills.includes(TSX_REVIEW_SKILL)) {
+    // Already matched via patterns, just mark it
+    tsxReviewInjected = true;
+  }
+
+  // Stage 4.6: Dev-server verification — synthetic inject or graceful degradation
+  let devServerVerifyInjected = false;
+  let devServerUnavailableWarning = false;
+  if (devServerVerify.unavailable) {
+    // Graceful degradation: inject warning once if not already warned
+    if (!injectedSkills.has("agent-browser-unavailable-warning")) {
+      devServerUnavailableWarning = true;
+      injectedSkills.add("agent-browser-unavailable-warning");
+      if (hasEnvDedup) {
+        process.env.VERCEL_PLUGIN_SEEN_SKILLS = appendSeenSkill(
+          process.env.VERCEL_PLUGIN_SEEN_SKILLS, "agent-browser-unavailable-warning"
+        );
+      }
+      log.debug("dev-server-verify-unavailable-warning", { reason: "agent-browser not installed" });
+    }
+    // Suppress agent-browser-verify from normal pattern matching when unavailable
+    const verifyIdx = rankedSkills.indexOf(DEV_SERVER_VERIFY_SKILL);
+    if (verifyIdx !== -1) {
+      rankedSkills.splice(verifyIdx, 1);
+      log.debug("dev-server-verify-suppressed", { reason: "agent-browser unavailable" });
+    }
+  } else if (devServerVerify.triggered && !rankedSkills.includes(DEV_SERVER_VERIFY_SKILL)) {
+    const verifyTemplate = compiledSkills.find((e) => e.skill === DEV_SERVER_VERIFY_SKILL);
+    const _verifyEntry: CompiledSkillEntry = verifyTemplate
+      ? { ...verifyTemplate, effectivePriority: DEV_SERVER_VERIFY_PRIORITY_BOOST }
+      : {
+          skill: DEV_SERVER_VERIFY_SKILL,
+          priority: 0,
+          compiledPaths: [],
+          compiledBash: [],
+          compiledImports: [],
+          effectivePriority: DEV_SERVER_VERIFY_PRIORITY_BOOST,
+        };
+    rankedSkills.unshift(DEV_SERVER_VERIFY_SKILL);
+    matched.add(DEV_SERVER_VERIFY_SKILL);
+    devServerVerifyInjected = true;
+    log.debug("dev-server-verify-synthetic-inject", { skill: DEV_SERVER_VERIFY_SKILL, iteration: devServerVerify.iterationCount });
+  } else if (devServerVerify.triggered && rankedSkills.includes(DEV_SERVER_VERIFY_SKILL)) {
+    devServerVerifyInjected = true;
+  }
+
+  if (rankedSkills.length === 0 && !devServerUnavailableWarning) {
     const reason = matched.size === 0 ? "no_matches" : "all_deduped";
     if (log.active) {
       timing.skill_read = 0;
@@ -727,6 +1037,8 @@ function run(): string {
     log.complete(reason, {
       matchedCount: matched.size,
       dedupedCount: matched.size - rankedSkills.length,
+      tsxReviewTriggered: tsxReview.triggered,
+      devServerVerifyTriggered: devServerVerify.triggered,
     }, log.active ? timing : null);
     return "{}";
   }
@@ -742,12 +1054,38 @@ function run(): string {
   });
   if (log.active) timing.skill_read = Math.round(log.now() - tSkillRead);
 
+  // Append review marker if tsx review was triggered and skill was loaded
+  if (tsxReviewInjected && loaded.includes(TSX_REVIEW_SKILL)) {
+    parts.push(REVIEW_MARKER);
+    const prevCount = getTsxEditCount();
+    resetTsxEditCount();
+    log.debug("tsx-review-marker-added", { marker: REVIEW_MARKER });
+    log.trace("tsx-edit-counter-reset", { previousCount: prevCount, resetTo: 0, threshold: getReviewThreshold() });
+  }
+
+  // Append dev-server verify marker and increment iteration count
+  if (devServerVerifyInjected && loaded.includes(DEV_SERVER_VERIFY_SKILL)) {
+    const prevIteration = getDevServerVerifyCount();
+    const iteration = incrementDevServerVerifyCount();
+    parts.push(`${DEV_SERVER_VERIFY_MARKER.replace("-->", `iteration="${iteration}" max="${DEV_SERVER_VERIFY_MAX_ITERATIONS}" -->`)}`);
+    log.debug("dev-server-verify-marker-added", { iteration, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
+    log.trace("dev-server-verify-counter-increment", { previous: prevIteration, current: iteration, max: DEV_SERVER_VERIFY_MAX_ITERATIONS, remaining: DEV_SERVER_VERIFY_MAX_ITERATIONS - iteration });
+  }
+
+  // Inject unavailable warning instead of skill
+  if (devServerUnavailableWarning) {
+    parts.push(DEV_SERVER_UNAVAILABLE_WARNING);
+    log.debug("dev-server-unavailable-warning-injected", {});
+  }
+
   if (parts.length === 0) {
     if (log.active) timing.total = log.elapsed();
     log.complete("no_matches", {
       matchedCount: matched.size,
       dedupedCount: matchedEntries.length - newEntries.length,
       cappedCount: droppedByCap.length + droppedByBudget.length,
+      tsxReviewTriggered: tsxReview.triggered,
+      devServerVerifyTriggered: devServerVerify.triggered,
     }, log.active ? timing : null);
     return "{}";
   }
@@ -759,6 +1097,8 @@ function run(): string {
     injectedCount: parts.length,
     dedupedCount: matchedEntries.length - newEntries.length,
     cappedCount,
+    tsxReviewTriggered: tsxReview.triggered,
+    devServerVerifyTriggered: devServerVerify.triggered,
   }, log.active ? timing : null);
 
   // Stage 6: formatOutput
@@ -892,4 +1232,9 @@ if (isMainModule()) {
   }
 }
 
-export { run, validateSkillMap };
+export {
+  run, validateSkillMap,
+  TSX_REVIEW_SKILL, REVIEW_MARKER, DEFAULT_REVIEW_THRESHOLD, isTsxEditTool, getTsxEditCount, resetTsxEditCount,
+  DEV_SERVER_VERIFY_SKILL, DEV_SERVER_VERIFY_MARKER, DEV_SERVER_VERIFY_MAX_ITERATIONS,
+  DEV_SERVER_UNAVAILABLE_WARNING,
+};

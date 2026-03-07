@@ -1,5 +1,5 @@
 {
-  "description": "Golden snapshot: Bash 'npm run dev' triggers nextjs and agent-browser",
+  "description": "Golden snapshot: Bash 'npm run dev' triggers nextjs, agent-browser, and agent-browser-verify (verify boosted to priority 45 on dev-server detection)",
   "input": {
     "tool_name": "Bash",
     "tool_input": { "command": "npm run dev" }
@@ -9,8 +9,8 @@
       "version": 1,
       "toolName": "Bash",
       "toolTarget": "npm run dev",
-      "matchedSkills": ["agent-browser", "nextjs"],
-      "injectedSkills": ["nextjs", "agent-browser"],
+      "matchedSkills": ["agent-browser", "agent-browser-verify", "nextjs"],
+      "injectedSkills": ["agent-browser-verify", "nextjs", "agent-browser"],
       "droppedByCap": [],
       "droppedByBudget": []
     }

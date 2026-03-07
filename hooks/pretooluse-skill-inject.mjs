@@ -22,6 +22,30 @@ const SETUP_MODE_BOOTSTRAP_SKILL = "bootstrap";
 const SETUP_MODE_PRIORITY_BOOST = 50;
 const PLUGIN_ROOT = resolvePluginRoot();
 const SUPPORTED_TOOLS = ["Read", "Edit", "Write", "Bash"];
+const TSX_REVIEW_SKILL = "react-best-practices";
+const DEFAULT_REVIEW_THRESHOLD = 3;
+const TSX_REVIEW_PRIORITY_BOOST = 40;
+const REVIEW_MARKER = "<!-- marker:review-injected -->";
+const DEV_SERVER_VERIFY_SKILL = "agent-browser-verify";
+const DEV_SERVER_VERIFY_PRIORITY_BOOST = 45;
+const DEV_SERVER_VERIFY_MAX_ITERATIONS = 2;
+const DEV_SERVER_VERIFY_MARKER = "<!-- marker:dev-server-verify -->";
+const DEV_SERVER_UNAVAILABLE_WARNING = `<!-- agent-browser-unavailable -->
+**Note**: \`agent-browser\` CLI is not installed. Browser-based dev server verification is unavailable.
+Install it with \`npm install -g agent-browser && agent-browser install\` to enable automatic visual verification.
+<!-- /agent-browser-unavailable -->`;
+const DEV_SERVER_PATTERNS = [
+  /\bnext\s+dev\b/,
+  /\bnpm\s+run\s+dev\b/,
+  /\bpnpm\s+dev\b/,
+  /\bbun\s+(run\s+)?dev\b/,
+  /\byarn\s+dev\b/,
+  /\bvite\s+dev\b/,
+  /\bvite\b(?!.*build)/,
+  /\bnuxt\s+dev\b/,
+  /\bvercel\s+dev\b/,
+  /\bastro\s+dev\b/
+];
 function getInjectionBudget() {
   const envVal = process.env.VERCEL_PLUGIN_INJECTION_BUDGET;
   if (envVal != null && envVal !== "") {
@@ -33,6 +57,108 @@ function getInjectionBudget() {
 const log = createLogger();
 function getSeenSkillsEnv() {
   return typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string" ? process.env.VERCEL_PLUGIN_SEEN_SKILLS : "";
+}
+function getReviewThreshold() {
+  const envVal = process.env.VERCEL_PLUGIN_REVIEW_THRESHOLD;
+  if (envVal != null && envVal !== "") {
+    const parsed = parseInt(envVal, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return DEFAULT_REVIEW_THRESHOLD;
+}
+function getTsxEditCount() {
+  const raw = process.env.VERCEL_PLUGIN_TSX_EDIT_COUNT;
+  if (raw == null || raw === "") return 0;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+function incrementTsxEditCount() {
+  const current = getTsxEditCount();
+  const next = current + 1;
+  process.env.VERCEL_PLUGIN_TSX_EDIT_COUNT = String(next);
+  return next;
+}
+function resetTsxEditCount() {
+  process.env.VERCEL_PLUGIN_TSX_EDIT_COUNT = "0";
+}
+function isTsxEditTool(toolName, toolInput) {
+  if (toolName !== "Edit" && toolName !== "Write") return false;
+  const filePath = toolInput.file_path || "";
+  return /\.tsx$/.test(filePath);
+}
+function checkTsxReviewTrigger(toolName, toolInput, _injectedSkills, dedupOff, logger) {
+  const l = logger || log;
+  const threshold = getReviewThreshold();
+  if (dedupOff) {
+    l.summary("tsx-review-not-fired", { reason: "dedup-off" });
+    return { triggered: false, count: 0, threshold, debounced: false };
+  }
+  if (!isTsxEditTool(toolName, toolInput)) {
+    l.summary("tsx-review-not-fired", { reason: "not-tsx-edit", tool: toolName });
+    return { triggered: false, count: getTsxEditCount(), threshold, debounced: false };
+  }
+  const prevCount = getTsxEditCount();
+  const count = incrementTsxEditCount();
+  const delta = count - prevCount;
+  l.debug("tsx-edit-count", { count, threshold, file: toolInput.file_path || "" });
+  l.trace("tsx-edit-counter-state", { previous: prevCount, current: count, delta, threshold, remaining: Math.max(0, threshold - count), file: toolInput.file_path || "" });
+  if (count >= threshold) {
+    l.summary("tsx-review-triggered", { count, threshold });
+    l.debug("tsx-review-triggered", { count, threshold });
+    return { triggered: true, count, threshold, debounced: false };
+  }
+  l.summary("tsx-review-not-fired", { reason: "below-threshold", count, threshold });
+  return { triggered: false, count, threshold, debounced: false };
+}
+function getDevServerVerifyCount() {
+  const raw = process.env.VERCEL_PLUGIN_DEV_VERIFY_COUNT;
+  if (raw == null || raw === "") return 0;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+function incrementDevServerVerifyCount() {
+  const current = getDevServerVerifyCount();
+  const next = current + 1;
+  process.env.VERCEL_PLUGIN_DEV_VERIFY_COUNT = String(next);
+  return next;
+}
+function resetDevServerVerifyCount() {
+  process.env.VERCEL_PLUGIN_DEV_VERIFY_COUNT = "0";
+}
+function isDevServerCommand(command) {
+  if (!command) return false;
+  const devCommand = process.env.VERCEL_PLUGIN_DEV_COMMAND;
+  if (devCommand && command.includes(devCommand)) return true;
+  return DEV_SERVER_PATTERNS.some((re) => re.test(command));
+}
+function checkDevServerVerify(toolName, toolInput, _injectedSkills, _dedupOff, logger) {
+  const l = logger || log;
+  const noResult = { triggered: false, unavailable: false, loopGuardHit: false, iterationCount: 0 };
+  if (toolName !== "Bash") {
+    l.summary("dev-server-verify-not-fired", { reason: "not-bash", tool: toolName });
+    return noResult;
+  }
+  const command = toolInput.command || "";
+  if (!isDevServerCommand(command)) {
+    l.summary("dev-server-verify-not-fired", { reason: "not-dev-server-command" });
+    return noResult;
+  }
+  l.debug("dev-server-detected", { command: command.slice(0, 100) });
+  const available = process.env.VERCEL_PLUGIN_AGENT_BROWSER_AVAILABLE;
+  if (available === "0") {
+    l.summary("dev-server-verify-not-fired", { reason: "agent-browser-unavailable" });
+    l.debug("dev-server-verify-unavailable", { reason: "agent-browser not installed" });
+    return { triggered: false, unavailable: true, loopGuardHit: false, iterationCount: 0 };
+  }
+  const count = getDevServerVerifyCount();
+  l.trace("dev-server-verify-counter-state", { current: count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS, remaining: Math.max(0, DEV_SERVER_VERIFY_MAX_ITERATIONS - count), command: command.slice(0, 100) });
+  if (count >= DEV_SERVER_VERIFY_MAX_ITERATIONS) {
+    l.summary("dev-server-verify-not-fired", { reason: "loop-guard", count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
+    l.debug("dev-server-verify-loop-guard", { count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
+    return { triggered: false, unavailable: false, loopGuardHit: true, iterationCount: count };
+  }
+  l.summary("dev-server-verify-triggered", { iterationCount: count });
+  return { triggered: true, unavailable: false, loopGuardHit: false, iterationCount: count };
 }
 function parseInput(raw, logger) {
   const l = logger || log;
@@ -447,6 +573,17 @@ function run() {
   if (!matchResult) return "{}";
   if (log.active) timing.match = Math.round(log.now() - tMatch);
   const { matchedEntries, matched } = matchResult;
+  const tsxReview = checkTsxReviewTrigger(toolName, toolInput, injectedSkills, dedupOff, log);
+  const devServerVerify = checkDevServerVerify(toolName, toolInput, injectedSkills, dedupOff, log);
+  if (devServerVerify.triggered) {
+    for (const entry of matchedEntries) {
+      if (entry.skill === DEV_SERVER_VERIFY_SKILL) {
+        entry.effectivePriority = DEV_SERVER_VERIFY_PRIORITY_BOOST;
+        log.debug("dev-server-verify-priority-boost", { skill: entry.skill, effectivePriority: entry.effectivePriority });
+        break;
+      }
+    }
+  }
   const dedupResult = deduplicateSkills({
     matchedEntries,
     matched,
@@ -459,7 +596,61 @@ function run() {
     setupMode
   }, log);
   const { newEntries, rankedSkills } = dedupResult;
-  if (rankedSkills.length === 0) {
+  let tsxReviewInjected = false;
+  if (tsxReview.triggered && !rankedSkills.includes(TSX_REVIEW_SKILL)) {
+    const reviewTemplate = compiledSkills.find((e) => e.skill === TSX_REVIEW_SKILL);
+    const reviewEntry = reviewTemplate ? { ...reviewTemplate, effectivePriority: TSX_REVIEW_PRIORITY_BOOST } : {
+      skill: TSX_REVIEW_SKILL,
+      priority: 0,
+      compiledPaths: [],
+      compiledBash: [],
+      compiledImports: [],
+      effectivePriority: TSX_REVIEW_PRIORITY_BOOST
+    };
+    rankedSkills.unshift(TSX_REVIEW_SKILL);
+    matched.add(TSX_REVIEW_SKILL);
+    tsxReviewInjected = true;
+    log.debug("tsx-review-synthetic-inject", { skill: TSX_REVIEW_SKILL, count: tsxReview.count });
+  } else if (tsxReview.triggered && rankedSkills.includes(TSX_REVIEW_SKILL)) {
+    tsxReviewInjected = true;
+  }
+  let devServerVerifyInjected = false;
+  let devServerUnavailableWarning = false;
+  if (devServerVerify.unavailable) {
+    if (!injectedSkills.has("agent-browser-unavailable-warning")) {
+      devServerUnavailableWarning = true;
+      injectedSkills.add("agent-browser-unavailable-warning");
+      if (hasEnvDedup) {
+        process.env.VERCEL_PLUGIN_SEEN_SKILLS = appendSeenSkill(
+          process.env.VERCEL_PLUGIN_SEEN_SKILLS,
+          "agent-browser-unavailable-warning"
+        );
+      }
+      log.debug("dev-server-verify-unavailable-warning", { reason: "agent-browser not installed" });
+    }
+    const verifyIdx = rankedSkills.indexOf(DEV_SERVER_VERIFY_SKILL);
+    if (verifyIdx !== -1) {
+      rankedSkills.splice(verifyIdx, 1);
+      log.debug("dev-server-verify-suppressed", { reason: "agent-browser unavailable" });
+    }
+  } else if (devServerVerify.triggered && !rankedSkills.includes(DEV_SERVER_VERIFY_SKILL)) {
+    const verifyTemplate = compiledSkills.find((e) => e.skill === DEV_SERVER_VERIFY_SKILL);
+    const _verifyEntry = verifyTemplate ? { ...verifyTemplate, effectivePriority: DEV_SERVER_VERIFY_PRIORITY_BOOST } : {
+      skill: DEV_SERVER_VERIFY_SKILL,
+      priority: 0,
+      compiledPaths: [],
+      compiledBash: [],
+      compiledImports: [],
+      effectivePriority: DEV_SERVER_VERIFY_PRIORITY_BOOST
+    };
+    rankedSkills.unshift(DEV_SERVER_VERIFY_SKILL);
+    matched.add(DEV_SERVER_VERIFY_SKILL);
+    devServerVerifyInjected = true;
+    log.debug("dev-server-verify-synthetic-inject", { skill: DEV_SERVER_VERIFY_SKILL, iteration: devServerVerify.iterationCount });
+  } else if (devServerVerify.triggered && rankedSkills.includes(DEV_SERVER_VERIFY_SKILL)) {
+    devServerVerifyInjected = true;
+  }
+  if (rankedSkills.length === 0 && !devServerUnavailableWarning) {
     const reason = matched.size === 0 ? "no_matches" : "all_deduped";
     if (log.active) {
       timing.skill_read = 0;
@@ -467,7 +658,9 @@ function run() {
     }
     log.complete(reason, {
       matchedCount: matched.size,
-      dedupedCount: matched.size - rankedSkills.length
+      dedupedCount: matched.size - rankedSkills.length,
+      tsxReviewTriggered: tsxReview.triggered,
+      devServerVerifyTriggered: devServerVerify.triggered
     }, log.active ? timing : null);
     return "{}";
   }
@@ -480,12 +673,32 @@ function run() {
     logger: log
   });
   if (log.active) timing.skill_read = Math.round(log.now() - tSkillRead);
+  if (tsxReviewInjected && loaded.includes(TSX_REVIEW_SKILL)) {
+    parts.push(REVIEW_MARKER);
+    const prevCount = getTsxEditCount();
+    resetTsxEditCount();
+    log.debug("tsx-review-marker-added", { marker: REVIEW_MARKER });
+    log.trace("tsx-edit-counter-reset", { previousCount: prevCount, resetTo: 0, threshold: getReviewThreshold() });
+  }
+  if (devServerVerifyInjected && loaded.includes(DEV_SERVER_VERIFY_SKILL)) {
+    const prevIteration = getDevServerVerifyCount();
+    const iteration = incrementDevServerVerifyCount();
+    parts.push(`${DEV_SERVER_VERIFY_MARKER.replace("-->", `iteration="${iteration}" max="${DEV_SERVER_VERIFY_MAX_ITERATIONS}" -->`)}`);
+    log.debug("dev-server-verify-marker-added", { iteration, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
+    log.trace("dev-server-verify-counter-increment", { previous: prevIteration, current: iteration, max: DEV_SERVER_VERIFY_MAX_ITERATIONS, remaining: DEV_SERVER_VERIFY_MAX_ITERATIONS - iteration });
+  }
+  if (devServerUnavailableWarning) {
+    parts.push(DEV_SERVER_UNAVAILABLE_WARNING);
+    log.debug("dev-server-unavailable-warning-injected", {});
+  }
   if (parts.length === 0) {
     if (log.active) timing.total = log.elapsed();
     log.complete("no_matches", {
       matchedCount: matched.size,
       dedupedCount: matchedEntries.length - newEntries.length,
-      cappedCount: droppedByCap.length + droppedByBudget.length
+      cappedCount: droppedByCap.length + droppedByBudget.length,
+      tsxReviewTriggered: tsxReview.triggered,
+      devServerVerifyTriggered: devServerVerify.triggered
     }, log.active ? timing : null);
     return "{}";
   }
@@ -495,7 +708,9 @@ function run() {
     matchedCount: matched.size,
     injectedCount: parts.length,
     dedupedCount: matchedEntries.length - newEntries.length,
-    cappedCount
+    cappedCount,
+    tsxReviewTriggered: tsxReview.triggered,
+    devServerVerifyTriggered: devServerVerify.triggered
   }, log.active ? timing : null);
   const result = formatOutput({ parts, matched, injectedSkills: loaded, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget });
   return result;
@@ -590,13 +805,30 @@ if (isMainModule()) {
   }
 }
 export {
+  DEFAULT_REVIEW_THRESHOLD,
+  DEV_SERVER_UNAVAILABLE_WARNING,
+  DEV_SERVER_VERIFY_MARKER,
+  DEV_SERVER_VERIFY_MAX_ITERATIONS,
+  DEV_SERVER_VERIFY_SKILL,
+  REVIEW_MARKER,
+  TSX_REVIEW_SKILL,
+  checkDevServerVerify,
+  checkTsxReviewTrigger,
   deduplicateSkills,
   formatOutput,
+  getDevServerVerifyCount,
+  getReviewThreshold,
+  getTsxEditCount,
+  incrementDevServerVerifyCount,
   injectSkills,
+  isDevServerCommand,
+  isTsxEditTool,
   loadSkills,
   matchSkills,
   parseInput,
   redactCommand,
+  resetDevServerVerifyCount,
+  resetTsxEditCount,
   run,
   validateSkillMap
 };

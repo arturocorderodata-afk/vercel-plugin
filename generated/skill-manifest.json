@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-07T01:49:42.634Z",
+  "generatedAt": "2026-03-07T04:53:57.098Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -111,6 +111,35 @@
         "^apps\\/[^/]*\\/vercel\\.json$"
       ],
       "bashRegexSources": [],
+      "importRegexSources": []
+    },
+    "agent-browser-verify": {
+      "priority": 2,
+      "summary": "",
+      "pathPatterns": [],
+      "bashPatterns": [
+        "\\bnext\\s+dev\\b",
+        "\\bnpm\\s+run\\s+dev\\b",
+        "\\bpnpm\\s+dev\\b",
+        "\\bbun\\s+run\\s+dev\\b",
+        "\\byarn\\s+dev\\b",
+        "\\bvite\\s*(dev)?\\b",
+        "\\bnuxt\\s+dev\\b",
+        "\\bvercel\\s+dev\\b"
+      ],
+      "importPatterns": [],
+      "bodyPath": "skills/agent-browser-verify/SKILL.md",
+      "pathRegexSources": [],
+      "bashRegexSources": [
+        "\\bnext\\s+dev\\b",
+        "\\bnpm\\s+run\\s+dev\\b",
+        "\\bpnpm\\s+dev\\b",
+        "\\bbun\\s+run\\s+dev\\b",
+        "\\byarn\\s+dev\\b",
+        "\\bvite\\s*(dev)?\\b",
+        "\\bnuxt\\s+dev\\b",
+        "\\bvercel\\s+dev\\b"
+      ],
       "importRegexSources": []
     },
     "micro": {
@@ -1215,6 +1244,47 @@
         "\\byarn\\s+add\\s+[^\\n]*@vercel/workflow\\b"
       ],
       "importRegexSources": []
+    },
+    "react-best-practices": {
+      "priority": 4,
+      "summary": "",
+      "pathPatterns": [
+        "src/components/**/*.tsx",
+        "src/components/**/*.jsx",
+        "app/components/**/*.tsx",
+        "app/components/**/*.jsx",
+        "components/**/*.tsx",
+        "components/**/*.jsx",
+        "src/ui/**/*.tsx",
+        "lib/components/**/*.tsx"
+      ],
+      "bashPatterns": [],
+      "importPatterns": [
+        "react",
+        "react-dom"
+      ],
+      "bodyPath": "skills/react-best-practices/SKILL.md",
+      "pathRegexSources": [
+        "^src\\/components\\/(?:[^/]+\\/)*[^/]*\\.tsx$",
+        "^src\\/components\\/(?:[^/]+\\/)*[^/]*\\.jsx$",
+        "^app\\/components\\/(?:[^/]+\\/)*[^/]*\\.tsx$",
+        "^app\\/components\\/(?:[^/]+\\/)*[^/]*\\.jsx$",
+        "^components\\/(?:[^/]+\\/)*[^/]*\\.tsx$",
+        "^components\\/(?:[^/]+\\/)*[^/]*\\.jsx$",
+        "^src\\/ui\\/(?:[^/]+\\/)*[^/]*\\.tsx$",
+        "^lib\\/components\\/(?:[^/]+\\/)*[^/]*\\.tsx$"
+      ],
+      "bashRegexSources": [],
+      "importRegexSources": [
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]react(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]react-dom(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        }
+      ]
     },
     "nextjs": {
       "priority": 5,

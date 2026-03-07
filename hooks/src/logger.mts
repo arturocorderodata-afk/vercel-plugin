@@ -30,6 +30,8 @@ interface CompleteCounts {
   injectedCount: number;
   dedupedCount: number;
   cappedCount: number;
+  tsxReviewTriggered?: boolean;
+  devServerVerifyTriggered?: boolean;
 }
 
 export interface Logger {
@@ -38,6 +40,7 @@ export interface Logger {
   t0: number;
   now: () => number;
   elapsed: () => number;
+  summary: (event: string, data: Record<string, unknown>) => void;
   issue: (code: string, message: string, hint: string, context: Record<string, unknown>) => void;
   complete: (reason: string, counts?: Partial<CompleteCounts>, timing?: Record<string, number> | null) => void;
   debug: (event: string, data: Record<string, unknown>) => void;
@@ -103,6 +106,10 @@ export function createLogger(opts?: { level?: LogLevel } | LogLevel): Logger {
       return Math.round(safeNow() - t0);
     },
 
+    summary(event, data) {
+      emit("summary", event, data);
+    },
+
     issue(code, message, hint, context) {
       emit("summary", "issue", { code, message, hint, context });
     },
@@ -113,6 +120,8 @@ export function createLogger(opts?: { level?: LogLevel } | LogLevel): Logger {
         injectedCount = 0,
         dedupedCount = 0,
         cappedCount = 0,
+        tsxReviewTriggered,
+        devServerVerifyTriggered,
       } = counts || {};
       emit("summary", "complete", {
         reason,
@@ -120,6 +129,8 @@ export function createLogger(opts?: { level?: LogLevel } | LogLevel): Logger {
         injectedCount,
         dedupedCount,
         cappedCount,
+        ...(tsxReviewTriggered !== undefined ? { tsxReviewTriggered } : {}),
+        ...(devServerVerifyTriggered !== undefined ? { devServerVerifyTriggered } : {}),
         elapsed_ms: Math.round(safeNow() - t0),
         ...(timing ? { timing_ms: timing } : {}),
       });

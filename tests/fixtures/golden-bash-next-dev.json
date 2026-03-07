@@ -1,5 +1,5 @@
 {
-  "description": "Golden snapshot: Bash 'npx next dev --turbopack' triggers nextjs, turbopack, and agent-browser",
+  "description": "Golden snapshot: Bash 'npx next dev --turbopack' triggers nextjs, turbopack, agent-browser, and agent-browser-verify (verify boosted to priority 45 on dev-server detection)",
   "input": {
     "tool_name": "Bash",
     "tool_input": { "command": "npx next dev --turbopack" }
@@ -9,9 +9,9 @@
       "version": 1,
       "toolName": "Bash",
       "toolTarget": "npx next dev --turbopack",
-      "matchedSkills": ["agent-browser", "nextjs", "turbopack"],
-      "injectedSkills": ["nextjs", "turbopack", "agent-browser"],
-      "droppedByCap": [],
+      "matchedSkills": ["agent-browser", "agent-browser-verify", "nextjs", "turbopack"],
+      "injectedSkills": ["agent-browser-verify", "nextjs", "turbopack"],
+      "droppedByCap": ["agent-browser"],
       "droppedByBudget": []
     }
   }

@@ -328,6 +328,29 @@ function checkVercelCli(): VercelCliStatus {
 }
 
 // ---------------------------------------------------------------------------
+// agent-browser availability check
+// ---------------------------------------------------------------------------
+
+const WHICH_ARGS: string[] = "agent-browser".split(" ");
+
+/**
+ * Check if agent-browser CLI is available on PATH.
+ * Returns true if `which agent-browser` exits 0.
+ */
+export function checkAgentBrowser(): boolean {
+  try {
+    execFileSync("which", WHICH_ARGS, {
+      timeout: 3_000,
+      encoding: "utf-8",
+      stdio: SPAWN_STDIO,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point — profile the project and write env vars.
 // ---------------------------------------------------------------------------
 
@@ -377,7 +400,14 @@ function main(): void {
   const likelySkills: string[] = profileProject(projectRoot);
   const setupSignals: BootstrapSignals = profileBootstrapSignals(projectRoot);
 
+  // Check agent-browser CLI availability
+  const agentBrowserAvailable: boolean = checkAgentBrowser();
+
   try {
+    appendFileSync(
+      envFile,
+      `export VERCEL_PLUGIN_AGENT_BROWSER_AVAILABLE="${agentBrowserAvailable ? "1" : "0"}"\n`,
+    );
     if (likelySkills.length > 0) {
       appendFileSync(envFile, `export VERCEL_PLUGIN_LIKELY_SKILLS="${likelySkills.join(",")}"\n`);
     }

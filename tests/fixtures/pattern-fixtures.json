@@ -83,7 +83,7 @@
       "description": "next dev --turbo triggers turbopack, nextjs, and agent-browser",
       "type": "bash",
       "input": "next dev --turbo",
-      "expectedSkills": ["turbopack", "nextjs", "agent-browser"]
+      "expectedSkills": ["turbopack", "nextjs", "agent-browser", "agent-browser-verify"]
     },
     {
       "description": "vercel env pull triggers env-vars, ai-gateway, and vercel-cli",
@@ -108,6 +108,48 @@
       "type": "bash",
       "input": "vercel firewall list",
       "expectedSkills": ["vercel-firewall", "vercel-cli"]
+    },
+    {
+      "description": "src/components/Button.tsx triggers react-best-practices",
+      "type": "path",
+      "input": "src/components/Button.tsx",
+      "expectedSkills": ["react-best-practices"]
+    },
+    {
+      "description": "components/Card.jsx triggers react-best-practices",
+      "type": "path",
+      "input": "components/Card.jsx",
+      "expectedSkills": ["react-best-practices"]
+    },
+    {
+      "description": "app/components/Modal.tsx triggers react-best-practices and nextjs",
+      "type": "path",
+      "input": "app/components/Modal.tsx",
+      "expectedSkills": ["react-best-practices", "nextjs"]
+    },
+    {
+      "description": "npm run dev triggers nextjs, agent-browser, agent-browser-verify",
+      "type": "bash",
+      "input": "npm run dev",
+      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify"]
+    },
+    {
+      "description": "pnpm dev triggers nextjs, agent-browser, agent-browser-verify",
+      "type": "bash",
+      "input": "pnpm dev",
+      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify"]
+    },
+    {
+      "description": "bun run dev triggers nextjs, agent-browser, agent-browser-verify",
+      "type": "bash",
+      "input": "bun run dev",
+      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify"]
+    },
+    {
+      "description": "vite triggers agent-browser, agent-browser-verify",
+      "type": "bash",
+      "input": "vite",
+      "expectedSkills": ["agent-browser", "agent-browser-verify"]
     }
   ]
 }

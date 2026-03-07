@@ -432,6 +432,20 @@ AGENT BROWSER                              ⤳ skill: agent-browser
 │
 └── Use When: Verifying UI behavior, form testing, e2e workflows
 
+AGENT BROWSER VERIFY                       ⤳ skill: agent-browser-verify
+├── Purpose: Automated dev-server verification checklist
+│   ⊃ Triggers on dev-server start (next dev, vite, etc.)
+│   ⊃ Runs visual gut-check: page loads, no errors, key UI renders
+│
+└── Use When: After starting a dev server, before continuing development
+
+REACT BEST PRACTICES                       ⤳ skill: react-best-practices
+├── Purpose: TSX/JSX quality review checklist
+│   ⊃ Component structure, hooks, a11y, performance, TypeScript
+│   ⊃ Triggers when editing component files
+│
+└── Use When: After editing multiple TSX components, before shipping
+
 SWR (v2, React Hooks)                      ⤳ skill: swr  📖 docs: https://swr.vercel.app
 ├── Purpose: Client-side data fetching with stale-while-revalidate caching
 │   ⊃ useSWR (data fetching with auto-revalidation)

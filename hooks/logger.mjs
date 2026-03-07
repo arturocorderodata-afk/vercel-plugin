@@ -46,6 +46,9 @@ function createLogger(opts) {
     elapsed() {
       return Math.round(safeNow() - t0);
     },
+    summary(event, data) {
+      emit("summary", event, data);
+    },
     issue(code, message, hint, context) {
       emit("summary", "issue", { code, message, hint, context });
     },
@@ -54,7 +57,9 @@ function createLogger(opts) {
         matchedCount = 0,
         injectedCount = 0,
         dedupedCount = 0,
-        cappedCount = 0
+        cappedCount = 0,
+        tsxReviewTriggered,
+        devServerVerifyTriggered
       } = counts || {};
       emit("summary", "complete", {
         reason,
@@ -62,6 +67,8 @@ function createLogger(opts) {
         injectedCount,
         dedupedCount,
         cappedCount,
+        ...tsxReviewTriggered !== void 0 ? { tsxReviewTriggered } : {},
+        ...devServerVerifyTriggered !== void 0 ? { devServerVerifyTriggered } : {},
         elapsed_ms: Math.round(safeNow() - t0),
         ...timing ? { timing_ms: timing } : {}
       });
