@@ -22,6 +22,11 @@ You are an expert in the Vercel AI Gateway — a unified API for calling AI mode
 
 AI Gateway provides a single API endpoint to access 100+ models from all major providers. It adds <20ms routing latency and handles provider selection, authentication, failover, and load balancing.
 
+## Packages
+
+- `ai@^6.0.0` (required; includes built-in `gateway()` provider)
+- `@ai-sdk/gateway@^3.0.0` (optional direct install for explicit gateway package usage)
+
 ## Setup
 
 The AI SDK automatically uses the AI Gateway when you pass a model string in `"provider/model"` format:
@@ -31,12 +36,29 @@ import { generateText } from 'ai'
 import { gateway } from 'ai' // Available since AI SDK 5.0.36+
 
 const result = await generateText({
-  model: gateway('openai/gpt-5.2'),
+  model: gateway('openai/gpt-5.4'),
   prompt: 'Hello!',
 })
 ```
 
 No additional package needed — the `gateway` provider is built into the `ai` package.
+
+## Model Slug Rules (Critical)
+
+- Always use `provider/model` format (for example `openai/gpt-5.4`).
+- Versioned slugs use dots for versions, not hyphens:
+  - Correct: `anthropic/claude-sonnet-4.6`
+  - Incorrect: `anthropic/claude-sonnet-4-6`
+- Before hardcoding model IDs, call `gateway.getAvailableModels()` and pick from the returned IDs.
+- Default text models: `openai/gpt-5.4` or `anthropic/claude-sonnet-4.6`.
+- Do not default to outdated choices like `openai/gpt-4o`.
+
+```ts
+import { gateway } from 'ai'
+
+const availableModels = await gateway.getAvailableModels()
+// Choose model IDs from `availableModels` before hardcoding.
+```
 
 ## Authentication (OIDC — Default)
 
@@ -98,7 +120,7 @@ const result = await generateText({
       only: ['anthropic', 'vertex'],
 
       // Fallback models if primary model fails
-      models: ['openai/gpt-5.2', 'google/gemini-3-flash'],
+      models: ['openai/gpt-5.4', 'google/gemini-3-flash'],
 
       // Track usage per end-user
       user: 'user-123',
@@ -126,7 +148,7 @@ AI Gateway supports response caching to reduce latency and cost for repeated or 
 
 ```ts
 const result = await generateText({
-  model: gateway('openai/gpt-5.2'),
+  model: gateway('openai/gpt-5.4'),
   prompt: 'What is the capital of France?',
   providerOptions: {
     gateway: {
@@ -163,7 +185,7 @@ Control usage at the individual user level to prevent abuse and manage costs:
 
 ```ts
 const result = await generateText({
-  model: gateway('openai/gpt-5.2'),
+  model: gateway('openai/gpt-5.4'),
   prompt: userMessage,
   providerOptions: {
     gateway: {
@@ -191,7 +213,7 @@ import { generateText, APICallError } from 'ai'
 
 try {
   const result = await generateText({
-    model: gateway('openai/gpt-5.2'),
+    model: gateway('openai/gpt-5.4'),
     prompt: userMessage,
     providerOptions: { gateway: { user: userId } },
   })
@@ -299,7 +321,7 @@ const result = await generateText({
   providerOptions: {
     gateway: {
       order: ['anthropic', 'bedrock'], // Bedrock as fallback
-      models: ['openai/gpt-5.2'],   // Final fallback model
+      models: ['openai/gpt-5.4'],   // Final fallback model
     },
   },
 })
@@ -316,7 +338,7 @@ If your provider API key hits its quota, the gateway tries the next provider in 
 model: gateway('openai/gpt-99')  // Returns 400 with descriptive error
 
 // Good — use models listed in Vercel docs
-model: gateway('openai/gpt-5.2')
+model: gateway('openai/gpt-5.4')
 ```
 
 ### Timeout handling
@@ -344,7 +366,7 @@ import { generateText, APICallError } from 'ai'
 async function callAI(prompt: string, userId: string) {
   try {
     return await generateText({
-      model: gateway('openai/gpt-5.2'),
+      model: gateway('openai/gpt-5.4'),
       prompt,
       providerOptions: {
         gateway: {
@@ -431,7 +453,7 @@ Text, image, and video generation all route through the gateway:
 ```ts
 // Text
 const { text } = await generateText({
-  model: gateway('openai/gpt-5.2'),
+  model: gateway('openai/gpt-5.4'),
   prompt: 'Hello',
 })
 
