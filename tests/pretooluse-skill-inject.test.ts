@@ -988,7 +988,7 @@ describe("setup mode bootstrap routing", () => {
 describe("seen-skills env file and dedup controls", () => {
   const nextjsOnlyPath = "/project/app/page.tsx";
 
-  test("file-based dedup persists across invocations with same session_id", async () => {
+  test("no VERCEL_PLUGIN_SEEN_SKILLS env var uses memory-only dedup across invocations", async () => {
     const { stdout: first } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
       {},
@@ -996,13 +996,12 @@ describe("seen-skills env file and dedup controls", () => {
     const r1 = JSON.parse(first);
     expect(r1.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
 
-    // Second call with same session_id should be deduped via file persistence
     const { stdout: second } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
       {},
     );
     const r2 = JSON.parse(second);
-    expect(r2).toEqual({});
+    expect(r2.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
   });
 
   test("empty VERCEL_PLUGIN_SEEN_SKILLS env var dedups across invocations", async () => {
@@ -1069,22 +1068,19 @@ describe("seen-skills env file and dedup controls", () => {
     expect(JSON.parse(injected).hookSpecificOutput.additionalContext).toContain("skill:nextjs");
   });
 
-  test("debug mode logs dedup strategy for file, memory-only, and disabled", async () => {
-    // With session_id present, strategy is "file"
-    const { stderr: fileStderr } = await runHookEnv(
+  test("debug mode logs dedup strategy for env-var, memory-only, and disabled", async () => {
+    const { stderr: envVarStderr } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
       { VERCEL_PLUGIN_HOOK_DEBUG: "1", VERCEL_PLUGIN_SEEN_SKILLS: "" },
     );
-    const fileLines = fileStderr.trim().split("\n").map((l: string) => JSON.parse(l));
-    const fileStrategy = fileLines.find((l: any) => l.event === "dedup-strategy");
-    expect(fileStrategy).toBeDefined();
-    expect(fileStrategy.strategy).toBe("file");
+    const envVarLines = envVarStderr.trim().split("\n").map((l: string) => JSON.parse(l));
+    const envVarStrategy = envVarLines.find((l: any) => l.event === "dedup-strategy");
+    expect(envVarStrategy).toBeDefined();
+    expect(envVarStrategy.strategy).toBe("env-var");
 
-    // Without session_id and without env var, strategy is "memory-only"
     const { stderr: memoryOnlyStderr } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
       { VERCEL_PLUGIN_HOOK_DEBUG: "1", VERCEL_PLUGIN_SEEN_SKILLS: undefined },
-      { omitSessionId: true },
     );
     const memoryOnlyLines = memoryOnlyStderr.trim().split("\n").map((l: string) => JSON.parse(l));
     const memoryOnlyStrategy = memoryOnlyLines.find((l: any) => l.event === "dedup-strategy");

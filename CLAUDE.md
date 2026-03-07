@@ -30,20 +30,18 @@ Hook output is type-checked against `SyncHookJSONOutput` from `@anthropic-ai/cla
 
 Deduplication prevents the same skill from being injected twice in a session.
 
-**Mechanism**: Session-scoped temp files + in-process env var fallback
+**Mechanism**: Environment variable `VERCEL_PLUGIN_SEEN_SKILLS`
 
 - **Format**: Comma-delimited string of skill slugs (e.g., `"nextjs,turbopack,ai-sdk"`)
-- **File path**: `/tmp/vercel-plugin-<sessionId>-seen-skills.txt`
-- **Read**: `readSessionFile(sessionId, "seen-skills")` in `hook-env.mjs`, parsed by `parseSeenSkills()` in `patterns.mjs`
-- **Write**: `writeSessionFile(sessionId, "seen-skills", value)` in `hook-env.mjs` after each injection
-- **Legacy**: `session-start-seen-skills.mjs` still appends `export VERCEL_PLUGIN_SEEN_SKILLS=""` to `CLAUDE_ENV_FILE` for backward compat
+- **Initialization**: `session-start-seen-skills.mjs` appends `export VERCEL_PLUGIN_SEEN_SKILLS=""` to `CLAUDE_ENV_FILE`
+- **Read**: `parseSeenSkills(envValue)` in `patterns.mjs` splits on commas into a `Set`
+- **Write**: `appendSeenSkill(envValue, skill)` in `patterns.mjs` appends to the comma-delimited string
 - **Strategy detection** (debug mode):
-  - `"file"` — `session_id` is present (primary strategy, persists across hook invocations)
-  - `"env-var"` — no `session_id` but `VERCEL_PLUGIN_SEEN_SKILLS` env var is set (legacy fallback)
-  - `"memory-only"` — neither file nor env var available; dedup only works within a single invocation
+  - `"env-var"` — `VERCEL_PLUGIN_SEEN_SKILLS` is set (including empty string)
+  - `"memory-only"` — env var is not set; dedup only works within a single invocation
   - `"disabled"` — `VERCEL_PLUGIN_HOOK_DEDUP=off`
 
-The same file-based pattern is used for PostToolUse validate dedup via `/tmp/vercel-plugin-<sessionId>-validated-files.txt`.
+**There are no temp files for dedup.** All state lives in the env var.
 
 ### YAML Parser
 

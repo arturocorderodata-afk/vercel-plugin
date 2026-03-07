@@ -60,7 +60,7 @@ function parseDebugLines(stderr: string): Array<Record<string, unknown>> {
 describe("subagent fresh env dedup behavior", () => {
   const slackRoutePath = "/Users/me/slack-clone/app/api/slack/route.ts";
 
-  test("fresh subagent with different session_id re-injects the same skills as the lead agent", async () => {
+  test("fresh subagent without inherited seen-skills env re-injects the same skills as the lead agent", async () => {
     const { code: leadCode, stdout: leadStdout } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: slackRoutePath } },
       { VERCEL_PLUGIN_SEEN_SKILLS: "", VERCEL_PLUGIN_HOOK_DEBUG: "1" },
@@ -70,25 +70,21 @@ describe("subagent fresh env dedup behavior", () => {
     const leadInjected = parseInjectedSkills(leadStdout);
     expect(leadInjected).toEqual(EXPECTED_SLACK_ROUTE_SKILLS);
 
-    // Second call with same session — deduped via file persistence
+    const leadSeen = leadInjected.join(",");
+
     const { code: leadSecondCode, stdout: leadSecondStdout } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: slackRoutePath } },
-      {},
+      { VERCEL_PLUGIN_SEEN_SKILLS: leadSeen },
     );
 
     expect(leadSecondCode).toBe(0);
     expect(JSON.parse(leadSecondStdout)).toEqual({});
 
-    // Subagent gets a fresh session_id — its file is empty, so skills re-inject
-    const subagentSession = `subagent-fresh-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const origSession = testSession;
-    testSession = subagentSession;
     const { code: subagentCode, stdout: subagentStdout, stderr: subagentStderr } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: slackRoutePath } },
       { VERCEL_PLUGIN_HOOK_DEBUG: "1" },
       { omitSeenSkillsEnv: true },
     );
-    testSession = origSession;
 
     expect(subagentCode).toBe(0);
     expect(parseInjectedSkills(subagentStdout)).toEqual(EXPECTED_SLACK_ROUTE_SKILLS);
@@ -96,10 +92,10 @@ describe("subagent fresh env dedup behavior", () => {
     const subagentDebugLines = parseDebugLines(subagentStderr);
     const dedupStrategy = subagentDebugLines.find((line) => line.event === "dedup-strategy");
     expect(dedupStrategy).toBeDefined();
-    expect(dedupStrategy?.strategy).toBe("file");
+    expect(dedupStrategy?.strategy).toBe("memory-only");
   });
 
-  test("fresh subagent with session_id uses file strategy and injects on first call", async () => {
+  test("fresh subagent with its own empty seen-skills env uses env-var strategy but still injects", async () => {
     const { code, stdout, stderr } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: slackRoutePath } },
       { VERCEL_PLUGIN_SEEN_SKILLS: "", VERCEL_PLUGIN_HOOK_DEBUG: "1" },
@@ -111,7 +107,7 @@ describe("subagent fresh env dedup behavior", () => {
     const debugLines = parseDebugLines(stderr);
     const dedupStrategy = debugLines.find((line) => line.event === "dedup-strategy");
     expect(dedupStrategy).toBeDefined();
-    expect(dedupStrategy?.strategy).toBe("file");
+    expect(dedupStrategy?.strategy).toBe("env-var");
   });
 
   test("subagent that explicitly inherits the lead seen-skills list is deduped", async () => {

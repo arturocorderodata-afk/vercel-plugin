@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pluginRoot as resolvePluginRoot, safeReadFile, readSessionFile, writeSessionFile } from "./hook-env.mjs";
+import { pluginRoot as resolvePluginRoot, safeReadFile } from "./hook-env.mjs";
 import { buildSkillMap } from "./skill-map-frontmatter.mjs";
 import {
   compileSkillPatterns,
@@ -41,9 +41,8 @@ function parseInput(raw, logger) {
   }
   const cwdCandidate = input.cwd ?? input.working_directory;
   const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
-  const sessionId = input.session_id || null;
   l.debug("posttooluse-validate-input", { toolName, filePath });
-  return { toolName, filePath, cwd, sessionId };
+  return { toolName, filePath, cwd };
 }
 function loadValidateRules(pluginRoot, logger) {
   const l = logger || log;
@@ -152,21 +151,16 @@ function appendValidatedFile(envValue, entry) {
   const current = typeof envValue === "string" ? envValue.trim() : "";
   return current === "" ? entry : `${current},${entry}`;
 }
-function isAlreadyValidated(filePath, hash, sessionId) {
-  const fromFile = sessionId ? readSessionFile(sessionId, "validated-files") : "";
-  const envValue = fromFile || process.env.VERCEL_PLUGIN_VALIDATED_FILES;
-  const validated = parseValidatedFiles(envValue);
+function isAlreadyValidated(filePath, hash) {
+  const validated = parseValidatedFiles(process.env.VERCEL_PLUGIN_VALIDATED_FILES);
   return validated.has(`${filePath}:${hash}`);
 }
-function markValidated(filePath, hash, sessionId) {
+function markValidated(filePath, hash) {
   const entry = `${filePath}:${hash}`;
   process.env.VERCEL_PLUGIN_VALIDATED_FILES = appendValidatedFile(
     process.env.VERCEL_PLUGIN_VALIDATED_FILES,
     entry
   );
-  if (sessionId) {
-    writeSessionFile(sessionId, "validated-files", process.env.VERCEL_PLUGIN_VALIDATED_FILES);
-  }
 }
 function formatOutput(violations, matchedSkills, filePath, logger) {
   const l = logger || log;
@@ -237,7 +231,7 @@ function run() {
   const parsed = parseInput(raw, log);
   if (!parsed) return "{}";
   if (log.active) timing.parse = Math.round(log.now() - tStart);
-  const { toolName, filePath, cwd, sessionId } = parsed;
+  const { toolName, filePath, cwd } = parsed;
   const resolvedPath = cwd ? resolve(cwd, filePath) : filePath;
   const fileContent = safeReadFile(resolvedPath);
   if (!fileContent) {
@@ -245,7 +239,7 @@ function run() {
     return "{}";
   }
   const hash = contentHash(fileContent);
-  if (isAlreadyValidated(filePath, hash, sessionId)) {
+  if (isAlreadyValidated(filePath, hash)) {
     log.debug("posttooluse-validate-skip", { reason: "already_validated", filePath, hash });
     return "{}";
   }
@@ -259,13 +253,13 @@ function run() {
   if (log.active) timing.match = Math.round(log.now() - tMatch);
   if (matchedSkills.length === 0) {
     log.debug("posttooluse-validate-skip", { reason: "no_skill_match", filePath });
-    markValidated(filePath, hash, sessionId);
+    markValidated(filePath, hash);
     return "{}";
   }
   const tValidate = log.active ? log.now() : 0;
   const violations = runValidation(fileContent, matchedSkills, rulesMap, log);
   if (log.active) timing.validate = Math.round(log.now() - tValidate);
-  markValidated(filePath, hash, sessionId);
+  markValidated(filePath, hash);
   const result = formatOutput(violations, matchedSkills, filePath, log);
   log.complete("posttooluse-validate-done", {
     matchedCount: matchedSkills.length,

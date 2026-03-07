@@ -30,10 +30,8 @@ async function runSessionStart(envFilePath: string): Promise<{ code: number; std
 async function runHookEnv(
   input: { tool_name: string; tool_input: Record<string, string> },
   env: Record<string, string | undefined>,
-  opts?: { sessionId?: string },
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  const sid = opts?.sessionId ?? testSession;
-  const payload = JSON.stringify({ ...input, session_id: sid });
+  const payload = JSON.stringify({ ...input, session_id: testSession });
   const proc = Bun.spawn(["node", HOOK_SCRIPT], {
     stdin: "pipe",
     stdout: "pipe",
@@ -148,12 +146,9 @@ describe("session timeline subagent integration", () => {
       expect(subagentSessionStart.code).toBe(0);
       expect(readSeenSkillsExport(subagentEnvPath)).toBe("");
 
-      // Subagent gets its own session_id, so file-based dedup starts fresh
-      const subagentSession = `subagent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const subagentRead = await runHookEnv(
         { tool_name: "Read", tool_input: { file_path: "/Users/me/notion-clone/app/page.tsx" } },
         { VERCEL_PLUGIN_SEEN_SKILLS: "", VERCEL_PLUGIN_HOOK_DEBUG: "1" },
-        { sessionId: subagentSession },
       );
 
       expect(subagentRead.code).toBe(0);
@@ -162,7 +157,7 @@ describe("session timeline subagent integration", () => {
       const debugLines = parseDebugLines(subagentRead.stderr);
       const dedupStrategyLine = debugLines.find((line) => line.event === "dedup-strategy");
       expect(dedupStrategyLine).toBeDefined();
-      expect(dedupStrategyLine?.strategy).toBe("file");
+      expect(dedupStrategyLine?.strategy).toBe("env-var");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
