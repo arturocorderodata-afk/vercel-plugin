@@ -21,7 +21,7 @@ import type { SyncHookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { appendAuditLog, pluginRoot as resolvePluginRoot, safeReadJson, safeReadFile } from "./hook-env.mjs";
+import { appendAuditLog, pluginRoot as resolvePluginRoot, safeReadJson, safeReadFile, readSessionFile, writeSessionFile } from "./hook-env.mjs";
 
 import { buildSkillMap, validateSkillMap } from "./skill-map-frontmatter.mjs";
 import type { SkillConfig } from "./skill-map-frontmatter.mjs";
@@ -768,6 +768,7 @@ export function deduplicateSkills(
 export interface InjectOptions {
   pluginRoot?: string;
   hasEnvDedup?: boolean;
+  sessionId?: string | null;
   injectedSkills?: Set<string>;
   budgetBytes?: number;
   maxSkills?: number;
@@ -789,7 +790,7 @@ export interface InjectResult {
  * When a full body would exceed the budget but a summary exists, the summary is injected instead.
  */
 export function injectSkills(rankedSkills: string[], options?: InjectOptions): InjectResult {
-  const { pluginRoot, hasEnvDedup, injectedSkills, budgetBytes, maxSkills, skillMap, logger } = options || {};
+  const { pluginRoot, hasEnvDedup, sessionId, injectedSkills, budgetBytes, maxSkills, skillMap, logger } = options || {};
   const root = pluginRoot || PLUGIN_ROOT;
   const l = logger || log;
   const budget = budgetBytes ?? getInjectionBudget();
@@ -800,6 +801,16 @@ export function injectSkills(rankedSkills: string[], options?: InjectOptions): I
   const droppedByCap: string[] = [];
   const droppedByBudget: string[] = [];
   let usedBytes = 0;
+
+  /** Persist a newly-seen skill to both in-process env and session file. */
+  const persistSeen = (skill: string): void => {
+    process.env.VERCEL_PLUGIN_SEEN_SKILLS = appendSeenSkill(
+      process.env.VERCEL_PLUGIN_SEEN_SKILLS, skill
+    );
+    if (sessionId) {
+      writeSessionFile(sessionId, "seen-skills", process.env.VERCEL_PLUGIN_SEEN_SKILLS);
+    }
+  };
 
   for (const skill of rankedSkills) {
     // Hard ceiling check
@@ -832,9 +843,7 @@ export function injectSkills(rankedSkills: string[], options?: InjectOptions): I
           usedBytes += summaryByteLen;
           if (injectedSkills) injectedSkills.add(skill);
           if (hasEnvDedup) {
-            process.env.VERCEL_PLUGIN_SEEN_SKILLS = appendSeenSkill(
-              process.env.VERCEL_PLUGIN_SEEN_SKILLS, skill
-            );
+            persistSeen(skill);
           }
           l.debug("summary-fallback", { skill, fullBytes: byteLen, summaryBytes: summaryByteLen });
           continue;
@@ -849,9 +858,7 @@ export function injectSkills(rankedSkills: string[], options?: InjectOptions): I
     usedBytes += byteLen;
     if (injectedSkills) injectedSkills.add(skill);
     if (hasEnvDedup) {
-      process.env.VERCEL_PLUGIN_SEEN_SKILLS = appendSeenSkill(
-        process.env.VERCEL_PLUGIN_SEEN_SKILLS, skill
-      );
+      persistSeen(skill);
     }
   }
 
@@ -950,11 +957,13 @@ function run(): string {
 
   const { compiledSkills, usedManifest } = skills;
 
-  // Session dedup state
+  // Session dedup state — file-based persistence keyed by session ID
   const dedupOff = process.env.VERCEL_PLUGIN_HOOK_DEDUP === "off";
-  const seenEnv = getSeenSkillsEnv();
-  const hasEnvDedup = !dedupOff && typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string";
-  const dedupStrategy = dedupOff ? "disabled" : hasEnvDedup ? "env-var" : "memory-only";
+  const seenFromFile = sessionId ? readSessionFile(sessionId, "seen-skills") : "";
+  const seenEnv = seenFromFile || getSeenSkillsEnv();
+  const hasFileDedup = !dedupOff && !!sessionId;
+  const hasEnvDedup = hasFileDedup || (!dedupOff && typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string");
+  const dedupStrategy = dedupOff ? "disabled" : hasFileDedup ? "file" : hasEnvDedup ? "env-var" : "memory-only";
 
   // Profiler likely-skills (set by session-start-profiler.mjs)
   const likelySkillsEnv = process.env.VERCEL_PLUGIN_LIKELY_SKILLS || "";
@@ -1051,6 +1060,7 @@ function run(): string {
         process.env.VERCEL_PLUGIN_SEEN_SKILLS = appendSeenSkill(
           process.env.VERCEL_PLUGIN_SEEN_SKILLS, "agent-browser-unavailable-warning"
         );
+        if (sessionId) writeSessionFile(sessionId, "seen-skills", process.env.VERCEL_PLUGIN_SEEN_SKILLS);
       }
       log.debug("dev-server-verify-unavailable-warning", { reason: "agent-browser not installed" });
     }
@@ -1088,6 +1098,7 @@ function run(): string {
       process.env.VERCEL_PLUGIN_SEEN_SKILLS = appendSeenSkill(
         process.env.VERCEL_PLUGIN_SEEN_SKILLS, VERCEL_ENV_HELP_ONCE_KEY
       );
+      if (sessionId) writeSessionFile(sessionId, "seen-skills", process.env.VERCEL_PLUGIN_SEEN_SKILLS);
     }
     log.debug("vercel-env-help-injected", { subcommand: vercelEnvHelp.subcommand || "" });
   }
@@ -1112,6 +1123,7 @@ function run(): string {
   const { parts, loaded, summaryOnly, droppedByCap, droppedByBudget } = injectSkills(rankedSkills, {
     pluginRoot: PLUGIN_ROOT,
     hasEnvDedup,
+    sessionId,
     injectedSkills,
     skillMap: skills.skillMap,
     logger: log,

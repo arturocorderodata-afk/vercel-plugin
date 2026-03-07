@@ -6,7 +6,8 @@
  * try/catch boilerplate.
  */
 
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,5 +106,29 @@ export function safeReadJson<T>(path: string): T | null {
     return JSON.parse(content) as T;
   } catch {
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Session-scoped temp file dedup helpers
+// ---------------------------------------------------------------------------
+
+function dedupFilePath(sessionId: string, kind: string): string {
+  return join(tmpdir(), `vercel-plugin-${sessionId}-${kind}.txt`);
+}
+
+export function readSessionFile(sessionId: string, kind: string): string {
+  try {
+    return readFileSync(dedupFilePath(sessionId, kind), "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+
+export function writeSessionFile(sessionId: string, kind: string, value: string): void {
+  try {
+    writeFileSync(dedupFilePath(sessionId, kind), value, "utf-8");
+  } catch {
+    // Best-effort — must not break hooks.
   }
 }

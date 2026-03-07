@@ -1,4 +1,5 @@
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,10 +54,28 @@ function safeReadJson(path) {
     return null;
   }
 }
+function dedupFilePath(sessionId, kind) {
+  return join(tmpdir(), `vercel-plugin-${sessionId}-${kind}.txt`);
+}
+function readSessionFile(sessionId, kind) {
+  try {
+    return readFileSync(dedupFilePath(sessionId, kind), "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+function writeSessionFile(sessionId, kind, value) {
+  try {
+    writeFileSync(dedupFilePath(sessionId, kind), value, "utf-8");
+  } catch {
+  }
+}
 export {
   appendAuditLog,
   pluginRoot,
+  readSessionFile,
   requireEnvFile,
   safeReadFile,
-  safeReadJson
+  safeReadJson,
+  writeSessionFile
 };

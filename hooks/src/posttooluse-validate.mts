@@ -23,7 +23,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pluginRoot as resolvePluginRoot, safeReadFile } from "./hook-env.mjs";
+import { pluginRoot as resolvePluginRoot, safeReadFile, readSessionFile, writeSessionFile } from "./hook-env.mjs";
 import { buildSkillMap } from "./skill-map-frontmatter.mjs";
 import type { SkillConfig, ValidationRule } from "./skill-map-frontmatter.mjs";
 import {
@@ -47,6 +47,7 @@ export interface ParsedInput {
   toolName: string;
   filePath: string;
   cwd: string | null;
+  sessionId: string | null;
 }
 
 export interface SkillValidateRules {
@@ -113,9 +114,10 @@ export function parseInput(raw: string, logger?: Logger): ParsedInput | null {
 
   const cwdCandidate = input.cwd ?? input.working_directory;
   const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
+  const sessionId = (input.session_id as string) || null;
 
   l.debug("posttooluse-validate-input", { toolName, filePath });
-  return { toolName, filePath, cwd };
+  return { toolName, filePath, cwd, sessionId };
 }
 
 // ---------------------------------------------------------------------------
@@ -304,20 +306,25 @@ export function appendValidatedFile(envValue: string | undefined, entry: string)
 /**
  * Check if a file+hash has already been validated this session.
  */
-export function isAlreadyValidated(filePath: string, hash: string): boolean {
-  const validated = parseValidatedFiles(process.env.VERCEL_PLUGIN_VALIDATED_FILES);
+export function isAlreadyValidated(filePath: string, hash: string, sessionId?: string | null): boolean {
+  const fromFile = sessionId ? readSessionFile(sessionId, "validated-files") : "";
+  const envValue = fromFile || process.env.VERCEL_PLUGIN_VALIDATED_FILES;
+  const validated = parseValidatedFiles(envValue);
   return validated.has(`${filePath}:${hash}`);
 }
 
 /**
- * Mark a file+hash as validated in the env var.
+ * Mark a file+hash as validated, persisting to session file.
  */
-export function markValidated(filePath: string, hash: string): void {
+export function markValidated(filePath: string, hash: string, sessionId?: string | null): void {
   const entry = `${filePath}:${hash}`;
   process.env.VERCEL_PLUGIN_VALIDATED_FILES = appendValidatedFile(
     process.env.VERCEL_PLUGIN_VALIDATED_FILES,
     entry,
   );
+  if (sessionId) {
+    writeSessionFile(sessionId, "validated-files", process.env.VERCEL_PLUGIN_VALIDATED_FILES);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +438,7 @@ export function run(): string {
   if (!parsed) return "{}";
   if (log.active) timing.parse = Math.round(log.now() - tStart);
 
-  const { toolName, filePath, cwd } = parsed;
+  const { toolName, filePath, cwd, sessionId } = parsed;
 
   // Read file content from disk
   const resolvedPath = cwd ? resolve(cwd, filePath) : filePath;
@@ -443,7 +450,7 @@ export function run(): string {
 
   // Dedup check: skip if same file+hash already validated
   const hash = contentHash(fileContent);
-  if (isAlreadyValidated(filePath, hash)) {
+  if (isAlreadyValidated(filePath, hash, sessionId)) {
     log.debug("posttooluse-validate-skip", { reason: "already_validated", filePath, hash });
     return "{}";
   }
@@ -463,7 +470,7 @@ export function run(): string {
 
   if (matchedSkills.length === 0) {
     log.debug("posttooluse-validate-skip", { reason: "no_skill_match", filePath });
-    markValidated(filePath, hash);
+    markValidated(filePath, hash, sessionId);
     return "{}";
   }
 
@@ -473,7 +480,7 @@ export function run(): string {
   if (log.active) timing.validate = Math.round(log.now() - tValidate);
 
   // Mark as validated regardless of result (content hasn't changed)
-  markValidated(filePath, hash);
+  markValidated(filePath, hash, sessionId);
 
   // Stage 5: formatOutput
   const result = formatOutput(violations, matchedSkills, filePath, log);
