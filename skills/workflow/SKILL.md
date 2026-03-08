@@ -1,19 +1,68 @@
 ---
 name: workflow
-description: Vercel Workflow DevKit (WDK) expert guidance. Use when building durable workflows, long-running tasks, AI agents that must survive crashes, or any async process that needs pause/resume, retries, and observability.
+description: Vercel Workflow DevKit (WDK) expert guidance. Use when building durable workflows, long-running tasks, API routes or agents that need pause/resume, retries, step-based execution, or crash-safe orchestration with Vercel Workflow.
 metadata:
-  priority: 6
+  priority: 9
   pathPatterns:
     - 'lib/workflow/**'
     - 'src/lib/workflow/**'
     - 'workflows/**'
     - 'lib/workflow.*'
+    - 'src/lib/workflow.*'
     - 'workflow.*'
+    - '*workflow*'
+    - '*workflow*/**'
+  importPatterns:
+    - '@vercel/workflow'
+    - 'workflow'
+    - '@workflow/*'
+    - '*workflow*'
   bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/workflow\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/workflow\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@vercel/workflow\b'
     - '\byarn\s+add\s+[^\n]*@vercel/workflow\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*\bworkflow\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*\bworkflow\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*\bworkflow\b'
+    - '\byarn\s+add\s+[^\n]*\bworkflow\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@workflow/'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@workflow/'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@workflow/'
+    - '\byarn\s+add\s+[^\n]*@workflow/'
+    - '\bnpx\s+workflow(?:@latest)?\b'
+    - '\bbunx\s+workflow(?:@latest)?\b'
+  promptSignals:
+    phrases:
+      - "vercel workflow"
+      - "workflow devkit"
+      - "durable workflow"
+      - "durable execution"
+      - "durable function"
+      - "step function"
+      - "step functions"
+      - "use workflow"
+      - "use step"
+    allOf:
+      - [workflow, durable]
+      - [workflow, retry]
+      - [workflow, resume]
+      - [pause, resume]
+      - [survive, crash]
+    anyOf:
+      - "long-running"
+      - "long running"
+      - "api route"
+      - "route handler"
+      - "agent"
+      - "orchestration"
+      - "observability"
+    noneOf:
+      - "github actions"
+      - ".github/workflows"
+      - "ci workflow"
+      - "aws step functions"
+    minScore: 6
 ---
 
 # Vercel Workflow DevKit (WDK)

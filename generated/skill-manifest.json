@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-08T15:30:27.357Z",
+  "generatedAt": "2026-03-08T16:17:21.914Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -1275,37 +1275,136 @@
       ]
     },
     "workflow": {
-      "priority": 6,
+      "priority": 9,
       "summary": "",
       "pathPatterns": [
         "lib/workflow/**",
         "src/lib/workflow/**",
         "workflows/**",
         "lib/workflow.*",
-        "workflow.*"
+        "src/lib/workflow.*",
+        "workflow.*",
+        "*workflow*",
+        "*workflow*/**"
       ],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/workflow\\b",
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/workflow\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/workflow\\b",
-        "\\byarn\\s+add\\s+[^\\n]*@vercel/workflow\\b"
+        "\\byarn\\s+add\\s+[^\\n]*@vercel/workflow\\b",
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bworkflow\\b",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*\\bworkflow\\b",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bworkflow\\b",
+        "\\byarn\\s+add\\s+[^\\n]*\\bworkflow\\b",
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@workflow/",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@workflow/",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*@workflow/",
+        "\\byarn\\s+add\\s+[^\\n]*@workflow/",
+        "\\bnpx\\s+workflow(?:@latest)?\\b",
+        "\\bbunx\\s+workflow(?:@latest)?\\b"
       ],
-      "importPatterns": [],
+      "importPatterns": [
+        "@vercel/workflow",
+        "workflow",
+        "@workflow/*",
+        "*workflow*"
+      ],
       "bodyPath": "skills/workflow/SKILL.md",
       "pathRegexSources": [
         "^lib\\/workflow\\/.*$",
         "^src\\/lib\\/workflow\\/.*$",
         "^workflows\\/.*$",
         "^lib\\/workflow\\.[^/]*$",
-        "^workflow\\.[^/]*$"
+        "^src\\/lib\\/workflow\\.[^/]*$",
+        "^workflow\\.[^/]*$",
+        "^[^/]*workflow[^/]*$",
+        "^[^/]*workflow[^/]*\\/.*$"
       ],
       "bashRegexSources": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/workflow\\b",
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/workflow\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/workflow\\b",
-        "\\byarn\\s+add\\s+[^\\n]*@vercel/workflow\\b"
+        "\\byarn\\s+add\\s+[^\\n]*@vercel/workflow\\b",
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bworkflow\\b",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*\\bworkflow\\b",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bworkflow\\b",
+        "\\byarn\\s+add\\s+[^\\n]*\\bworkflow\\b",
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@workflow/",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@workflow/",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*@workflow/",
+        "\\byarn\\s+add\\s+[^\\n]*@workflow/",
+        "\\bnpx\\s+workflow(?:@latest)?\\b",
+        "\\bbunx\\s+workflow(?:@latest)?\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@vercel\\/workflow(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]workflow(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@workflow\\/[^'\"]*(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"][^'\"]*workflow[^'\"]*(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        }
+      ],
+      "promptSignals": {
+        "phrases": [
+          "vercel workflow",
+          "workflow devkit",
+          "durable workflow",
+          "durable execution",
+          "durable function",
+          "step function",
+          "step functions",
+          "use workflow",
+          "use step"
+        ],
+        "allOf": [
+          [
+            "workflow",
+            "durable"
+          ],
+          [
+            "workflow",
+            "retry"
+          ],
+          [
+            "workflow",
+            "resume"
+          ],
+          [
+            "pause",
+            "resume"
+          ],
+          [
+            "survive",
+            "crash"
+          ]
+        ],
+        "anyOf": [
+          "long-running",
+          "long running",
+          "api route",
+          "route handler",
+          "agent",
+          "orchestration",
+          "observability"
+        ],
+        "noneOf": [
+          "github actions",
+          ".github/workflows",
+          "ci workflow",
+          "aws step functions"
+        ],
+        "minScore": 6
+      }
     },
     "react-best-practices": {
       "priority": 4,
