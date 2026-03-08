@@ -143,6 +143,14 @@ npm run dev
 
 Use the repository package manager (`npm`, `pnpm`, `bun`, or `yarn`) and run only scripts that exist in `package.json`.
 
+## UI Baseline for Next.js + shadcn Projects
+
+After linkage and env verification, establish the UI foundation before feature work:
+1. Add a baseline primitive set: `npx shadcn@latest add button card input label textarea select switch tabs dialog alert-dialog sheet dropdown-menu badge separator skeleton table`
+2. Apply the Geist font fix in `layout.tsx` and `globals.css`.
+3. Confirm the app shell uses `bg-background text-foreground`.
+4. Default to dark mode for product, admin, and AI apps unless the repo is clearly marketing-first.
+
 ## Summary Format
 
 Return a final bootstrap summary in this format:

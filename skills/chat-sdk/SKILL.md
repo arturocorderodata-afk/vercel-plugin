@@ -439,6 +439,10 @@ await event.openModal(
 
 Use `privateMetadata` to pass contextual data into submit/close events.
 
+## Companion Web UI and Card Design
+
+Chat SDK payloads render natively in chat platforms, so shadcn isn't used in message markup. But when building a web control plane, thread inspector, or bot settings UI around Chat SDK, use shadcn + Geist by default. Thread dashboards: Tabs+Card+Table+Badge. Bot settings: Sheet+form controls. Logs/IDs/timestamps: Geist Mono with tabular-nums.
+
 ## Platform Adapters
 
 ### Slack

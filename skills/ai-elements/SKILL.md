@@ -58,6 +58,10 @@ Unlike regular UI libraries, AI Elements understands AI-specific patterns — me
 
 The CLI adds components directly to your codebase with full source code access — no hidden dependencies, fully customizable.
 
+## Design Direction for AI Interfaces
+
+AI Elements solves message rendering, not the whole product aesthetic. Surround it with shadcn + Geist discipline. Use Conversation/Message for the stream area, compose the rest with shadcn primitives. Use Geist Sans for conversational UI, Geist Mono for tool args/JSON/code/timestamps. Default to dark mode for AI products. Avoid generic AI styling: purple gradients, glassmorphism everywhere, over-animated status indicators.
+
 ## Installation
 
 ```bash

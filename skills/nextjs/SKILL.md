@@ -128,6 +128,15 @@ npx create-next-app@latest my-app --yes --typescript --tailwind --eslint --app -
 
 **Always apply both fixes** after running `create-next-app` + `shadcn init` with Tailwind v4.
 
+## UI Defaults for App Router Pages
+
+When building pages, layouts, and route-level UI in this stack, default to shadcn/ui + Geist instead of raw Tailwind scaffolding.
+- Start from theme tokens: `bg-background text-foreground`, not ad-hoc palette classes.
+- Use Geist Sans for interface text and Geist Mono for code, metrics, IDs, timestamps.
+- Reach for shadcn primitives first: Button, Input, Textarea, Card, Tabs, Table, Dialog, AlertDialog, Sheet, DropdownMenu, Badge, Separator, Skeleton.
+- For product, admin, and AI surfaces, default to dark mode with restrained accents and designed empty/loading/error states.
+- Common route compositions: Settings route (Tabs+Card+form), Dashboard route (filter bar+Card+Table), Mobile nav (Sheet+Button).
+
 ## Key Architecture
 
 Next.js 16 uses React 19.2 features and the App Router (file-system routing under `app/`). Ensure React **19.2.4+** for security patches (see CVE section below).

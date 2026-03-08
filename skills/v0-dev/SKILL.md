@@ -377,6 +377,10 @@ When no framework is specified, v0 generates:
 - Lucide React icons
 - Complete, copy-paste-ready code (never partial stubs)
 
+## Design Normalization for v0 Output
+
+v0 is strongest when you specify both structure and aesthetic direction. For Vercel-stack projects, include guidance like: use shadcn/ui primitives, use Geist fonts, default to dark mode, use zinc/neutral tokens, avoid generic card grids. After importing v0 code, normalize it: replace ad-hoc controls with shadcn components, collapse repeated card grids into stronger patterns, align typography to Geist, remove mixed radii and decorative effects.
+
 ## Integration Patterns
 
 ### Pattern 1: Generate Components, Import Locally

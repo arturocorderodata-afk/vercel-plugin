@@ -68,6 +68,12 @@ After editing several TSX/JSX files, run through this condensed checklist to cat
 - **Generics for reusable components** — e.g., `function List<T>({ items, renderItem }: ListProps<T>)`
 - **`as const` for config objects** — ensures literal types for discriminated unions and enums
 
+## Design System Consistency
+
+- Prefer shadcn primitives in Vercel-stack apps: Button, Input, Tabs, Dialog, AlertDialog, Sheet, Table, Card before building ad-hoc equivalents.
+- Reject container soup: repeated `div rounded-xl border p-6` blocks usually mean stronger composition primitives are missing.
+- Typography consistency: use Geist Sans and Geist Mono consistently; reserve monospace for code, metrics, IDs, and timestamps.
+
 ## Review Workflow
 
 1. Scan recent TSX edits for the patterns above
