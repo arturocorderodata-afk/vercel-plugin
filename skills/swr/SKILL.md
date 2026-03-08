@@ -39,7 +39,7 @@ metadata:
 
 # SWR — React Hooks for Data Fetching
 
-You are an expert in SWR v2, the React Hooks library for data fetching by Vercel. SWR implements the stale-while-revalidate HTTP cache invalidation strategy — serve from cache first, then revalidate in the background.
+You are an expert in SWR v2 (latest: 2.4.1), the React Hooks library for data fetching by Vercel. SWR implements the stale-while-revalidate HTTP cache invalidation strategy — serve from cache first, then revalidate in the background.
 
 ## Installation
 
@@ -177,6 +177,30 @@ useSWR(key, fetcher, {
   },
 })
 ```
+
+## `useSWRSubscription` — Real-Time Data Sources
+
+Subscribe to real-time data (WebSockets, SSE, etc.) with automatic deduplication:
+
+```tsx
+import useSWRSubscription from 'swr/subscription'
+
+function LivePrice({ symbol }: { symbol: string }) {
+  const { data } = useSWRSubscription(
+    `wss://stream.example.com/${symbol}`,
+    (key, { next }) => {
+      const ws = new WebSocket(key)
+      ws.onmessage = (event) => next(null, JSON.parse(event.data))
+      ws.onerror = (event) => next(event)
+      return () => ws.close()
+    }
+  )
+
+  return <span>{data?.price}</span>
+}
+```
+
+The `subscribe` function receives a `next(error, data)` callback and must return a cleanup function. Multiple components using the same key share a single subscription.
 
 ## Key Rules
 

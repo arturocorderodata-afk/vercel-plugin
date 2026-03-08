@@ -17,12 +17,25 @@ metadata:
 
 You are an expert in Vercel Sandbox — ephemeral compute for safely running untrusted code.
 
+## Status & Pricing
+
+Vercel Sandbox is **generally available** (January 30, 2026). The CLI and SDK are open-source. Powered by the same Firecracker infrastructure that runs 2M+ Vercel builds per day.
+
+| Resource | Hobby (Free) | Pro / Enterprise |
+|----------|-------------|-----------------|
+| CPU hours | 5 / month | $0.128 / CPU-hour |
+| Provisioned memory | 420 GB-hr / month | $0.0106 / GB-hr |
+| Network bandwidth | 20 GB / month | $0.15 / GB |
+| Sandbox creations | 5,000 / month | $0.60 / 1M creations |
+
+Each sandbox can use up to **8 vCPUs** and **2 GB RAM per vCPU**. Up to **4 ports** can be exposed per sandbox.
+
 ## What It Is
 
 Vercel Sandbox provides **Firecracker microVMs** with millisecond startup times for running untrusted or user-generated code in complete isolation. Used by AI agents, code generation tools, developer playgrounds, and interactive tutorials.
 
 - **Base OS**: Amazon Linux 2023 (with `git`, `tar`, `openssl`, `dnf`)
-- **Runtimes**: `node24` (default), `node22`, `python3.13`
+- **Runtimes**: `node24` (default since March 2026), `node22`, `python3.13`
 - **Working directory**: `/vercel/sandbox`
 - **User**: `vercel-sandbox` with `sudo` access
 - **Filesystem**: Ephemeral — artifacts must be exported before sandbox stops
@@ -30,28 +43,32 @@ Vercel Sandbox provides **Firecracker microVMs** with millisecond startup times 
 
 ## Key APIs
 
-Package: `@vercel/sandbox`
+Package: `@vercel/sandbox` (v1.8.0+)
 
 ### Create and Run Commands
 
 ```ts
 import { Sandbox } from '@vercel/sandbox';
 
-// Create a sandbox
+// Create a sandbox (env vars available to all commands)
 const sandbox = await Sandbox.create({
   runtime: 'node24',  // 'node24' | 'node22' | 'python3.13'
+  env: {              // inherited by all runCommand calls
+    NODE_ENV: 'production',
+    API_KEY: process.env.API_KEY!,
+  },
 });
 
 // Run a command (separated command + args)
 const result = await sandbox.runCommand('node', ['-e', 'console.log(42)']);
 const output = await result.stdout(); // "42\n"
 
-// Run with options
+// Run with options (per-command env overrides creation-level env)
 const result2 = await sandbox.runCommand({
   cmd: 'npm',
   args: ['install', 'express'],
   cwd: '/vercel/sandbox/app',
-  env: { NODE_ENV: 'production' },
+  env: { NODE_ENV: 'development' }, // overrides creation-level NODE_ENV
   sudo: true,
 });
 
@@ -123,13 +140,17 @@ const snap = await Snapshot.get({ snapshotId: 'snap_abc' });
 await snap.delete();
 ```
 
-### Network Policies
+### Network Policies (SNI Filtering + CIDR)
+
+Egress firewall uses **SNI filtering** on TLS client-hello — outbound connections are matched at the handshake and unauthorized destinations are rejected before data transmits. For non-TLS traffic, IP/CIDR rules are also supported.
+
+Policies can be updated at runtime without restarting the sandbox process, enabling multi-step workflows (e.g., open access during setup → deny-all before running untrusted code).
 
 ```ts
 // Lock down before running untrusted code
 await sandbox.updateNetworkPolicy('deny-all');
 
-// Allow specific domains only
+// Allow specific domains only (SNI filtering)
 await sandbox.updateNetworkPolicy({
   allow: ['api.openai.com', '*.googleapis.com'],
 });

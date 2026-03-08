@@ -27,6 +27,10 @@ metadata:
     - "apps/*/src/app/api/completion/**"
     - "apps/*/lib/ai/**"
     - "apps/*/src/lib/ai/**"
+    - "lib/agent.*"
+    - "src/lib/agent.*"
+    - "app/actions/chat.*"
+    - "src/app/actions/chat.*"
   importPatterns:
     - "ai"
     - "@ai-sdk/*"
@@ -69,8 +73,8 @@ validate:
     message: 'Direct Anthropic SDK import — use @ai-sdk/anthropic provider instead'
     severity: error
   -
-    pattern: ToolLoopAgent
-    message: 'ToolLoopAgent is deprecated — use the AI SDK Agent pattern instead'
+    pattern: Experimental_Agent
+    message: 'Experimental_Agent is deprecated in v6 — use ToolLoopAgent instead'
     severity: error
   -
     pattern: toDataStreamResponse
@@ -92,6 +96,10 @@ validate:
     pattern: \bbody\s*:\s*\{
     message: 'body option was removed from useChat in v6 — pass data through transport configuration'
     severity: warn
+  -
+    pattern: \bparameters\s*:
+    message: 'parameters was renamed in v6 — use inputSchema instead'
+    severity: error
 ---
 
 # Vercel AI SDK (v6)
@@ -100,7 +108,7 @@ You are an expert in the Vercel AI SDK v6. The AI SDK is the leading TypeScript 
 
 ## v6 Migration Pitfalls (Read First)
 
-- `ai@^6.0.0` is the umbrella package for AI SDK v6.
+- `ai@^6.0.0` is the umbrella package for AI SDK v6 (latest: 6.0.83).
 - `@ai-sdk/react` is `^3.0.x` in v6 projects (NOT `^6.0.0`).
 - `@ai-sdk/gateway` is `^3.x` in v6 projects (NOT `^1.x`).
 - In `createUIMessageStream`, write with `stream.writer.write(...)` (NOT `stream.write(...)`).
@@ -108,14 +116,26 @@ You are an expert in the Vercel AI SDK v6. The AI SDK is the leading TypeScript 
 - UI tool parts are typed as `tool-<toolName>` (for example `tool-weather`), not `tool-invocation`.
 - `DynamicToolCall` does not provide typed `.args`; cast via `unknown` first.
 - `TypedToolResult` exposes `.output` (NOT `.result`).
-- The class name is `Agent` (NOT `ToolLoopAgent`).
-- `gateway()` does not support embeddings or image generation; use `@ai-sdk/openai` directly for `openai.embedding(...)` and `openai.image(...)`.
+- The agent class is `ToolLoopAgent` (NOT `Agent` — `Agent` is just an interface).
+- Constructor uses `instructions` (NOT `system`).
+- Agent methods are `agent.generate()` and `agent.stream()` (NOT `agent.generateText()` or `agent.streamText()`).
+- `gateway()` does not support embeddings; use `@ai-sdk/openai` directly for `openai.embedding(...)`.
+- `useChat()` with no transport defaults to `DefaultChatTransport({ api: '/api/chat' })` — explicit transport only needed for custom endpoints or `DirectChatTransport`.
+- Default `stopWhen` for ToolLoopAgent is `stepCountIs(20)`, not `stepCountIs(1)` — override if you need fewer steps.
+- `strict: true` on tools is opt-in per tool, not global — only set on tools with provider-compatible schemas.
+- For agent API routes, use `createAgentUIStreamResponse({ agent, uiMessages })` instead of manual `streamText` + `toUIMessageStreamResponse()`.
+- `@ai-sdk/azure` now uses the Responses API by default — use `azure.chat()` for the previous Chat Completions API behavior.
+- `@ai-sdk/azure` uses `azure` (not `openai`) as the key for `providerMetadata` and `providerOptions`.
+- `@ai-sdk/google-vertex` uses `vertex` (not `google`) as the key for `providerMetadata` and `providerOptions`.
+- `@ai-sdk/anthropic` supports native structured outputs via `structuredOutputMode` option (Claude Sonnet 4.5+).
 
 ## Installation
 
 ```bash
 npm install ai@^6.0.0 @ai-sdk/react@^3.0.0
-npm install @ai-sdk/openai              # Optional: required for embeddings/image models
+npm install @ai-sdk/openai@^3.0.41      # Optional: required for embeddings/image models
+npm install @ai-sdk/anthropic@^3.0.58   # Optional: direct Anthropic provider access
+npm install @ai-sdk/vercel@^2.0.37      # Optional: v0 model provider (v0-1.0-md)
 ```
 
 > **`@ai-sdk/react` is a separate package** — it is NOT included in the `ai` package. For v6 projects, install `@ai-sdk/react@^3.0.x` alongside `ai@^6.0.0`.
@@ -147,7 +167,7 @@ In AI SDK 6, use `gateway('provider/model')` to route through the Vercel AI Gate
 ```ts
 import { gateway } from "ai";
 
-const model = gateway("openai/gpt-5.2");
+const model = gateway("openai/gpt-5.4");
 // or: gateway('anthropic/claude-sonnet-4.6')
 // or: gateway('google/gemini-3-flash')
 ```
@@ -167,13 +187,13 @@ import { generateText, streamText, gateway } from "ai";
 
 // Non-streaming
 const { text } = await generateText({
-  model: gateway("openai/gpt-5.2"),
+  model: gateway("openai/gpt-5.4"),
   prompt: "Explain quantum computing in simple terms.",
 });
 
 // Streaming
 const result = streamText({
-  model: gateway("openai/gpt-5.2"),
+  model: gateway("openai/gpt-5.4"),
   prompt: "Write a poem about coding.",
 });
 
@@ -189,7 +209,7 @@ import { generateText, Output, gateway } from "ai";
 import { z } from "zod";
 
 const { output } = await generateText({
-  model: gateway("openai/gpt-5.2"),
+  model: gateway("openai/gpt-5.4"),
   output: Output.object({
     schema: z.object({
       recipe: z.object({
@@ -210,14 +230,14 @@ const { output } = await generateText({
 
 ### Tool Calling (MCP-Aligned)
 
-In AI SDK 6, tools use `inputSchema` (not `parameters`) and `output`/`outputSchema` (not `result`), aligned with the MCP specification.
+In AI SDK 6, tools use `inputSchema` (not `parameters`) and `output`/`outputSchema` (not `result`), aligned with the MCP specification. Per-tool `strict` mode ensures providers only generate valid tool calls matching your schema.
 
 ```ts
 import { generateText, tool, gateway } from "ai";
 import { z } from "zod";
 
 const result = await generateText({
-  model: gateway("openai/gpt-5.2"),
+  model: gateway("openai/gpt-5.4"),
   tools: {
     weather: tool({
       description: "Get the weather for a location",
@@ -228,6 +248,7 @@ const result = await generateText({
         temperature: z.number(),
         condition: z.string(),
       }),
+      strict: true, // Providers generate only schema-valid tool calls
       execute: async ({ city }) => {
         const data = await fetchWeather(city);
         return { temperature: data.temp, condition: data.condition };
@@ -258,23 +279,26 @@ const tools = {
 
 ### Agents
 
-The Agent class wraps `generateText`/`streamText` with agentic loop control:
+The `ToolLoopAgent` class wraps `generateText`/`streamText` with an agentic tool-calling loop.
+Default `stopWhen` is `stepCountIs(20)` (up to 20 tool-calling steps).
+`Agent` is an interface — `ToolLoopAgent` is the concrete implementation.
 
 ```ts
-import { Agent, gateway } from "ai";
+import { ToolLoopAgent, gateway, stepCountIs, hasToolCall } from "ai";
 
-const agent = new Agent({
+const agent = new ToolLoopAgent({
   model: gateway("anthropic/claude-sonnet-4.6"),
-  tools: { weather, search, calculator },
-  system: "You are a helpful assistant.",
-  stopWhen: (context) => context.toolCalls.length === 0, // Stop when no tools called
+  tools: { weather, search, calculator, finalAnswer },
+  instructions: "You are a helpful assistant.",
+  // Default: stepCountIs(20). Override to stop on a terminal tool or custom logic:
+  stopWhen: hasToolCall("finalAnswer"),
   prepareStep: (context) => ({
-    // Customize each step
+    // Customize each step — swap models, compress messages, limit tools
     toolChoice: context.steps.length > 5 ? "none" : "auto",
   }),
 });
 
-const { text } = await agent.generateText({
+const { text } = await agent.generate({
   prompt:
     "Research the weather in Tokyo and calculate the average temperature this week.",
 });
@@ -298,7 +322,7 @@ const mcpClient = await createMCPClient({
 const tools = await mcpClient.tools();
 
 const result = await generateText({
-  model: gateway("openai/gpt-5.2"),
+  model: gateway("openai/gpt-5.4"),
   tools,
   prompt: "Use the available tools to help the user.",
 });
@@ -307,6 +331,73 @@ await mcpClient.close();
 ```
 
 MCP OAuth for remote servers is handled automatically by `@ai-sdk/mcp`.
+
+### Tool Approval (Human-in-the-Loop)
+
+Set `needsApproval` on any tool to require user confirmation before execution. The tool pauses in `approval-requested` state until the client responds.
+
+```ts
+import { streamText, tool, gateway } from "ai";
+import { z } from "zod";
+
+const result = streamText({
+  model: gateway("openai/gpt-5.4"),
+  tools: {
+    deleteUser: tool({
+      description: "Delete a user account",
+      inputSchema: z.object({ userId: z.string() }),
+      needsApproval: true, // Always require approval
+      execute: async ({ userId }) => {
+        await db.users.delete(userId);
+        return { deleted: true };
+      },
+    }),
+    processPayment: tool({
+      description: "Process a payment",
+      inputSchema: z.object({ amount: z.number(), recipient: z.string() }),
+      // Conditional: only approve large amounts
+      needsApproval: async ({ amount }) => amount > 1000,
+      execute: async ({ amount, recipient }) => {
+        return await processPayment(amount, recipient);
+      },
+    }),
+  },
+  prompt: "Delete user 123",
+});
+```
+
+**Client-side approval with `useChat`:**
+
+```tsx
+"use client";
+import { useChat } from "@ai-sdk/react";
+
+function Chat() {
+  const { messages, addToolApprovalResponse } = useChat();
+
+  return messages.map((m) =>
+    m.parts?.map((part, i) => {
+      // Tool parts in approval-requested state need user action
+      if (part.type.startsWith("tool-") && part.approval?.state === "approval-requested") {
+        return (
+          <div key={i}>
+            <p>Tool wants to run: {JSON.stringify(part.args)}</p>
+            <button onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: true })}>
+              Approve
+            </button>
+            <button onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: false })}>
+              Deny
+            </button>
+          </div>
+        );
+      }
+      return null;
+    }),
+  );
+}
+```
+
+**Tool part states:** `input-streaming` → `input-available` → `approval-requested` (if `needsApproval`) → `output-available` | `output-error`
 
 ### Embeddings & Reranking
 
@@ -358,19 +449,29 @@ const { image: edited } = await editImage({
 
 ## UI Hooks (React)
 
+### Transport Options
+
+`useChat` uses a transport-based architecture. Three built-in transports:
+
+| Transport | Use Case |
+|-----------|----------|
+| `DefaultChatTransport` | HTTP POST to API routes (default — sends to `/api/chat`) |
+| `DirectChatTransport` | In-process agent communication without HTTP (SSR, testing) |
+| `TextStreamChatTransport` | Plain text stream protocol |
+
+**Default behavior:** `useChat()` with no transport config defaults to `DefaultChatTransport({ api: '/api/chat' })`.
+
 ### With AI Elements (Recommended)
 
 ```tsx
 "use client";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
 import { Conversation } from "@/components/ai-elements/conversation";
 import { Message } from "@/components/ai-elements/message";
 
 function Chat() {
-  const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
-  });
+  // No transport needed — defaults to DefaultChatTransport({ api: '/api/chat' })
+  const { messages, sendMessage, status } = useChat();
 
   return (
     <Conversation>
@@ -387,17 +488,32 @@ AI Elements handles UIMessage parts (text, tool calls, reasoning, images) automa
 ⤳ skill: ai-elements — Full component library for AI interfaces
 ⤳ skill: json-render — Manual rendering patterns for custom UIs
 
+### With DirectChatTransport (No API Route Needed)
+
+```tsx
+"use client";
+import { useChat } from "@ai-sdk/react";
+import { DirectChatTransport } from "ai";
+import { myAgent } from "@/lib/agent"; // a ToolLoopAgent instance
+
+function Chat() {
+  const { messages, sendMessage, status } = useChat({
+    transport: new DirectChatTransport({ agent: myAgent }),
+  });
+  // Same UI as above — no /api/chat route required
+}
+```
+
+Useful for SSR scenarios, testing without network, and single-process apps.
+
 ### Without AI Elements (Manual)
 
 ```tsx
 "use client";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
 
 function Chat() {
-  const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
-  });
+  const { messages, sendMessage, status } = useChat();
 
   return (
     <div>
@@ -431,7 +547,7 @@ function Chat() {
 - `toTextStreamResponse()` is for text-only clients, such as plain `fetch()` stream readers or AI SDK UI clients configured for the text stream protocol.
 - Warning: Do **not** return `toUIMessageStreamResponse()` to a plain `fetch()` client unless that client intentionally parses the AI SDK UI message stream protocol.
 
-### Server-side for useChat
+### Server-side for useChat (API Route)
 
 ```ts
 // app/api/chat/route.ts
@@ -443,7 +559,7 @@ export async function POST(req: Request) {
   // IMPORTANT: convertToModelMessages is async in v6
   const modelMessages = await convertToModelMessages(messages);
   const result = streamText({
-    model: gateway("openai/gpt-5.2"),
+    model: gateway("openai/gpt-5.4"),
     messages: modelMessages,
     tools: {
       /* your tools */
@@ -457,6 +573,36 @@ export async function POST(req: Request) {
 }
 ```
 
+### Server-side with ToolLoopAgent (Agent API Route)
+
+Define a `ToolLoopAgent` and use `createAgentUIStreamResponse` for the API route:
+
+```ts
+// lib/agent.ts
+import { ToolLoopAgent, gateway, stepCountIs } from "ai";
+
+export const myAgent = new ToolLoopAgent({
+  model: gateway("openai/gpt-5.4"),
+  instructions: "You are a helpful assistant.",
+  tools: { /* your tools */ },
+  stopWhen: stepCountIs(5),
+});
+```
+
+```ts
+// app/api/chat/route.ts — agent API route
+import { createAgentUIStreamResponse } from "ai";
+import { myAgent } from "@/lib/agent";
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+  return createAgentUIStreamResponse({ agent: myAgent, uiMessages: messages });
+}
+```
+
+Or use `DirectChatTransport` on the client to skip the API route entirely:
+```
+
 ### Server-side for text-only clients
 
 ```ts
@@ -466,7 +612,7 @@ import { streamText, gateway } from "ai";
 export async function POST(req: Request) {
   const { prompt }: { prompt: string } = await req.json();
   const result = streamText({
-    model: gateway("openai/gpt-5.2"),
+    model: gateway("openai/gpt-5.4"),
     prompt,
   });
 
@@ -482,7 +628,7 @@ Intercept and transform model calls for RAG, guardrails, logging:
 import { wrapLanguageModel, gateway } from "ai";
 
 const wrappedModel = wrapLanguageModel({
-  model: gateway("openai/gpt-5.2"),
+  model: gateway("openai/gpt-5.4"),
   middleware: {
     transformParams: async ({ params }) => {
       // Inject RAG context, modify system prompt, etc.
@@ -509,7 +655,7 @@ const result = await generateText({
   providerOptions: {
     gateway: {
       order: ["bedrock", "anthropic"], // Try Bedrock first
-      models: ["openai/gpt-5.2"], // Fallback model
+      models: ["openai/gpt-5.4"], // Fallback model
       only: ["anthropic", "bedrock"], // Restrict providers
       user: "user-123", // Usage tracking
       tags: ["feature:chat", "env:production"], // Cost attribution
@@ -531,12 +677,14 @@ npx @ai-sdk/devtools
 2. **Set up a Vercel project for AI** — `vercel link` → enable AI Gateway at `https://vercel.com/{team}/{project}/settings` → **AI Gateway** → `vercel env pull` to get OIDC credentials. Never manually create `.env.local` with provider-specific API keys.
 3. **Use AI Elements for chat UIs** — `npx ai-elements` installs production-ready Message, Conversation, and Tool components that handle UIMessage parts automatically. ⤳ skill: ai-elements
 4. **Always stream for user-facing AI** — use `streamText` + `useChat`, not `generateText`
-5. **UIMessage chat UIs** — `DefaultChatTransport` + `useChat` on the client, `convertToModelMessages()` + `toUIMessageStreamResponse()` on the server
+5. **UIMessage chat UIs** — `useChat()` defaults to `DefaultChatTransport({ api: '/api/chat' })`. On the server: `convertToModelMessages()` + `toUIMessageStreamResponse()`. For no-API-route setups: `DirectChatTransport` + Agent.
 6. **Text-only clients** — plain `fetch()` readers or text-protocol transports should get `toTextStreamResponse()`
 7. **Use structured output** for extracting data — `generateText` with `Output.object()` and Zod schemas
-8. **Use the Agent class** for multi-step reasoning — not manual loops
+8. **Use `ToolLoopAgent`** for multi-step reasoning — not manual loops. Default `stopWhen` is `stepCountIs(20)`. Use `createAgentUIStreamResponse` for agent API routes.
 9. **Use DurableAgent** (from Workflow DevKit) for production agents that must survive crashes
 10. **Use `mcp-to-ai-sdk`** to generate static tool definitions from MCP servers for security
+11. **Use `needsApproval`** for human-in-the-loop — set on any tool to pause execution until user approves; supports conditional approval via async function
+12. **Use `strict: true`** per tool — opt-in strict mode ensures providers only generate schema-valid tool calls; set on individual tools, not globally
 
 ## Common Pitfall: Structured Output Property Name
 
@@ -545,7 +693,7 @@ In v6, `generateText` with `Output.object()` returns the parsed result on the **
 ```ts
 // CORRECT — v6
 const { output } = await generateText({
-  model: gateway('openai/gpt-5.2'),
+  model: gateway('openai/gpt-5.4'),
   output: Output.object({ schema: mySchema }),
   prompt: '...',
 })
@@ -559,15 +707,21 @@ This is one of the most common v5→v6 migration mistakes. The config key is `ou
 
 ## Migration from AI SDK 5
 
-Run `npx @ai-sdk/codemod v6` to auto-migrate. Key changes:
+Run `npx @ai-sdk/codemod upgrade` (or `npx @ai-sdk/codemod v6`) to auto-migrate. Preview with `npx @ai-sdk/codemod --dry upgrade`. Key changes:
 
 - `generateObject` / `streamObject` → `generateText` / `streamText` with `Output.object()`
 - `parameters` → `inputSchema`
 - `result` → `output`
 - `maxSteps` → `stopWhen: stepCountIs(N)` (import `stepCountIs` from `ai`)
 - `CoreMessage` → `ModelMessage` (use `convertToModelMessages()` — now async)
-- `Experimental_Agent` / `ToolLoopAgent` → `Agent`
+- `ToolCallOptions` → `ToolExecutionOptions`
+- `Experimental_Agent` → `ToolLoopAgent` (concrete class; `Agent` is just an interface)
+- `system` → `instructions` (on `ToolLoopAgent`)
+- `agent.generateText()` → `agent.generate()`
+- `agent.streamText()` → `agent.stream()`
 - `experimental_createMCPClient` → `createMCPClient` (stable)
+- New: `createAgentUIStreamResponse({ agent, uiMessages })` for agent API routes
+- New: `callOptionsSchema` + `prepareCall` for per-call agent configuration
 - `useChat({ api })` → `useChat({ transport: new DefaultChatTransport({ api }) })`
 - `useChat` `body` / `onResponse` options removed → configure with transport
 - `handleSubmit` / `input` → `sendMessage({ text })` / manage own state
@@ -581,6 +735,21 @@ Run `npx @ai-sdk/codemod v6` to auto-migrate. Key changes:
 - `ai@^6.0.0` is the umbrella package
 - `@ai-sdk/react` must be installed separately at `^3.0.x`
 - `@ai-sdk/gateway` (if installed directly) is `^3.x`, not `^1.x`
+- New: `needsApproval` on tools (boolean or async function) for human-in-the-loop approval
+- New: `strict: true` per-tool opt-in for strict schema validation
+- New: `DirectChatTransport` — connect `useChat` to an Agent in-process, no API route needed
+- New: `addToolApprovalResponse` on `useChat` for client-side approval UI
+- Default `stopWhen` changed from `stepCountIs(1)` to `stepCountIs(20)` for `ToolLoopAgent`
+- New: `ToolCallOptions` type renamed to `ToolExecutionOptions`
+- New: `Tool.toModelOutput` now receives `({ output })` object, not bare `output`
+- New: `isToolUIPart` → `isStaticToolUIPart`; `isToolOrDynamicToolUIPart` → `isToolUIPart`
+- New: `getToolName` → `getStaticToolName`; `getToolOrDynamicToolName` → `getToolName`
+- New: `@ai-sdk/azure` defaults to Responses API; use `azure.chat()` for Chat Completions
+- New: `@ai-sdk/anthropic` `structuredOutputMode` for native structured outputs (Claude Sonnet 4.5+)
+- New: `@ai-sdk/langchain` rewritten — `toBaseMessages()`, `toUIMessageStream()`, `LangSmithDeploymentTransport`
+- New: Provider-specific tools — Anthropic (memory, code execution), OpenAI (shell, patch), Google (maps, RAG), xAI (search, code)
+- `unknown` finish reason removed → now returned as `other`
+- Warning types consolidated into single `Warning` type exported from `ai`
 
 ## Official Documentation
 

@@ -70,14 +70,49 @@ npm install @stripe/stripe-js @stripe/react-stripe-js
 import Stripe from "stripe";
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2026-02-25.clover",
   typescript: true,
 });
 ```
 
 ## Checkout Sessions
 
-### Create a Checkout Session (Server)
+### Server Action (Recommended for 2026)
+
+Server Actions are the preferred pattern for creating Checkout Sessions in Next.js 15+, eliminating the need for API routes:
+
+```ts
+// app/actions/checkout.ts
+"use server";
+import { redirect } from "next/navigation";
+import { stripe } from "@/lib/stripe";
+
+export async function createCheckoutSession(priceId: string) {
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/cancel`,
+  });
+
+  redirect(session.url!);
+}
+```
+
+```tsx
+// app/pricing/page.tsx
+import { createCheckoutSession } from "@/app/actions/checkout";
+
+export default function PricingPage() {
+  return (
+    <form action={createCheckoutSession.bind(null, "price_xxx")}>
+      <button type="submit">Buy Now</button>
+    </form>
+  );
+}
+```
+
+### Create a Checkout Session (API Route)
 
 ```ts
 // app/api/checkout/route.ts
@@ -204,7 +239,48 @@ export async function POST(req: Request) {
 }
 ```
 
-## Stripe Elements (Embedded Forms)
+## Embedded Checkout (Recommended)
+
+Stripe's Embedded Checkout renders inside your page via an iframe, keeping users on your domain while offloading PCI compliance to Stripe:
+
+```ts
+// app/actions/embedded-checkout.ts
+"use server";
+import { stripe } from "@/lib/stripe";
+
+export async function createEmbeddedCheckout(priceId: string) {
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [{ price: priceId, quantity: 1 }],
+    ui_mode: "embedded",
+    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+  });
+
+  return { clientSecret: session.client_secret! };
+}
+```
+
+```tsx
+"use client";
+import { loadStripe } from "@stripe/stripe-js";
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
+import { createEmbeddedCheckout } from "@/app/actions/embedded-checkout";
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+
+export function CheckoutEmbed({ priceId }: { priceId: string }) {
+  return (
+    <EmbeddedCheckoutProvider
+      stripe={stripePromise}
+      options={{ fetchClientSecret: () => createEmbeddedCheckout(priceId).then(r => r.clientSecret) }}
+    >
+      <EmbeddedCheckout />
+    </EmbeddedCheckoutProvider>
+  );
+}
+```
+
+## Stripe Elements (Custom Forms)
 
 ```tsx
 "use client";

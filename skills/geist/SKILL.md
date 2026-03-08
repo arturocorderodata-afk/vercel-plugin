@@ -17,7 +17,7 @@ metadata:
 
 # Geist — Vercel's Font Family
 
-You are an expert in Geist, Vercel's open-source font family designed for developers and interfaces. It includes Geist Sans (a modern sans-serif) and Geist Mono (a monospace font optimized for code).
+You are an expert in Geist (v1.7.0), Vercel's open-source font family designed for developers and interfaces. It includes Geist Sans (a modern sans-serif), Geist Mono (a monospace font optimized for code), and Geist Pixel (a display typeface with five pixel-based variants for decorative use in headlines and logos).
 
 ## Installation
 
@@ -133,14 +133,40 @@ import { GeistSans } from 'geist/font/sans'
 // For additional subsets, configure in next.config.js
 ```
 
+## Geist Pixel (Feb 6, 2026)
+
+Geist Pixel is a bitmap-inspired display typeface family designed for headlines, logos, and decorative use. It ships five variants, each built on a different geometric primitive:
+
+| Variant | Description |
+|---|---|
+| Geist Pixel Square | Square-based pixel grid |
+| Geist Pixel Grid | Dense grid pattern |
+| Geist Pixel Circle | Circular dot matrix |
+| Geist Pixel Triangle | Triangular pixel forms |
+| Geist Pixel Line | Line-based pixel strokes |
+
+Geist Pixel is intended for display sizes only — use Geist Sans for body text and Geist Mono for code.
+
+## Coding Ligatures (v1.7.0)
+
+Coding ligatures are **no longer enabled by default**. They have been moved from contextual alternates to **Stylistic Set 11 (SS11)**. If you rely on coding ligatures in your editor or terminal, enable SS11 explicitly:
+
+- **VS Code**: `"editor.fontLigatures": "'ss11'"`
+- **CSS**: `font-feature-settings: 'ss11' 1;`
+
+## Cyrillic Support (v1.7.0)
+
+Geist 1.7.0 includes a redesigned Cyrillic script for all Geist Sans and Geist Mono styles.
+
 ## Key Points
 
 1. **Optimized for Next.js** — works seamlessly with `next/font` for zero-layout-shift font loading
-2. **Two variants** — Geist Sans for UI text, Geist Mono for code and terminal output
+2. **Three families** — Geist Sans for UI text, Geist Mono for code, Geist Pixel for decorative display
 3. **CSS variables** — `--font-geist-sans` and `--font-geist-mono` for flexible styling
 4. **Variable font** — single file supports all weights (100–900)
 5. **Self-hosted** — fonts are bundled with your app, no external requests
 6. **Import paths** — use `geist/font/sans` and `geist/font/mono` (not `geist/font`)
+7. **Coding ligatures** — opt-in via Stylistic Set 11 (no longer default)
 
 ## Official Resources
 

@@ -63,6 +63,8 @@ npm install react-email @react-email/components
 
 ### Initialize the Client
 
+Current Resend SDK version: **6.9.x** (actively maintained, weekly downloads ~1.6M).
+
 ```ts
 // lib/resend.ts
 import { Resend } from "resend";
@@ -183,6 +185,35 @@ npx react-email dev
 
 This opens a browser preview at `http://localhost:3000` where you can view and iterate on email templates with hot reload.
 
+### Upload Templates to Resend (React Email 5.0)
+
+```bash
+# Upload templates directly from the CLI
+npx react-email@latest resend setup
+```
+
+Paste your API key when prompted — templates are uploaded and available in the Resend dashboard.
+
+### Dark Mode Support (React Email 5.x)
+
+React Email 5.x (latest 5.2.9, `@react-email/components` 1.0.8) supports dark mode with a theming system tested across popular email clients. Now also supports **React 19.2** and **Next.js 16**. Use the `Tailwind` component with Tailwind CSS v4 for email styling:
+
+```tsx
+import { Tailwind } from "@react-email/components";
+
+export default function MyEmail() {
+  return (
+    <Tailwind>
+      <div className="bg-white dark:bg-gray-900 text-black dark:text-white">
+        <h1>Hello</h1>
+      </div>
+    </Tailwind>
+  );
+}
+```
+
+**Upgrade note (v4 → v5)**: Replace all `renderAsync` with `render`. The Tailwind component now only supports Tailwind CSS v4.
+
 ## Domain Verification
 
 To send from a custom domain (not `onboarding@resend.dev`), verify your domain in Resend:
@@ -233,6 +264,78 @@ export async function sendWelcomeEmail(name: string, email: string) {
   if (error) throw new Error("Failed to send email");
 }
 ```
+
+### Broadcast API (February 2026)
+
+Send emails to audiences (mailing lists) managed in Resend:
+
+```ts
+// Send a broadcast to an audience
+const { data, error } = await resend.broadcasts.send({
+  audienceId: "aud_1234",
+  from: "updates@yourdomain.com",
+  subject: "Monthly Newsletter",
+  react: NewsletterEmail({ month: "March" }),
+});
+
+// Create and manage broadcasts programmatically
+const broadcast = await resend.broadcasts.create({
+  audienceId: "aud_1234",
+  from: "updates@yourdomain.com",
+  subject: "Product Update",
+  react: ProductUpdateEmail(),
+});
+
+// Schedule for later
+await resend.broadcasts.send({
+  broadcastId: broadcast.data?.id,
+  scheduledAt: "2026-03-15T09:00:00Z",
+});
+```
+
+### Idempotency Keys
+
+Prevent duplicate sends on retries by passing an `Idempotency-Key` header:
+
+```ts
+const { data, error } = await resend.emails.send(
+  {
+    from: "hello@yourdomain.com",
+    to: "user@example.com",
+    subject: "Order Confirmation",
+    react: OrderConfirmation({ orderId: "ord_123" }),
+  },
+  {
+    headers: {
+      "Idempotency-Key": `order-confirmation-ord_123`,
+    },
+  }
+);
+```
+
+Resend deduplicates requests with the same idempotency key within a 24-hour window. Use deterministic keys derived from your business logic (e.g., `order-confirmation-${orderId}`).
+
+### Webhook Management API
+
+Create and manage webhooks programmatically instead of through the dashboard:
+
+```ts
+// Create a webhook endpoint
+const { data } = await resend.webhooks.create({
+  url: "https://yourdomain.com/api/webhook/resend",
+  events: ["email.delivered", "email.bounced", "email.complained", "email.suppressed"],
+});
+
+// List all webhooks
+const webhooks = await resend.webhooks.list();
+
+// Delete a webhook
+await resend.webhooks.remove(webhookId);
+```
+
+### Email Status: "suppressed"
+
+Resend now tracks a `"suppressed"` delivery status for recipients on suppression lists (previous hard bounces or spam complaints). Check for this in webhook events alongside delivered/bounced/complained.
 
 ### Webhook for Delivery Events
 

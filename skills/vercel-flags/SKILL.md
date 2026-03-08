@@ -13,10 +13,18 @@ metadata:
     - 'lib/flags.*'
     - 'src/lib/flags.*'
   bashPatterns:
+    - '\bnpm\s+(install|i|add)\s+[^\n]*\bflags\b'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*\bflags\b'
+    - '\bbun\s+(install|i|add)\s+[^\n]*\bflags\b'
+    - '\byarn\s+add\s+[^\n]*\bflags\b'
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/flags\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/flags\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@vercel/flags\b'
     - '\byarn\s+add\s+[^\n]*@vercel/flags\b'
+    - '\bnpm\s+(install|i|add)\s+[^\n]*@flags-sdk/'
+    - '\bpnpm\s+(install|i|add)\s+[^\n]*@flags-sdk/'
+    - '\bbun\s+(install|i|add)\s+[^\n]*@flags-sdk/'
+    - '\byarn\s+add\s+[^\n]*@flags-sdk/'
 ---
 
 # Vercel Flags
@@ -26,6 +34,8 @@ You are an expert in Vercel Flags — the feature flags platform for the Vercel 
 ## What It Is
 
 Vercel Flags provides a **unified feature flags platform** with a dashboard, developer tools (Flags Explorer), and analytics integration. Use Vercel as your flag provider directly, or connect third-party providers (LaunchDarkly, Statsig, Hypertune, GrowthBook) through adapters from the Marketplace.
+
+Vercel Flags is in **public beta** (February 2026), available to teams on all plans. Pricing: **$30 per 1 million flag requests** ($0.00003 per event).
 
 Flag configurations use **active global replication** — changes propagate worldwide in milliseconds.
 
@@ -37,9 +47,16 @@ Flag configurations use **active global replication** — changes propagate worl
 
 ## Key APIs
 
-### Flags SDK (`flags` package)
+### Flags SDK (`flags` package, v4.0+)
 
-The `flags` package is free, open-source, and provider-agnostic.
+The `flags` package is free, open-source (MIT), and provider-agnostic. Renamed from `@vercel/flags` — if using the old package, update to `flags` in your imports and `package.json`.
+
+**Upgrade note**: v4 has breaking changes from v3. See the [v4 upgrade guide](https://flags-sdk.dev/docs/upgrade-guide) for migration steps:
+- `@vercel/flags` package renamed to `flags` — update imports and `package.json`
+- `encrypt()` / `decrypt()` replaced with dedicated functions: `encryptFlagValues()`, `decryptFlagValues()`
+- `FLAGS_SECRET` must be exactly 32 random bytes, base64-encoded
+- `.well-known` endpoint uses new helper that auto-handles auth and `x-flags-sdk-version` header
+- As of v4.0.3, declaring a flag without a `decide` function (or with an adapter missing `decide`) throws an error at declaration time
 
 ```ts
 import { flag } from 'flags/next'; // Framework adapters: flags/next, flags/sveltekit
@@ -103,9 +120,9 @@ export const premiumFeature = flag<boolean, Entities>({
 - `FLAGS` — SDK Key (auto-provisioned when you create your first flag)
 - `FLAGS_SECRET` — 32 random bytes, base64-encoded; encrypts overrides and authenticates Flags Explorer
 
-### Flags Explorer Setup
+### Flags Explorer Setup (GA)
 
-The Flags Explorer (part of the Vercel Toolbar) lets developers override flags in their browser session without code changes.
+The Flags Explorer is **generally available** (part of the Vercel Toolbar). It lets developers override flags in their browser session without code changes.
 
 **App Router** — create the discovery endpoint:
 
@@ -191,16 +208,18 @@ export function createExampleAdapter() {
 **Additional** (published under `@flags-sdk` npm scope):
 - LaunchDarkly, ConfigCat, DevCycle, Flipt, Reflag, PostHog, Flagsmith
 
-**OpenFeature-compatible**: AB Tasty, CloudBees, Confidence by Spotify, and more
+**OpenFeature adapter**: The `@flags-sdk/openfeature` adapter allows most Node.js OpenFeature Providers to work with the Flags SDK, bridging the OpenFeature ecosystem (AB Tasty, CloudBees, Confidence by Spotify, and more)
 
 ## Key Features
 
 - **Unified Dashboard** at `https://vercel.com/{team}/{project}/flags`: All flags across all providers in one place
-- **Flags Explorer**: Override flags locally via Vercel Toolbar (no code changes)
+- **Flags Explorer (GA)**: Override flags locally via Vercel Toolbar (no code changes)
+- **CLI Management**: `vercel flags add`, `vercel flags sdk-keys ls`, and full flag lifecycle from the terminal
 - **Entities & Segments**: Define user/team attributes, create reusable targeting segments
 - **Analytics Integration**: Track flag impact via Web Analytics and Runtime Logs
 - **Drafts Workflow**: Define in code → deploy → Vercel detects via Discovery Endpoint → promote when ready
-- **Framework Support**: Next.js (App Router + Pages Router) and SvelteKit
+- **Framework Support**: Next.js (App Router + Pages Router + Routing Middleware) and SvelteKit
+- **Concurrent Evaluation Fix** (v1.0.1): `Promise.all` flag evaluations no longer trigger duplicate network requests — initialization is properly shared
 
 ## When to Use
 

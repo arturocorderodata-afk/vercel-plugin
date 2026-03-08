@@ -96,11 +96,18 @@ npm install @vercel/blob
 ```ts
 import { put, del, list, get } from '@vercel/blob'
 
-// Upload from server
+// Upload from server (public)
 const blob = await put('images/photo.jpg', file, {
   access: 'public',
 })
 // blob.url → public URL
+
+// Upload private file
+const privateBlob = await put('docs/secret.pdf', file, {
+  access: 'private',
+})
+// Read private file back
+const privateFile = await get(privateBlob.url) // returns ReadableStream + metadata
 
 // Client upload (up to 5 TB)
 import { upload } from '@vercel/blob/client'
@@ -123,6 +130,10 @@ if (response.statusCode === 304) {
 // Delete
 await del('images/photo.jpg')
 ```
+
+**Private Storage** (public beta): Use `access: 'private'` for files that should not be publicly accessible. Read them back with `get()`. Do NOT use private access for files that need to be served publicly — it leads to slow delivery and high egress costs.
+
+**Blob Data Transfer**: Vercel Blob uses two delivery strategies — **Fast Data Transfer** (94 cities, latency-optimized) and **Blob Data Transfer** (18 hubs, volume-optimized for large assets). The system automatically routes via the optimal path.
 
 **Use when**: Media files, user uploads, documents, any large unstructured data.
 
@@ -151,6 +162,8 @@ const exists = await has('maintenance-mode')
 
 **Do NOT use for**: User data, session state, frequently written data. Edge Config is optimized for reads, not writes.
 
+**Next.js 16**: `@vercel/edge-config@^1.4.3` supports `cacheComponents` and the renamed `proxy.ts` (formerly `middleware.ts`).
+
 ## Marketplace Storage (Partner-Provided)
 
 ### IMPORTANT: @vercel/postgres and @vercel/kv are SUNSET
@@ -159,7 +172,7 @@ These packages no longer exist as first-party Vercel products. Use the marketpla
 
 ### Neon Postgres (replaces @vercel/postgres)
 
-Serverless Postgres with branching, auto-scaling, and connection pooling.
+Serverless Postgres with branching, auto-scaling, and connection pooling. The driver is GA at `@neondatabase/serverless@^1.0.2` and requires **Node.js 19+**.
 
 ```bash
 npm install @neondatabase/serverless
@@ -378,6 +391,8 @@ Install via Vercel Marketplace: `vercel integration add turso`
 
 ```
 
+**Drop-in replacement**: For minimal migration effort, use `@neondatabase/vercel-postgres-compat` which provides API-compatible wrappers for `@vercel/postgres` imports.
+
 ### From @vercel/kv → Upstash Redis
 ```diff
 - import { kv } from '@vercel/kv'
@@ -407,8 +422,8 @@ Browse additional storage options at the [Vercel Marketplace](https://vercel.com
 ## Official Documentation
 
 - [Vercel Storage](https://vercel.com/docs/storage)
-- [Vercel Blob](https://vercel.com/docs/storage/vercel-blob)
-- [Edge Config](https://vercel.com/docs/storage/edge-config)
+- [Vercel Blob](https://vercel.com/docs/vercel-blob)
+- [Edge Config](https://vercel.com/docs/edge-config)
 - [Vercel Marketplace](https://vercel.com/marketplace) — Neon, Upstash, and other storage integrations
 - [Integrations](https://vercel.com/docs/integrations)
 - [GitHub: Vercel Storage](https://github.com/vercel/storage)

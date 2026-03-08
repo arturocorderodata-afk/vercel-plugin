@@ -26,6 +26,7 @@ Changes propagate globally in under **300ms**. No redeployment required.
 
 - Layer 3/4 mitigation (automatic, always on)
 - Layer 7 protection (proprietary, tailored to web apps)
+- **Protectd**: Vercel's DoS mitigation infrastructure analyzes ~550K events/sec globally with median mitigation time of **2.5 seconds**
 - 40x faster detection with real-time stream processing
 - Handles 1B+ suspicious TCP connections per week
 - Proven to mitigate 1.37 Tbps attacks with zero downtime
@@ -121,6 +122,10 @@ Additional optional fields: `neg: true` negates the condition, `key` required fo
 | `bypass` | Skip all subsequent WAF rules |
 | `rate_limit` | Apply rate limiting (requires `rateLimit` config) |
 | `redirect` | Redirect (requires `redirect` config) |
+
+### Persistent Actions
+
+By default each request is evaluated individually. With **persistent actions**, rules are applied to all matching requests for a customizable duration (`actionDuration`), allowing the firewall to remember malicious behavior and block it earlier in the lifecycle.
 
 ### Action Options
 
@@ -332,9 +337,9 @@ When exceeded with `deny`, returns HTTP 429 with `X-RateLimit-Limit` and `X-Rate
 
 ## Bot Management
 
-### Bot Protection (Managed Ruleset)
+### Bot Protection (GA — Free on All Plans)
 
-Challenges automated traffic unlikely to be a real browser:
+Heuristics-based detection that challenges non-browser bot traffic without disrupting verified webhook providers. Formerly "Bot Filter" during beta — renamed to Bot Protection at GA. Enable in log-only mode first to preview traffic impact:
 
 ```json
 {
@@ -343,6 +348,8 @@ Challenges automated traffic unlikely to be a real browser:
   "value": { "active": true, "action": "challenge" }
 }
 ```
+
+> **Note**: The older `bot_filter` ID is deprecated. Use `bot_protection` in new configurations.
 
 ### AI Bot Blocking
 
@@ -353,18 +360,6 @@ Block known AI crawlers (GPTBot, ClaudeBot, etc.):
   "action": "managedRules.update",
   "id": "ai_bots",
   "value": { "active": true, "action": "deny" }
-}
-```
-
-### Bot Filter
-
-Additional bot filtering layer:
-
-```json
-{
-  "action": "managedRules.update",
-  "id": "bot_filter",
-  "value": { "active": true, "action": "challenge" }
 }
 ```
 
@@ -499,8 +494,7 @@ Place this higher in priority than Bot Protection managed rules:
   "managedRules": {
     "owasp": { "active": true, "action": "deny" },
     "bot_protection": { "active": true, "action": "challenge" },
-    "ai_bots": { "active": true, "action": "deny" },
-    "bot_filter": { "active": true, "action": "challenge" }
+    "ai_bots": { "active": true, "action": "deny" }
   },
   "botIdEnabled": true
 }
@@ -655,7 +649,7 @@ Supported actions in `vercel.json`: `"challenge"`, `"deny"` only. Rate limiting,
 | DDoS Protection | All | All | All |
 | Custom Rules | 5 | 40 | 1000 |
 | Rate Limiting | 1 rule | 40 rules | 1000 rules |
-| Bot Protection | — | Yes | Yes |
+| Bot Protection (GA) | Yes | Yes | Yes |
 | OWASP CRS | — | — | Yes |
 | Token Bucket algo | — | — | Yes |
 | Custom rate limit keys | — | — | Yes |
@@ -663,6 +657,8 @@ Supported actions in `vercel.json`: `"challenge"`, `"deny"` only. Rate limiting,
 ## Observability
 
 - Security event logs in the Firewall tab
+- **IP enrichment** — hover any IP in the Firewall dashboard to see ASN, location, and metadata
+- Create custom WAF rules directly from dashboard traffic charts (select "Create Custom Rule" from the actions menu)
 - Linkable to Monitoring queries for investigations
 - DDoS mitigation notifications (alerts on detection)
 - BotID traffic visibility when enabled

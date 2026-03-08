@@ -20,15 +20,39 @@ metadata:
 
 You are an expert in the Vercel Workflow DevKit. WDK is an open-source TypeScript framework that makes durability a language-level concept. Functions can pause for minutes or months, survive deployments and crashes, and resume exactly where they stopped.
 
+## Status
+
+WDK is in **public beta** (since October 2025) and open source. GA is anticipated but not yet announced. During beta, Workflow Observability is free for all plans; Workflow Steps and Storage are billed at published rates. Server-side performance is now 2x faster (54% median improvement — median API response time reduced from 37ms to 17ms).
+
+**Security**: Upgrade to `workflow@>=4.2.0-beta.64` — versions ≤4.1.0-beta.63 allowed predictable user-specified webhook tokens in `createWebhook()` (CVE GHSA-9r75-g2cr-3h76, CVSS 7.5). The fix removes the `token` option so tokens are always randomly generated. Run `npx workflow@latest` to update (current: 4.2.0-beta.67).
+
+## Framework Support
+
+WDK works with **8 frameworks** and more are in development:
+
+| Framework | Status |
+|-----------|--------|
+| Next.js | Supported |
+| Nitro | Supported |
+| SvelteKit | Supported |
+| Astro | Supported |
+| Express | Supported |
+| Hono | Supported |
+| TanStack Start | In development |
+| React Router | In development |
+
 ## Installation
 
 ```bash
-npm install @workflow/core
+# Main package (includes core runtime)
+npm install workflow@latest
 # For AI agent durability:
-npm install @workflow/ai
+npm install @workflow/ai@latest
 # For self-hosted Postgres worlds:
 npm install @workflow/world-postgres
 ```
+
+> **Tip**: Run `npx workflow@latest` to scaffold or update your project. All packages are currently in beta.
 
 ## Core Concepts
 
@@ -114,7 +138,7 @@ import { DurableAgent } from '@workflow/ai/agent'
 import { openai } from '@ai-sdk/openai'
 
 const agent = new DurableAgent({
-  model: openai('gpt-5.2'),
+  model: openai('gpt-5.4'),
   tools: {
     searchWeb: { /* ... */ },
     writeFile: { /* ... */ },
@@ -243,9 +267,20 @@ export async function POST(req: Request) {
 | Process spanning multiple services | WDK Workflow |
 | Quick one-shot LLM call | AI SDK directly |
 
+## Workflow Builder (Visual Automation)
+
+Vercel open-sourced **Workflow Builder** — a complete visual automation platform powered by WDK. It includes a visual drag-and-drop editor, AI-powered text-to-workflow generation, execution engine, and integrations (Resend, Linear, Slack, PostgreSQL, webhooks).
+
+Every visual workflow compiles into executable TypeScript via WDK. Deploy it to Vercel with one click (auto-provisions Neon Postgres).
+
+- [Workflow Builder Template](https://vercel.com/templates/next.js/workflow-builder)
+- [Workflow Builder Starter](https://github.com/vercel/workflow-builder-starter)
+- [Blog post](https://vercel.com/blog/workflow-builder-build-your-own-workflow-automation-platform)
+
 ## Official Documentation
 
 - [Workflow DevKit](https://vercel.com/docs/workflow)
+- [Workflow DevKit Website](https://useworkflow.dev)
 - [Vercel Functions](https://vercel.com/docs/functions) — Workflows compile to Vercel Functions
 - [AI SDK Agents](https://ai-sdk.dev/docs/ai-sdk-core/agents) — DurableAgent wraps AI SDK Agent
 - [GitHub: Workflow DevKit](https://github.com/vercel/workflow)

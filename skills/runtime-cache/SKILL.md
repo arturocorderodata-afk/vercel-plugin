@@ -148,10 +148,20 @@ async function getData() {
 - `'use cache'` (no `: remote`) — in-memory only, ephemeral per instance
 - `'use cache: remote'` — stores in Vercel Runtime Cache
 
+### Next.js 16 Invalidation APIs
+
+| Function | Context | Behavior |
+|----------|---------|----------|
+| `updateTag(tag)` | Server Actions only | Immediate expiration, read-your-own-writes |
+| `revalidateTag(tag, 'max')` | Server Actions + Route Handlers | Stale-while-revalidate (recommended) |
+| `revalidateTag(tag, { expire: 0 })` | Route Handlers (webhooks) | Immediate expiration from external triggers |
+
+**Important**: Single-argument `revalidateTag(tag)` is deprecated in Next.js 16. Always pass a `cacheLife` profile as the second argument.
+
 ### Runtime Cache vs ISR Isolation
 
 - Runtime Cache tags do **NOT** apply to ISR pages
-- `expireTag` does **NOT** invalidate ISR cache
+- `cache.expireTag` does **NOT** invalidate ISR cache
 - Next.js `revalidatePath` / `revalidateTag` does **NOT** invalidate Runtime Cache
 - To manage both, use same tag and purge via `invalidateByTag` (hits all cache layers)
 
@@ -207,6 +217,10 @@ return Response.json(product, {
 | Tags per bulk REST API call | 16 |
 
 Tags are **case-sensitive** and **cannot contain commas**.
+
+## Observability
+
+Monitor hit rates, invalidation patterns, and storage usage in the Vercel Dashboard under **Observability → Runtime Cache**. The CDN dashboard (March 5, 2026) provides a unified view of global traffic distribution, cache performance metrics, a redesigned purging interface, and **project-level routing** — update response headers or rewrite to external APIs without triggering a new deployment. Project-level routes are available on all plans and take effect instantly.
 
 ## When to Use
 

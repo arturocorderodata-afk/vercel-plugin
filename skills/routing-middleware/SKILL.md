@@ -22,7 +22,10 @@ metadata:
     - 'src/proxy.mjs'
     - 'vercel.json'
     - 'apps/*/vercel.json'
-  bashPatterns: []
+    - 'vercel.ts'
+    - 'vercel.mts'
+  bashPatterns:
+    - '\bnpx\s+@vercel/config\b'
 ---
 
 # Vercel Routing Middleware
@@ -47,7 +50,29 @@ There are THREE "middleware" concepts in the Vercel ecosystem:
 | **Next.js 16 Proxy** | `proxy.ts` (root, or `src/proxy.ts` if using `--src-dir`) | Node.js only | Next.js 16+ only | Network-boundary proxy needing full Node APIs. NOT for auth. |
 | **Edge Functions** | Any function file | V8 isolates | General-purpose | Standalone edge compute endpoints, not an interception layer |
 
-**Why the rename in Next.js 16**: `middleware.ts` → `proxy.ts` clarifies it sits at the network boundary (not general-purpose middleware). Partly motivated by CVE-2025-29927 (middleware auth bypass via `x-middleware-subrequest` header). Migration codemod: `npx @next/codemod@latest middleware-to-proxy`
+**Why the rename in Next.js 16**: `middleware.ts` → `proxy.ts` clarifies it sits at the network boundary (not general-purpose middleware). Partly motivated by CVE-2025-29927 (middleware auth bypass via `x-middleware-subrequest` header). The exported function must also be renamed from `middleware` to `proxy`. Migration codemod: `npx @next/codemod@latest middleware-to-proxy`
+
+**Deprecation**: Next.js 16 still accepts `middleware.ts` but treats it as deprecated and logs a warning. It will be removed in a future version.
+
+## Bun Runtime
+
+To run Routing Middleware (and all Vercel Functions) on Bun, add `bunVersion` to `vercel.json`:
+
+```json
+{
+  "bunVersion": "1.x"
+}
+```
+
+Set the middleware runtime to `nodejs` — Bun replaces the Node.js runtime transparently:
+
+```ts
+export const config = {
+  runtime: 'nodejs', // Bun swaps in when bunVersion is set
+};
+```
+
+Bun reduces average latency by ~28% in CPU-bound workloads. Currently in Public Beta — supports Next.js, Express, Hono, and Nitro.
 
 ## Basic Example
 
@@ -147,6 +172,56 @@ export default function middleware(request: Request, context: RequestContext) {
 | Max request body | 4 MB |
 | Max request headers | 64 headers / 16 KB total |
 
+## Three CDN Routing Mechanisms
+
+Vercel's CDN supports three routing mechanisms, evaluated in this order:
+
+| Order | Mechanism | Scope | Deploy Required | How to Configure |
+|-------|-----------|-------|-----------------|------------------|
+| 1 | **Bulk Redirects** | Up to 1M static path→path redirects | No (runtime via Dashboard/API/CLI) | Dashboard, CSV upload, REST API |
+| 2 | **Project-Level Routes** | Headers, rewrites, redirects | No (instant publish) | Dashboard, API, CLI, Vercel SDK |
+| 3 | **Deployment Config Routes** | Full routing rules | Yes (deploy) | `vercel.json`, `vercel.ts`, `next.config.ts` |
+
+**Project-level routes** (added March 2026) let you update routing rules — response headers, rewrites to external APIs — without triggering a new deployment. They run after bulk redirects and before deployment config routes. Available on all plans.
+
+### Project-Level Routes — Configuration Methods
+
+Project-level routes take effect instantly (no deploy required). Four ways to manage them:
+
+| Method | How |
+|--------|-----|
+| **Dashboard** | Project → CDN → Routing tab. Live map of global traffic, cache management, and route editor in one view. |
+| **REST API** | `GET/POST/PATCH/DELETE /v1/projects/{projectId}/routes` — 8 dedicated endpoints for CRUD on project routes. |
+| **Vercel CLI** | Managed via `vercel.ts` / `@vercel/config` commands (`compile`, `validate`, `generate`). |
+| **Vercel SDK** | `@vercel/config` helpers: `routes.redirect()`, `routes.rewrite()`, `routes.header()`, plus `has`/`missing` conditions and transforms. |
+
+Use project-level routes for operational changes (CORS headers, API proxy rewrites, A/B redirects) that shouldn't require a full redeploy.
+
+## Programmatic Configuration with `vercel.ts`
+
+Instead of static `vercel.json`, you can use `vercel.ts` (or `.js`, `.mjs`, `.cjs`, `.mts`) with the `@vercel/config` package for type-safe, dynamic routing configuration:
+
+```ts
+// vercel.ts
+import { defineConfig } from '@vercel/config';
+
+export default defineConfig({
+  rewrites: [
+    { source: '/api/:path*', destination: 'https://backend.example.com/:path*' },
+  ],
+  headers: [
+    { source: '/(.*)', headers: [{ key: 'X-Frame-Options', value: 'DENY' }] },
+  ],
+});
+```
+
+CLI commands:
+- `npx @vercel/config compile` — compile to JSON (stdout)
+- `npx @vercel/config validate` — validate and show summary
+- `npx @vercel/config generate` — generate `vercel.json` locally for development
+
+**Constraint**: Only one config file per project — `vercel.json` or `vercel.ts`, not both.
+
 ## When to Use
 
 - Geo-personalization of static pages (runs before cache)
@@ -154,6 +229,7 @@ export default function middleware(request: Request, context: RequestContext) {
 - Custom redirects based on request properties
 - Header injection (CSP, CORS, custom headers)
 - Lightweight auth checks (defense-in-depth only — not sole auth layer)
+- Project-level routes for headers/rewrites without redeploying
 
 ## When NOT to Use
 
@@ -161,6 +237,7 @@ export default function middleware(request: Request, context: RequestContext) {
 - General compute at the edge → use Edge Functions
 - Heavy business logic or database queries → use server-side framework features
 - Auth as sole protection → use Layouts, Server Components, or Route Handlers
+- Thousands of static redirects → use Bulk Redirects (up to 1M per project)
 
 ## References
 

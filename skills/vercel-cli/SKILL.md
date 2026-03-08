@@ -16,17 +16,28 @@ metadata:
     - '\bpnpm\s+dlx\s+vercel\b'
     - '\bbunx\s+vercel\b'
     - '\byarn\s+dlx\s+vercel\b'
+    - '\bnpx\s+@vercel/config\b'
 ---
 
 # Vercel CLI
 
-You are an expert in the Vercel CLI (`vercel` or `vc`). The CLI is the primary way to manage Vercel projects from the terminal.
+You are an expert in the Vercel CLI v50.28.0 (`vercel` or `vc`). The CLI is the primary way to manage Vercel projects from the terminal.
 
 ## Installation
 
 ```bash
 npm i -g vercel
 ```
+
+## Login
+
+The CLI uses an **OAuth 2.0 Device Flow** for authentication.
+
+```bash
+vercel login
+```
+
+> **Deprecation notice**: Email-based login (`vercel login your@email.com`) and the flags `--github`, `--gitlab`, `--bitbucket`, `--oob` were removed February 26, 2026. The `team` method (SAML-based login) remains supported until June 1, 2026, then will also be removed.
 
 ## Core Commands
 
@@ -118,12 +129,18 @@ vercel env pull .env.production.local --environment=production
 
 ### Logs & Inspection
 
+The `vercel logs` command (rebuilt February 2026) supports **historical log querying** and uses **git context by default** — it automatically scopes logs to your current repository when run from a project directory.
+
 ```bash
 # View runtime/function logs (real-time)
 vercel logs <deployment-url>
 
 # Follow logs in real-time (streaming mode)
 vercel logs <deployment-url> --follow
+
+# Query historical logs (no longer limited to live-only)
+vercel logs --since 24h
+vercel logs --since 7d
 
 # Filter by time range
 vercel logs <deployment-url> --since 1h
@@ -132,6 +149,11 @@ vercel logs <deployment-url> --since 30m
 # Filter by log level
 vercel logs <deployment-url> --level error
 vercel logs <deployment-url> --level warning
+
+# Filter by deployment ID, request ID, or arbitrary string
+vercel logs --deployment-id dpl_xxxxx
+vercel logs --request-id req_xxxxx
+vercel logs --query "TypeError"
 
 # Output as JSON (for piping to jq or other tools)
 vercel logs <deployment-url> --json
@@ -236,13 +258,32 @@ vercel mcp --project
 
 The `vercel mcp` command links your local MCP client configuration to a Vercel Project. It generates connection details so AI agents and tools can call your MCP endpoints deployed on Vercel securely.
 
+### Programmatic Configuration (`@vercel/config`)
+
+```bash
+# Compile vercel.ts to JSON (stdout)
+npx @vercel/config compile
+
+# Validate configuration and show summary
+npx @vercel/config validate
+
+# Generate vercel.json locally for development
+npx @vercel/config generate
+```
+
+Use `vercel.ts` (or `.js`, `.mjs`, `.cjs`, `.mts`) instead of `vercel.json` for type-safe, dynamic project configuration. Only one config file per project — `vercel.json` or `vercel.ts`, not both.
+
+> **Note:** Legacy `now.json` support will be removed on March 31, 2026. Rename to `vercel.json` (no content changes needed).
+
 ### Marketplace Integrations
+
+Auto-provisioning is the default for `vercel integration add` — the CLI automatically creates resources and sets environment variables without extra prompts.
 
 ```bash
 # List installed integrations
 vercel integration list
 
-# Add an integration (auto-provisions env vars)
+# Add an integration (auto-provisions env vars by default)
 vercel integration add neon
 
 # Open an integration's dashboard
@@ -252,9 +293,76 @@ vercel integration open neon
 vercel integration remove neon
 ```
 
-> **Browsing available integrations:** Use the [Vercel Marketplace](https://vercel.com/marketplace)
-> dashboard or the [REST API](https://vercel.com/docs/rest-api) (`/v1/integrations`) to discover
-> integrations. The CLI `vercel integration` subcommands are: `add`, `list` (alias `ls`), `open`, `remove`.
+#### Agent-Optimized: `discover` and `guide`
+
+AI agents can autonomously discover, install, and retrieve setup instructions for Marketplace integrations (added March 2026):
+
+```bash
+# Search the integration catalog (returns JSON for automation)
+vercel integration discover --format=json
+
+# Search with a keyword filter
+vercel integration discover database --format=json
+
+# Get agent-friendly setup guide with code snippets
+vercel integration guide neon
+
+# Full workflow: discover → add → guide
+vercel integration discover storage --format=json
+vercel integration add neon
+vercel integration guide neon
+```
+
+- `discover` — Searches the Vercel Marketplace catalog. Use `--format=json` for non-interactive output suitable for scripting and agent pipelines.
+- `guide <name>` — Returns getting-started documentation in agent-friendly markdown: environment variables, SDK setup, and code snippets.
+- Human-in-the-loop safety: the CLI prompts for developer confirmation when accepting Terms of Service.
+
+> Full subcommands: `discover`, `guide`, `add`, `list` (alias `ls`), `balance`, `open`, `remove`.
+
+### Project-Level Routing (No Redeploy)
+
+Create and update routing rules — headers, rewrites, redirects — without building a new deployment. Rules take effect instantly.
+
+Available via dashboard (CDN tab), API, CLI, and Vercel SDK. Project-level routes run after bulk redirects and before deployment config routes.
+
+### Feature Flags
+
+```bash
+# Create a feature flag
+vercel flags add redesigned-checkout --kind boolean --description "New checkout flow"
+
+# List SDK keys
+vercel flags sdk-keys ls
+
+# Enable/disable, archive, and manage flags from CLI
+vercel flags --help
+```
+
+See `⤳ skill: vercel-flags` for full flag configuration and adapter patterns.
+
+### Direct API Access
+
+The `vercel api` command (added January 2026) gives direct access to the full Vercel REST API from the terminal. Designed for AI agents — Claude Code can call Vercel APIs with no additional configuration.
+
+```bash
+# Call any Vercel REST API endpoint
+vercel api GET /v9/projects
+vercel api GET /v13/deployments
+vercel api POST /v9/projects/:id/env --body '{"key":"MY_VAR","value":"val","target":["production"]}'
+
+# Pipe JSON output to jq
+vercel api GET /v9/projects | jq '.[].name'
+```
+
+### Metrics
+
+```bash
+# Query project metrics (rich text output with sparklines)
+vercel metrics
+
+# Raw values for scripting
+vercel metrics --raw-values
+```
 
 ## CI/CD Integration
 

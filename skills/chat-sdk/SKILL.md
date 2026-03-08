@@ -47,6 +47,9 @@ metadata:
     - "apps/*/app/api/discord/**"
     - "apps/*/lib/bot/**"
     - "apps/*/src/lib/bot/**"
+  importPatterns:
+    - "chat"
+    - "@chat-adapter/*"
   bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*\bchat\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*\bchat\b'
@@ -60,6 +63,26 @@ metadata:
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@chat-adapter/telegram'
     - '\bbun\s+(install|i|add)\s+[^\n]*@chat-adapter/telegram'
     - '\byarn\s+add\s+[^\n]*@chat-adapter/telegram'
+  promptSignals:
+    phrases:
+      - "chat sdk"
+      - "chat bot"
+      - "chatbot"
+      - "slack bot"
+      - "telegram bot"
+      - "discord bot"
+      - "teams bot"
+    allOf:
+      - [bot, platform]
+      - [bot, multi]
+    anyOf:
+      - "onNewMention"
+      - "onSubscribedMessage"
+      - "chat adapter"
+      - "cross-platform bot"
+    noneOf:
+      - "useChat"
+    minScore: 6
 ---
 
 # Vercel Chat SDK
@@ -68,37 +91,37 @@ You are an expert in the Vercel Chat SDK. Build one bot logic layer and run it a
 
 ## Packages
 
-- `chat@^4.17.0`
-- `@chat-adapter/slack@^4.17.0`
-- `@chat-adapter/telegram@^4.17.0`
-- `@chat-adapter/teams@^4.17.0`
-- `@chat-adapter/discord@^4.17.0`
-- `@chat-adapter/gchat@^4.17.0`
-- `@chat-adapter/github@^4.17.0`
-- `@chat-adapter/linear@^4.17.0`
-- `@chat-adapter/state-redis@^4.17.0`
-- `@chat-adapter/state-ioredis@^4.17.0`
-- `@chat-adapter/state-memory@^4.17.0`
+- `chat@^4.18.0`
+- `@chat-adapter/slack@^4.18.0`
+- `@chat-adapter/telegram@^4.18.0`
+- `@chat-adapter/teams@^4.18.0`
+- `@chat-adapter/discord@^4.18.0`
+- `@chat-adapter/gchat@^4.18.0`
+- `@chat-adapter/github@^4.18.0`
+- `@chat-adapter/linear@^4.18.0`
+- `@chat-adapter/state-redis@^4.18.0`
+- `@chat-adapter/state-ioredis@^4.18.0`
+- `@chat-adapter/state-memory@^4.18.0`
 
 ## Installation
 
 ```bash
 # Core SDK
-npm install chat@^4.17.0
+npm install chat@^4.18.0
 
 # Platform adapters (install only what you need)
-npm install @chat-adapter/slack@^4.17.0
-npm install @chat-adapter/telegram@^4.17.0
-npm install @chat-adapter/teams@^4.17.0
-npm install @chat-adapter/discord@^4.17.0
-npm install @chat-adapter/gchat@^4.17.0
-npm install @chat-adapter/github@^4.17.0
-npm install @chat-adapter/linear@^4.17.0
+npm install @chat-adapter/slack@^4.18.0
+npm install @chat-adapter/telegram@^4.18.0
+npm install @chat-adapter/teams@^4.18.0
+npm install @chat-adapter/discord@^4.18.0
+npm install @chat-adapter/gchat@^4.18.0
+npm install @chat-adapter/github@^4.18.0
+npm install @chat-adapter/linear@^4.18.0
 
 # State adapters (pick one)
-npm install @chat-adapter/state-redis@^4.17.0
-npm install @chat-adapter/state-ioredis@^4.17.0
-npm install @chat-adapter/state-memory@^4.17.0
+npm install @chat-adapter/state-redis@^4.18.0
+npm install @chat-adapter/state-ioredis@^4.18.0
+npm install @chat-adapter/state-memory@^4.18.0
 ```
 
 ## Critical API Notes
@@ -367,8 +390,35 @@ Card additions to use when needed:
 - `Card.imageUrl`
 - `CardLink`
 - `Field` (`options` uses `{ label, value }[]`, not JSX children)
-- `Table`
+- `Table` / `TableRow` / `TableCell` — native per-platform table rendering (**new — Mar 6, 2026**; see below)
 - `Text` styles (`default`, `muted`, `success`, `warning`, `danger`, `code`)
+
+### Table — Per-Platform Rendering (New — Mar 6, 2026)
+
+The `Table` component renders natively on each platform:
+
+| Platform | Rendering |
+|---|---|
+| Slack | Block Kit table blocks |
+| Teams / Discord | GFM markdown tables |
+| Google Chat | Monospace text widgets |
+| Telegram | Code blocks |
+| GitHub / Linear | Markdown tables (existing pipeline) |
+
+Plain markdown tables (without `Table()`) also pass through the same adapter conversion pipeline.
+
+```tsx
+<Table>
+  <TableRow>
+    <TableCell>Region</TableCell>
+    <TableCell>us-east-1</TableCell>
+  </TableRow>
+  <TableRow>
+    <TableCell>Latency</TableCell>
+    <TableCell>128ms</TableCell>
+  </TableRow>
+</Table>
+```
 
 ### Modals
 
@@ -581,11 +631,12 @@ export async function GET(req: Request) {
 
 ### Streaming
 
-6. Slack supports native streaming; Teams/Discord/Google Chat/Telegram use post+edit fallback.
-7. `fallbackStreamingPlaceholderText: null` disables placeholder messages on fallback adapters.
-8. `streamingUpdateIntervalMs` too low can trigger rate limits on post+edit adapters.
-9. `dedupeTtlMs` should cover webhook retry windows to avoid duplicate responses.
-10. `startTyping()` is adapter-dependent and may no-op on platforms without typing indicators.
+6. Slack supports native streaming with real-time bold, italic, list, and other formatting rendered as the response arrives. Teams/Discord/Google Chat/Telegram use post+edit fallback.
+7. Fallback adapters now convert markdown to each platform's native format at every intermediate edit — users no longer see raw `**bold**` syntax during streaming.
+8. `fallbackStreamingPlaceholderText: null` disables placeholder messages on fallback adapters.
+9. `streamingUpdateIntervalMs` too low can trigger rate limits on post+edit adapters.
+10. `dedupeTtlMs` should cover webhook retry windows to avoid duplicate responses.
+11. `startTyping()` is adapter-dependent and may no-op on platforms without typing indicators.
 
 ### Adapter-specific
 

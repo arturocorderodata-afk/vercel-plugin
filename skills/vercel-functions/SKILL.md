@@ -63,26 +63,51 @@ export async function GET() {
 }
 ```
 
+### Bun Runtime (Public Beta)
+
+Add `"bunVersion": "1.x"` to `vercel.json` to run Node.js functions on Bun instead. ~28% lower latency for CPU-bound workloads. Supports Next.js, Express, Hono, Nitro.
+
+### Rust Runtime (Public Beta)
+
+Rust functions run on Fluid Compute with HTTP streaming and Active CPU pricing. Built on the community Rust runtime. Supports environment variables up to 64 KB.
+
+### Node.js 24 LTS
+
+Node.js 24 LTS is now GA on Vercel for both builds and functions. Features V8 13.6, global `URLPattern`, Undici v7 for faster `fetch()`, and npm v11.
+
 ### Choosing Runtime
 
 | Need | Runtime | Why |
 |------|---------|-----|
 | Full Node.js APIs, npm packages | `nodejs` | Full compatibility |
+| Lower latency, CPU-bound work | `nodejs` + Bun | ~28% latency reduction |
 | Ultra-low latency, simple logic | `edge` | <1ms cold start, global |
 | Database connections, heavy deps | `nodejs` | Edge lacks full Node.js |
 | Auth/redirect at the edge | `edge` | Fastest response |
 | AI streaming | Either | Both support streaming |
+| Systems-level performance | `rust` (beta) | Native speed, Fluid Compute |
 
 ## Fluid Compute
 
 Fluid Compute is the unified execution model for all Vercel Functions (both Node.js and Edge).
 
 Key benefits:
-- **Optimized concurrency**: Multiple invocations on a single instance
-- **Extended durations**: Up to 800s on Pro/Enterprise
+- **Optimized concurrency**: Multiple invocations on a single instance — up to 85% cost reduction for high-concurrency workloads
+- **Extended durations**: Default 300s for all plans; up to 800s on Pro/Enterprise
+- **Active CPU pricing**: Charges only while CPU is actively working, not during idle/await time. Enabled by default for all plans. Memory-only periods billed at a significantly lower rate.
 - **Background processing**: `waitUntil` / `after` for post-response tasks
 - **Dynamic scaling**: Automatic during traffic spikes
-- **Bytecode caching**: Reduces cold starts
+- **Bytecode caching**: Reduces cold starts via Rust-based runtime with pre-compiled function code
+- **Multi-region failover**: Default for Enterprise when Fluid is activated
+
+### Instance Sizes
+
+| Size | CPU | Memory |
+|------|-----|--------|
+| Standard (default) | 1 vCPU | 2 GB |
+| Performance | 2 vCPU | 4 GB |
+
+Hobby projects use Standard CPU. The Basic CPU instance has been removed.
 
 ### Background Processing with `waitUntil`
 
@@ -181,6 +206,8 @@ export async function GET(req: Request) {
 
 ## Configuration via vercel.json
 
+**Deprecation notice**: Support for the legacy `now.json` config file will be removed on **March 31, 2026**. Rename `now.json` to `vercel.json` (no content changes required).
+
 ```json
 {
   "functions": {
@@ -197,11 +224,13 @@ export async function GET(req: Request) {
 
 ## Timeout Limits
 
-| Plan | Default | Max (Fluid Compute) |
-|------|---------|---------------------|
-| Hobby | 10s | 60s |
-| Pro | 15s | 800s |
-| Enterprise | 15s | 800s |
+All plans now default to 300s execution time with Fluid Compute.
+
+| Plan | Default | Max |
+|------|---------|-----|
+| Hobby | 300s | 300s |
+| Pro | 300s | 800s |
+| Enterprise | 300s | 800s |
 
 ## Common Pitfalls
 

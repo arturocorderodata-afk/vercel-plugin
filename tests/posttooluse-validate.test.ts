@@ -146,8 +146,8 @@ describe("posttooluse-validate.mjs", () => {
       expect(meta.errorCount).toBeGreaterThan(0);
     });
 
-    test("detects ToolLoopAgent usage", async () => {
-      writeFileSync(testFile, `import { ToolLoopAgent } from 'ai';\nconst agent = new ToolLoopAgent({});\n`);
+    test("detects Experimental_Agent usage", async () => {
+      writeFileSync(testFile, `import { Experimental_Agent } from 'ai';\nconst agent = new Experimental_Agent({});\n`);
       const { code, stdout } = await runHook({
         tool_name: "Write",
         tool_input: { file_path: testFile },
@@ -156,7 +156,7 @@ describe("posttooluse-validate.mjs", () => {
       const result = JSON.parse(stdout);
       expect(result.hookSpecificOutput).toBeDefined();
       const ctx = result.hookSpecificOutput.additionalContext;
-      expect(ctx).toContain("Agent");
+      expect(ctx).toContain("Experimental_Agent");
       expect(ctx).toContain("ToolLoopAgent");
       const meta = extractPostValidation(result.hookSpecificOutput);
       expect(meta).toBeDefined();

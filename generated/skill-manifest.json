@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-08T00:19:02.994Z",
+  "generatedAt": "2026-03-08T15:30:27.357Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -85,9 +85,13 @@
         "src/proxy.mts",
         "src/proxy.mjs",
         "vercel.json",
-        "apps/*/vercel.json"
+        "apps/*/vercel.json",
+        "vercel.ts",
+        "vercel.mts"
       ],
-      "bashPatterns": [],
+      "bashPatterns": [
+        "\\bnpx\\s+@vercel/config\\b"
+      ],
       "importPatterns": [],
       "bodyPath": "skills/routing-middleware/SKILL.md",
       "pathRegexSources": [
@@ -108,9 +112,13 @@
         "^src\\/proxy\\.mts$",
         "^src\\/proxy\\.mjs$",
         "^vercel\\.json$",
-        "^apps\\/[^/]*\\/vercel\\.json$"
+        "^apps\\/[^/]*\\/vercel\\.json$",
+        "^vercel\\.ts$",
+        "^vercel\\.mts$"
       ],
-      "bashRegexSources": [],
+      "bashRegexSources": [
+        "\\bnpx\\s+@vercel/config\\b"
+      ],
       "importRegexSources": []
     },
     "agent-browser-verify": {
@@ -651,7 +659,8 @@
         "\\bnpx\\s+vercel\\b",
         "\\bpnpm\\s+dlx\\s+vercel\\b",
         "\\bbunx\\s+vercel\\b",
-        "\\byarn\\s+dlx\\s+vercel\\b"
+        "\\byarn\\s+dlx\\s+vercel\\b",
+        "\\bnpx\\s+@vercel/config\\b"
       ],
       "importPatterns": [],
       "bodyPath": "skills/vercel-cli/SKILL.md",
@@ -668,7 +677,8 @@
         "\\bnpx\\s+vercel\\b",
         "\\bpnpm\\s+dlx\\s+vercel\\b",
         "\\bbunx\\s+vercel\\b",
-        "\\byarn\\s+dlx\\s+vercel\\b"
+        "\\byarn\\s+dlx\\s+vercel\\b",
+        "\\bnpx\\s+@vercel/config\\b"
       ],
       "importRegexSources": []
     },
@@ -841,7 +851,9 @@
         "lib/queues.*",
         "lib/queue.*",
         "src/lib/queues.*",
-        "src/lib/queue.*"
+        "src/lib/queue.*",
+        "vercel.ts",
+        "vercel.mts"
       ],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/queue\\b",
@@ -857,7 +869,9 @@
         "^lib\\/queues\\.[^/]*$",
         "^lib\\/queue\\.[^/]*$",
         "^src\\/lib\\/queues\\.[^/]*$",
-        "^src\\/lib\\/queue\\.[^/]*$"
+        "^src\\/lib\\/queue\\.[^/]*$",
+        "^vercel\\.ts$",
+        "^vercel\\.mts$"
       ],
       "bashRegexSources": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/queue\\b",
@@ -925,10 +939,18 @@
         "src/lib/flags.*"
       ],
       "bashPatterns": [
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bflags\\b",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*\\bflags\\b",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bflags\\b",
+        "\\byarn\\s+add\\s+[^\\n]*\\bflags\\b",
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/flags\\b",
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/flags\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/flags\\b",
-        "\\byarn\\s+add\\s+[^\\n]*@vercel/flags\\b"
+        "\\byarn\\s+add\\s+[^\\n]*@vercel/flags\\b",
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@flags-sdk/",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@flags-sdk/",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*@flags-sdk/",
+        "\\byarn\\s+add\\s+[^\\n]*@flags-sdk/"
       ],
       "importPatterns": [],
       "bodyPath": "skills/vercel-flags/SKILL.md",
@@ -943,10 +965,18 @@
         "^src\\/lib\\/flags\\.[^/]*$"
       ],
       "bashRegexSources": [
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bflags\\b",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*\\bflags\\b",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bflags\\b",
+        "\\byarn\\s+add\\s+[^\\n]*\\bflags\\b",
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/flags\\b",
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/flags\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/flags\\b",
-        "\\byarn\\s+add\\s+[^\\n]*@vercel/flags\\b"
+        "\\byarn\\s+add\\s+[^\\n]*@vercel/flags\\b",
+        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@flags-sdk/",
+        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@flags-sdk/",
+        "\\bbun\\s+(install|i|add)\\s+[^\\n]*@flags-sdk/",
+        "\\byarn\\s+add\\s+[^\\n]*@flags-sdk/"
       ],
       "importRegexSources": []
     },
@@ -964,7 +994,7 @@
       ],
       "bashPatterns": [
         "\\bnpx\\s+shadcn\\b",
-        "\\bnpx\\s+shadcn@latest\\s+(init|add|build|search|list|migrate)\\b"
+        "\\bnpx\\s+shadcn@latest\\s+(init|add|build|search|list|migrate|info|docs|view)\\b"
       ],
       "importPatterns": [],
       "bodyPath": "skills/shadcn/SKILL.md",
@@ -979,7 +1009,7 @@
       ],
       "bashRegexSources": [
         "\\bnpx\\s+shadcn\\b",
-        "\\bnpx\\s+shadcn@latest\\s+(init|add|build|search|list|migrate)\\b"
+        "\\bnpx\\s+shadcn@latest\\s+(init|add|build|search|list|migrate|info|docs|view)\\b"
       ],
       "importRegexSources": []
     },
@@ -1340,6 +1370,7 @@
       ],
       "bashPatterns": [
         "\\bnext\\s+(dev|build|start|lint)\\b",
+        "\\bnext\\s+experimental-analyze\\b",
         "\\bnpx\\s+create-next-app\\b",
         "\\bbunx\\s+create-next-app\\b",
         "\\bnpm\\s+run\\s+(dev|build|start)\\b",
@@ -1367,6 +1398,7 @@
       ],
       "bashRegexSources": [
         "\\bnext\\s+(dev|build|start|lint)\\b",
+        "\\bnext\\s+experimental-analyze\\b",
         "\\bnpx\\s+create-next-app\\b",
         "\\bbunx\\s+create-next-app\\b",
         "\\bnpm\\s+run\\s+(dev|build|start)\\b",
@@ -1452,7 +1484,51 @@
         "\\byarn\\s+add\\s+[^\\n]*\\bai-elements\\b",
         "\\bnpx\\s+shadcn@latest\\s+add\\s+[^\\n]*elements\\.ai-sdk\\.dev\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [],
+      "promptSignals": {
+        "phrases": [
+          "ai elements",
+          "ai components",
+          "chat components",
+          "voice elements",
+          "code elements",
+          "voice agent",
+          "speech input",
+          "transcription component",
+          "code editor component"
+        ],
+        "allOf": [
+          [
+            "message",
+            "component"
+          ],
+          [
+            "conversation",
+            "component"
+          ]
+        ],
+        "anyOf": [
+          "message component",
+          "conversation component",
+          "tool call display",
+          "reasoning display",
+          "voice conversation",
+          "speech to text",
+          "text to speech",
+          "mic selector",
+          "voice selector",
+          "ai code editor",
+          "file tree component",
+          "terminal component",
+          "stack trace component",
+          "test results component"
+        ],
+        "noneOf": [
+          "vue",
+          "svelte"
+        ],
+        "minScore": 6
+      }
     },
     "vercel-sandbox": {
       "priority": 4,
@@ -1629,7 +1705,10 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@chat-adapter/telegram",
         "\\byarn\\s+add\\s+[^\\n]*@chat-adapter/telegram"
       ],
-      "importPatterns": [],
+      "importPatterns": [
+        "chat",
+        "@chat-adapter/*"
+      ],
       "bodyPath": "skills/chat-sdk/SKILL.md",
       "pathRegexSources": [
         "^app\\/api\\/chat-bot\\/.*$",
@@ -1690,7 +1769,47 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@chat-adapter/telegram",
         "\\byarn\\s+add\\s+[^\\n]*@chat-adapter/telegram"
       ],
-      "importRegexSources": []
+      "importRegexSources": [
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]chat(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@chat-adapter\\/[^'\"]*(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        }
+      ],
+      "promptSignals": {
+        "phrases": [
+          "chat sdk",
+          "chat bot",
+          "chatbot",
+          "slack bot",
+          "telegram bot",
+          "discord bot",
+          "teams bot"
+        ],
+        "allOf": [
+          [
+            "bot",
+            "platform"
+          ],
+          [
+            "bot",
+            "multi"
+          ]
+        ],
+        "anyOf": [
+          "onNewMention",
+          "onSubscribedMessage",
+          "chat adapter",
+          "cross-platform bot"
+        ],
+        "noneOf": [
+          "useChat"
+        ],
+        "minScore": 6
+      }
     },
     "turborepo": {
       "priority": 5,
@@ -1743,7 +1862,11 @@
         "apps/*/src/app/api/chat/**",
         "apps/*/src/app/api/completion/**",
         "apps/*/lib/ai/**",
-        "apps/*/src/lib/ai/**"
+        "apps/*/src/lib/ai/**",
+        "lib/agent.*",
+        "src/lib/agent.*",
+        "app/actions/chat.*",
+        "src/app/actions/chat.*"
       ],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bai\\b",
@@ -1786,7 +1909,11 @@
         "^apps\\/[^/]*\\/src\\/app\\/api\\/chat\\/.*$",
         "^apps\\/[^/]*\\/src\\/app\\/api\\/completion\\/.*$",
         "^apps\\/[^/]*\\/lib\\/ai\\/.*$",
-        "^apps\\/[^/]*\\/src\\/lib\\/ai\\/.*$"
+        "^apps\\/[^/]*\\/src\\/lib\\/ai\\/.*$",
+        "^lib\\/agent\\.[^/]*$",
+        "^src\\/lib\\/agent\\.[^/]*$",
+        "^app\\/actions\\/chat\\.[^/]*$",
+        "^src\\/app\\/actions\\/chat\\.[^/]*$"
       ],
       "bashRegexSources": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bai\\b",
@@ -1823,8 +1950,8 @@
           "severity": "error"
         },
         {
-          "pattern": "ToolLoopAgent",
-          "message": "ToolLoopAgent is deprecated — use the AI SDK Agent pattern instead",
+          "pattern": "Experimental_Agent",
+          "message": "Experimental_Agent is deprecated in v6 — use ToolLoopAgent instead",
           "severity": "error"
         },
         {
@@ -1851,6 +1978,11 @@
           "pattern": "\\bbody\\s*:\\s*\\{",
           "message": "body option was removed from useChat in v6 — pass data through transport configuration",
           "severity": "warn"
+        },
+        {
+          "pattern": "\\bparameters\\s*:",
+          "message": "parameters was renamed in v6 — use inputSchema instead",
+          "severity": "error"
         }
       ],
       "promptSignals": {

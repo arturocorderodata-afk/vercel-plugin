@@ -17,6 +17,7 @@ You are an expert in Turbopack — the Rust-powered JavaScript/TypeScript bundle
 ## Key Features
 
 - **Instant HMR**: Hot Module Replacement that doesn't degrade with app size
+- **File System Caching (Stable)**: Dev server artifacts cached on disk between restarts — up to 14x faster startup on large projects. Enabled by default in Next.js 16.1+, no config needed. Build caching planned next.
 - **Multi-environment builds**: Browser, Server, Edge, SSR, React Server Components
 - **Native RSC support**: Built for React Server Components from the ground up
 - **TypeScript, JSX, CSS, CSS Modules, WebAssembly**: Out of the box
@@ -121,15 +122,24 @@ Turbopack performs tree shaking at the module level in production builds. Key be
 
 ### Diagnosing large bundles
 
-Use the Next.js bundle analyzer to inspect Turbopack's output:
+**Built-in analyzer (Next.js 16.1+, experimental)**: Works natively with Turbopack. Offers route-specific filtering, import tracing, and RSC boundary analysis:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    bundleAnalyzer: true,
+  },
+}
+```
+
+**Legacy `@next/bundle-analyzer`**: Still works as a fallback:
 
 ```bash
 ANALYZE=true next build
 ```
 
-Or install `@next/bundle-analyzer`:
-
-```js
+```ts
 // next.config.ts
 import withBundleAnalyzer from '@next/bundle-analyzer'
 

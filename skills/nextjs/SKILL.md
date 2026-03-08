@@ -21,6 +21,7 @@ metadata:
     - 'apps/*/next.config.*'
   bashPatterns:
     - '\bnext\s+(dev|build|start|lint)\b'
+    - '\bnext\s+experimental-analyze\b'
     - '\bnpx\s+create-next-app\b'
     - '\bbunx\s+create-next-app\b'
     - '\bnpm\s+run\s+(dev|build|start)\b'
@@ -129,7 +130,7 @@ npx create-next-app@latest my-app --yes --typescript --tailwind --eslint --app -
 
 ## Key Architecture
 
-Next.js 16 uses React 19.2 features and the App Router (file-system routing under `app/`).
+Next.js 16 uses React 19.2 features and the App Router (file-system routing under `app/`). Ensure React **19.2.4+** for security patches (see CVE section below).
 
 ### File Conventions
 - `layout.tsx` — Persistent wrapper, preserves state across navigations
@@ -219,17 +220,71 @@ export async function CachedUserList() {
 }
 ```
 
-Invalidate with `updateTag('users')` from a Server Action. This replaces PPR from Next.js 15 canaries.
+### Cache Scope Variants
+
+`'use cache'` supports scope modifiers that control where cached data is stored:
+
+```tsx
+// Default — cached in the deployment's local data cache
+'use cache'
+
+// Remote cache — shared across all deployments and regions (Vercel only)
+'use cache: remote'
+
+// Private cache — per-request cache, never shared between users
+'use cache: private'
+```
+
+| Variant | Shared across deployments? | Shared across users? | Use case |
+|---------|---------------------------|---------------------|----------|
+| `'use cache'` | No (per-deployment) | Yes | Default, most use cases |
+| `'use cache: remote'` | Yes | Yes | Expensive computations shared globally |
+| `'use cache: private'` | No | No | User-specific cached data (e.g., profile) |
+
+### Cache Handler Configuration
+
+Next.js 16 uses `cacheHandlers` (plural) to configure separate handlers for different cache types:
+
+```ts
+// next.config.ts
+const nextConfig = {
+  cacheHandlers: {
+    default: require.resolve('./cache-handler-default.mjs'),
+    remote: require.resolve('./cache-handler-remote.mjs'),
+    fetch: require.resolve('./cache-handler-fetch.mjs'),
+  },
+}
+```
+
+**Important**: `cacheHandlers` (plural, Next.js 16+) replaces `cacheHandler` (singular, Next.js 15). The singular form configured one handler for all cache types. The plural form allows per-type handlers (`default`, `remote`, `fetch`). Using the old singular `cacheHandler` in Next.js 16 triggers a deprecation warning.
+
+### Cache Invalidation
+
+Invalidate with `updateTag('users')` from a Server Action (immediate expiration, Server Actions only) or `revalidateTag('users', 'max')` for stale-while-revalidate from Server Actions or Route Handlers.
+
+**Important**: The single-argument `revalidateTag(tag)` is deprecated in Next.js 16. Always pass a `cacheLife` profile as the second argument (e.g., `'max'`, `'hours'`, `'days'`).
+
+| Function | Context | Behavior |
+|----------|---------|----------|
+| `updateTag(tag)` | Server Actions only | Immediate expiration, read-your-own-writes |
+| `revalidateTag(tag, 'max')` | Server Actions + Route Handlers | Stale-while-revalidate (recommended) |
+| `revalidateTag(tag, { expire: 0 })` | Route Handlers (webhooks) | Immediate expiration from external triggers |
 
 ## Proxy (formerly Middleware)
 
-In Next.js 16, `middleware.ts` is renamed to `proxy.ts`. It runs on the Node.js runtime (not Edge).
+In Next.js 16, `middleware.ts` is renamed to `proxy.ts`. It runs **exclusively on the Node.js runtime** — the Edge runtime is not supported in proxy and cannot be configured.
 
 **File location**: Place `proxy.ts` at the same level as your `app/` directory:
 - Standard project: `proxy.ts` at project root
 - With `--src-dir` (or `srcDir: true`): `src/proxy.ts` (inside `src/`, alongside `app/`)
 
 If you place `proxy.ts` in the wrong location, Next.js will silently ignore it and no request interception will occur.
+
+**Constraints**:
+- Proxy can only **rewrite**, **redirect**, or **modify headers** — it cannot return full response bodies. Use Route Handlers for that.
+- Config flags are renamed: `skipMiddlewareUrlNormalize` → `skipProxyUrlNormalize`.
+- Keep it light: use for high-level traffic control (e.g., redirecting users without a session cookie). Detailed auth should live in Server Components or Server Actions.
+- **OpenNext note**: OpenNext doesn't support `proxy.ts` yet — keep using `middleware.ts` if self-hosting with OpenNext.
 
 ```ts
 // proxy.ts (or src/proxy.ts if using src directory)
@@ -242,12 +297,148 @@ export function proxy(request: NextRequest) {
 export const config = { matcher: ['/dashboard/:path*'] }
 ```
 
+## Upgrading
+
+Use the built-in upgrade command (available since 16.1.0):
+
+```bash
+pnpm next upgrade        # or npm/yarn/bun equivalent
+```
+
+For versions before 16.1.0: `npx @next/codemod@canary upgrade latest`
+
+If your AI coding assistant supports MCP, the **Next.js DevTools MCP** can automate upgrade and migration tasks.
+
+## What's New in Next.js 16.1
+
+Next.js 16.1 (December 2025, latest stable patch: 16.1.6) builds on 16.0 with developer experience improvements:
+
+1. **Turbopack File System Caching (Stable)** — Compiler artifacts are now cached on disk between `next dev` restarts, delivering up to 14× faster startup on large projects. Enabled by default, no config needed. File system caching for `next build` is planned next.
+2. **Bundle Analyzer (Experimental)** — New built-in bundle analyzer works with Turbopack. Offers route-specific filtering, import tracing, and RSC boundary analysis to identify bloated dependencies in both server and client bundles. Enable with `experimental.bundleAnalyzer: true` in `next.config`.
+3. **`next dev --inspect`** — Debug your dev server without global `NODE_OPTIONS=--inspect`. Applies the inspector only to the relevant process.
+4. **`next upgrade` command** — New CLI command to simplify version upgrades: `npx @next/codemod@canary upgrade latest`.
+5. **Transitive External Dependencies** — Turbopack correctly resolves and externalizes transitive deps in `serverExternalPackages` without extra config.
+6. **20 MB smaller installs** — Streamlined Turbopack caching layer reduces `node_modules` footprint.
+
+## React 19.2 Features
+
+Next.js 16+ uses React 19.2. These features are available in App Router applications:
+
+### `useEffectEvent` Hook
+
+Creates a stable function that always accesses the latest props and state without triggering effect re-runs. Use when your effect needs to read a value but shouldn't re-run when that value changes:
+
+```tsx
+'use client'
+import { useEffect, useEffectEvent } from 'react'
+
+function ChatRoom({ roomId, theme }: { roomId: string; theme: string }) {
+  const onConnected = useEffectEvent(() => {
+    showNotification(`Connected to ${roomId}`, theme) // reads latest theme
+  })
+
+  useEffect(() => {
+    const connection = createConnection(roomId)
+    connection.on('connected', onConnected)
+    connection.connect()
+    return () => connection.disconnect()
+  }, [roomId]) // theme is NOT a dependency — onConnected reads it via useEffectEvent
+}
+```
+
+Common use cases: logging with current state, notifications using current theme, callbacks that need fresh values but aren't the trigger for the effect.
+
+### `<Activity>` Component
+
+Preserves component state when hiding and showing UI, without unmounting. Solves the classic tradeoff between unmounting (loses state) and CSS `display:none` (effects keep running):
+
+```tsx
+'use client'
+import { Activity, useState } from 'react'
+
+function TabContainer() {
+  const [activeTab, setActiveTab] = useState('inbox')
+
+  return (
+    <div>
+      <nav>
+        <button onClick={() => setActiveTab('inbox')}>Inbox</button>
+        <button onClick={() => setActiveTab('drafts')}>Drafts</button>
+      </nav>
+      <Activity mode={activeTab === 'inbox' ? 'visible' : 'hidden'}>
+        <InboxPanel />
+      </Activity>
+      <Activity mode={activeTab === 'drafts' ? 'visible' : 'hidden'}>
+        <DraftsPanel />
+      </Activity>
+    </div>
+  )
+}
+```
+
+Use for: tabbed interfaces, modals, sidebars, background tasks — anywhere you need to maintain component state without keeping everything actively rendered. When `mode="hidden"`, effects are suspended (not running in the background).
+
+### View Transitions API
+
+React 19.2 supports the browser View Transitions API for animating elements across navigations. Next.js 16 has built-in support — elements can animate between route changes without manual transition logic.
+
+Key change: `useId` now generates IDs with `_r_` prefix (instead of `:r:`) to be valid for `view-transition-name` and XML 1.0 names.
+
+## Layout Deduplication During Prefetching
+
+Next.js 16 deduplicates shared layouts during prefetching. When multiple `<Link>` components point to routes with a shared layout, the layout is downloaded **once** instead of separately for each link.
+
+**Impact**: A page with 50 product links that share a layout downloads ~198KB instead of ~2.4MB — a 92% reduction in prefetch network transfer.
+
+Combined with **incremental prefetching**, Next.js only fetches route segments not already in cache, cancels prefetch requests when links leave the viewport, re-prefetches on hover or viewport re-entry, and re-prefetches when data is invalidated.
+
+## Bundle Analyzer (`next experimental-analyze`)
+
+Built-in bundle analyzer that works with Turbopack (available since Next.js 16.1):
+
+```bash
+# Analyze and serve results in browser
+next experimental-analyze --serve
+
+# Analyze with custom port
+next experimental-analyze --serve --port 4001
+
+# Write analysis to .next/diagnostics/analyze (no server)
+next experimental-analyze
+```
+
+Features:
+- Route-specific filtering between client and server bundles
+- Full import chain tracing — see exactly why a module is included
+- Traces imports across RSC boundaries and dynamic imports
+- No application build required — analyzes module graph directly
+
+Save output for comparison: `cp -r .next/diagnostics/analyze ./analyze-before-refactor`
+
+**Legacy**: For projects not using Turbopack, use `@next/bundle-analyzer` with `ANALYZE=true npm run build`.
+
+## Next.js 16.2 (Canary)
+
+Next.js 16.2 is currently in canary (latest: 16.2.0-canary.84, March 2026). Key areas in development:
+
+1. **Turbopack File System Caching for `next build`** — Extending the stable `next dev` FS cache to production builds for faster CI.
+2. **Proxy refinements** — Continued iteration on `proxy.ts` (the Node.js-runtime replacement for `middleware.ts` introduced in 16.0). The proxy API is stabilizing with improved request context and streaming support.
+3. **React Compiler optimizations** — Further automatic memoization improvements building on the stable React Compiler in 16.0.
+
+> **Note**: Canary releases are not recommended for production. Track progress at the [Next.js Changelog](https://next-changelog.vercel.app/) or [GitHub Releases](https://github.com/vercel/next.js/releases).
+
+## DevTools MCP
+
+Next.js 16 includes **Next.js DevTools MCP**, a Model Context Protocol integration for AI-assisted debugging. It enables AI agents to diagnose issues, explain behavior, and suggest fixes within your development workflow. If your AI coding assistant supports MCP, DevTools MCP can also automate upgrade and migration tasks.
+
 ## Breaking Changes in Next.js 16
 
 1. **Async Request APIs**: `cookies()`, `headers()`, `params`, `searchParams` are all async — must `await` them
-2. **Proxy replaces Middleware**: Rename `middleware.ts` → `proxy.ts`, runs on Node.js (not Edge)
+2. **Proxy replaces Middleware**: Rename `middleware.ts` → `proxy.ts`, runs on Node.js only (Edge not supported)
 3. **Turbopack is top-level config**: Move from `experimental.turbopack` to `turbopack` in `next.config`
 4. **View Transitions**: Built-in support for animating elements across navigations
+5. **Node.js 20.9+ required**: Dropped support for Node 18
+6. **TypeScript 5.1+ required**
 
 ## React 19 Gotchas
 
@@ -266,6 +457,58 @@ const ref = useRef(0)                     // ✅
 ```
 
 This affects all `useRef` calls in client components. The fix is always to pass an explicit initial value (usually `null` for DOM refs).
+
+## Security: Critical CVEs
+
+Multiple vulnerabilities affect **all Next.js App Router applications** (13.4+, 14.x, 15.x, 16.x). Upgrade immediately.
+
+### CVE-2025-66478 / CVE-2025-55182 — Remote Code Execution (CVSS 10.0, Critical)
+
+A deserialization vulnerability in the React Server Components (RSC) "Flight" protocol allows unauthenticated remote code execution via crafted HTTP requests. Near-100% exploit reliability against default configurations. **Actively exploited in the wild.** No workaround — upgrade is required. Rotate all application secrets after patching.
+
+- Affects: Next.js App Router applications (15.x, 16.x, 14.3.0-canary.77+)
+- Does NOT affect: Pages Router apps, Edge Runtime, Next.js 13.x, stable Next.js 14.x
+
+### CVE-2025-55184 — Denial of Service (CVSS 7.5, High)
+
+Specially crafted HTTP requests cause the server process to hang indefinitely, consuming CPU and blocking legitimate users. No authentication required, low attack complexity.
+
+### CVE-2025-55183 — Source Code Exposure (CVSS 5.3, Medium)
+
+Malformed HTTP requests can trick Server Actions into returning their compiled source code instead of the expected response. Environment variables are not exposed, but any hardcoded secrets in Server Action code can leak.
+
+### CVE-2026-23864 — Denial of Service via Memory Exhaustion (CVSS 7.5, High)
+
+Disclosed January 26, 2026. The original DoS fix for CVE-2025-55184 was incomplete — additional vectors allow specially crafted HTTP requests to Server Function endpoints to crash the server via out-of-memory exceptions or excessive CPU usage. No authentication required.
+
+### CVE-2025-29927 — Middleware Authorization Bypass (CVSS 9.1, Critical)
+
+An attacker can bypass middleware-based authorization by sending a crafted `x-middleware-subrequest` header, skipping all middleware logic. This affects any Next.js application that relies on `middleware.ts` (or `proxy.ts` in 16+) as the **sole** authorization gate. Patched in Next.js 14.2.25, 15.2.3, and all 16.x releases.
+
+**Mitigation**: Never rely on middleware/proxy as the only auth layer. Always re-validate authorization in Server Components, Server Actions, or Route Handlers. If you cannot patch immediately, block `x-middleware-subrequest` at your reverse proxy or WAF.
+
+### Patched Versions
+
+| Release Line | Minimum Safe Version (all CVEs) |
+|---|---|
+| 14.x | `next@14.2.35` |
+| 15.0.x | `next@15.0.5` |
+| 15.1.x | `next@15.1.9` |
+| 15.2.x | `next@15.2.6` |
+| 15.3.x | `next@15.3.6` |
+| 15.4.x | `next@15.4.8` |
+| 15.5.x | `next@15.5.7` |
+| 16.0.x | `next@16.0.11` |
+| 16.1.x | `next@16.1.5` |
+
+Upgrade React to at least **19.0.1** / **19.1.2** / **19.2.1** for the RCE fix (CVE-2025-55182), and **19.2.4+** to fully address all DoS vectors (CVE-2025-55184, CVE-2025-67779, CVE-2026-23864).
+
+```bash
+# Upgrade to latest patched versions
+npm install next@latest react@latest react-dom@latest
+```
+
+Vercel deployed WAF rules automatically for hosted projects, but **WAF is defense-in-depth, not a substitute for patching**.
 
 ## Rendering Strategy Decision
 

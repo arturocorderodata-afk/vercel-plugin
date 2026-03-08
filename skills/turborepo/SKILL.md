@@ -14,7 +14,7 @@ metadata:
 
 # Turborepo
 
-You are an expert in Turborepo — a high-performance build system for JavaScript/TypeScript monorepos, built by Vercel with a Rust-powered core.
+You are an expert in Turborepo v2.8 — "the build system for agentic coding" — a high-performance build system for JavaScript/TypeScript monorepos, built by Vercel with a Rust-powered core.
 
 ## Key Features
 
@@ -24,6 +24,10 @@ You are an expert in Turborepo — a high-performance build system for JavaScrip
 - **Incremental builds**: `--affected` flag runs only changed packages + dependents
 - **Pruned subsets**: Generate minimal monorepo for deploying a single app
 - **Dependency graph awareness**: Understands package relationships
+- **Git worktree cache sharing**: Automatically shares local cache across worktrees (2.8+)
+- **Devtools**: Visual package and task graph explorer via `turbo devtools` (2.8+)
+- **Composable configuration**: Extend `turbo.json` from any package, not just root (2.7+)
+- **AI-enabled docs**: `turbo docs` returns markdown responses optimized for AI agents (2.8+)
 
 ## Setup
 
@@ -31,6 +35,8 @@ You are an expert in Turborepo — a high-performance build system for JavaScrip
 npx create-turbo@latest
 # or add to existing monorepo:
 npm install turbo --save-dev
+# upgrade existing Turborepo:
+npx @turbo/codemod migrate
 ```
 
 ## turbo.json Task Pipeline
@@ -44,13 +50,17 @@ The `turbo.json` file defines your task dependency graph. Here are comprehensive
   "$schema": "https://turborepo.dev/schema.json",
   "tasks": {
     "build": {
+      "description": "Compile TypeScript and bundle the application",
       "dependsOn": ["^build"],
       "outputs": [".next/**", "dist/**"]
     },
     "test": {
+      "description": "Run the test suite",
       "dependsOn": ["build"]
     },
-    "lint": {},
+    "lint": {
+      "description": "Lint source files"
+    },
     "dev": {
       "cache": false,
       "persistent": true
@@ -340,6 +350,37 @@ The dry run output shows:
 - Dependencies and dependents
 - File hash used for caching
 
+## Devtools & Docs (2.8+)
+
+```bash
+# Visual package/task graph explorer (hot-reloads on changes)
+turbo devtools
+
+# Search Turborepo docs from the terminal (returns agent-friendly markdown)
+turbo docs
+
+# Upgrade to latest Turborepo
+npx @turbo/codemod migrate
+```
+
+> **Note**: `turbo docs` output is optimized for AI coding agents — markdown format preserves context windows. The docs site also includes sample prompts for common tasks you can copy directly into your agent.
+
+## Composable Configuration (2.7+)
+
+Package configs can now extend from any workspace package, not just the root:
+
+```json
+// packages/ui/turbo.json
+{
+  "extends": ["@myorg/config"],
+  "tasks": {
+    "build": {
+      "outputs": ["dist/**"]
+    }
+  }
+}
+```
+
 ## Common Commands
 
 ```bash
@@ -473,16 +514,20 @@ Shared packages (`ui`, `auth`, `config`) are built first via `^build`, then each
 
 Next.js multi-zones let each micro-app own a URL path prefix while sharing a single domain:
 
-```js
-// apps/shell/next.config.js
-module.exports = {
+```ts
+// apps/shell/next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: '/dashboard/:path*', destination: 'https://dashboard.example.com/dashboard/:path*' },
       { source: '/settings/:path*', destination: 'https://settings.example.com/settings/:path*' },
-    ];
+    ]
   },
-};
+}
+
+export default nextConfig
 ```
 
 Combine with Turborepo boundary rules to enforce architectural isolation:
@@ -517,6 +562,25 @@ Combine with Turborepo boundary rules to enforce architectural isolation:
 
 - [Vercel Microfrontends](https://vercel.com/docs/microfrontends)
 - [Next.js Multi-Zones](https://nextjs.org/docs/app/building-your-application/deploying/multi-zones)
+
+## Bun Support & Lockfile Detection
+
+Turborepo 2.6+ has **stable Bun support** with granular lockfile analysis:
+
+- **Lockfile format**: Turborepo requires `bun.lock` (text format). If only `bun.lockb` (binary) is found, it errors with a prompt to generate a text lockfile. Generate with `bun install --save-text-lockfile`.
+- **Granular cache invalidation**: Turborepo parses `bun.lock` to detect which specific packages changed and only invalidates caches for affected tasks — not the entire monorepo.
+- **Pruning**: `turbo prune` works with Bun workspaces, generating a minimal lockfile for single-app deploys.
+- **Skip-builds detection**: On Vercel, monorepo workspace detection automatically skips unaffected projects when `bun.lock` changes don't touch a project's dependencies. Combined with `--affected`, only changed packages and their dependents rebuild.
+
+```bash
+# Ensure text lockfile for Turborepo compatibility
+bun install --save-text-lockfile
+
+# Run only affected packages (works with Bun lockfile detection)
+turbo build --affected
+```
+
+> **Known issue**: `turbo prune` with Bun 1.3+ may produce lockfiles with formatting differences that break `bun i --frozen-lockfile`. Track fixes in [turborepo#11007](https://github.com/vercel/turborepo/issues/11007).
 
 ## Deploying to Vercel
 

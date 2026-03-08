@@ -280,6 +280,36 @@ In the Vercel dashboard at `https://vercel.com/{team}/{project}/settings` → **
 3. Configure alert channels (email, Slack webhook, Vercel integration)
 4. Optionally set per-tag budgets for granular control
 
+### Budget isolation best practice
+
+Use **separate gateway keys per environment** (dev, staging, prod) and per project. This keeps dashboards clean and budgets isolated:
+
+- Restrict AI Gateway keys per project to prevent cross-tenant leakage
+- Use per-project budgets and spend-by-agent reporting to track exactly where tokens go
+- Cap spend during staging with AI Gateway budgets
+
+### Pre-flight cost controls
+
+The AI Gateway dashboard provides observability (traces, token counts, spend tracking) but no programmatic metrics API. Build your own cost guardrails by estimating token counts and rejecting expensive requests before they execute:
+
+```ts
+import { generateText } from 'ai'
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4) // rough estimate
+}
+
+async function callWithBudget(prompt: string, maxTokens: number) {
+  const estimated = estimateTokens(prompt)
+  if (estimated > maxTokens) {
+    throw new Error(`Prompt too large: ~${estimated} tokens exceeds ${maxTokens} limit`)
+  }
+  return generateText({ model: gateway('openai/gpt-5.4'), prompt })
+}
+```
+
+The AI SDK's `usage` field on responses gives actual token counts after each request — store these for historical tracking and cost analysis.
+
 ### Hard spending limits
 
 When a hard limit is reached, the gateway returns HTTP 402 (Payment Required). Handle this gracefully:
@@ -446,9 +476,50 @@ Need failover across providers?
 - Multi-tenant SaaS — per-user tracking and rate limiting
 - Teams with cost accountability — tag-based budgeting
 
+## Claude Code Compatibility
+
+AI Gateway exposes an **Anthropic-compatible API endpoint** that lets you route Claude Code requests through the gateway for unified observability, spend tracking, and failover.
+
+### Configuration
+
+Set these environment variables to route Claude Code through AI Gateway:
+
+```bash
+export ANTHROPIC_BASE_URL="https://ai-gateway.vercel.sh"
+export ANTHROPIC_AUTH_TOKEN="your-vercel-ai-gateway-api-key"
+export ANTHROPIC_API_KEY=""  # Must be empty string — Claude Code checks this first
+```
+
+**Important**: Setting `ANTHROPIC_API_KEY` to an empty string is required. Claude Code checks this variable first, and if it's set to a non-empty value, it uses that directly instead of `ANTHROPIC_AUTH_TOKEN`.
+
+### Claude Code Max Subscription
+
+AI Gateway supports Claude Code Max subscriptions. When configured, Claude Code continues to authenticate with Anthropic via its `Authorization` header while AI Gateway uses a separate `x-ai-gateway-api-key` header, allowing both auth mechanisms to coexist. This gives you unified observability at no additional token cost.
+
+### Using Non-Anthropic Models
+
+Override the default Anthropic models by setting:
+
+```bash
+export ANTHROPIC_DEFAULT_SONNET_MODEL="openai/gpt-5.4"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="anthropic/claude-opus-4.6"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="anthropic/claude-haiku-4.5"
+```
+
+## Latest Model Availability
+
+**GPT-5.4** (added March 5, 2026) — agentic and reasoning leaps from GPT-5.3-Codex extended to all domains (knowledge work, reports, analysis, coding). Faster and more token-efficient than GPT-5.2.
+
+| Model | Slug | Input | Output |
+|-------|------|-------|--------|
+| GPT-5.4 | `openai/gpt-5.4` | $2.50/M tokens | $15.00/M tokens |
+| GPT-5.4 Pro | `openai/gpt-5.4-pro` | $30.00/M tokens | $180.00/M tokens |
+
+GPT-5.4 Pro targets maximum performance on complex tasks. Use standard GPT-5.4 for most workloads.
+
 ## Supported Providers
 
-- OpenAI (GPT-5.x, o-series)
+- OpenAI (GPT-5.x including GPT-5.4 and GPT-5.4 Pro, o-series)
 - Anthropic (Claude 4.x)
 - Google (Gemini)
 - xAI (Grok)
@@ -464,24 +535,26 @@ Need failover across providers?
 
 ## Pricing
 
-- **Vercel-managed keys**: Tokens at provider list price, no markup
-- **Bring Your Own Key**: 0% markup on token costs
-- **Free tier**: $5 credits every 30 days on any Vercel account
+- **Zero markup**: Tokens at exact provider list price — no middleman markup, whether using Vercel-managed keys or Bring Your Own Key (BYOK)
+- **Free tier**: Every Vercel team gets **$5 of free AI Gateway credits per month** (refreshes every 30 days, starts on first request). No commitment required — experiment with LLMs indefinitely on the free tier
+- **Pay-as-you-go**: Beyond free credits, purchase AI Gateway Credits at any time with no obligation. Configure **auto top-up** to automatically add credits when your balance falls below a threshold
+- **BYOK**: Use your own provider API keys with zero fees from AI Gateway
 
 ## Multimodal Support
 
-Text, image, and video generation all route through the gateway:
+Text generation routes through the gateway. For embeddings and image generation, use a direct provider SDK:
 
 ```ts
-// Text
+// Text — through gateway
 const { text } = await generateText({
   model: gateway('openai/gpt-5.4'),
   prompt: 'Hello',
 })
 
-// Image
+// Image — direct provider SDK (gateway does not support image models)
+import { openai } from '@ai-sdk/openai'
 const { image } = await generateImage({
-  model: gateway('openai/dall-e-3'),
+  model: openai.image('dall-e-3'),
   prompt: 'A sunset',
 })
 ```

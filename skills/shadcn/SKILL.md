@@ -11,9 +11,9 @@ metadata:
     - 'apps/*/src/components/ui/**'
     - 'packages/*/components/ui/**'
     - 'packages/*/src/components/ui/**'
-  bashPatterns: 
+  bashPatterns:
     - '\bnpx\s+shadcn\b'
-    - '\bnpx\s+shadcn@latest\s+(init|add|build|search|list|migrate)\b'
+    - '\bnpx\s+shadcn@latest\s+(init|add|build|search|list|migrate|info|docs|view)\b'
 ---
 
 # shadcn/ui
@@ -30,16 +30,28 @@ shadcn/ui is **not a component library** in the traditional sense. You don't ins
 
 ```bash
 npx shadcn@latest init
+
+# Scaffold a full project template (CLI v4)
+npx shadcn@latest init --template next
+npx shadcn@latest init --template vite
+npx shadcn@latest init --template react-router
+npx shadcn@latest init --template astro
+npx shadcn@latest init --template laravel
+npx shadcn@latest init --template tanstack-start
 ```
 
 Options:
-- `-t, --template` — Project template (`next`, `next-monorepo`)
-- `-b, --base-color` — Color palette (`neutral`, `gray`, `zinc`, `stone`, `slate`)
+- `-t, --template` — Scaffold full project template (`next`, `vite`, `react-router`, `astro`, `laravel`, `tanstack-start`)
+- `--preset` — Apply a design system preset (colors, theme, icons, fonts, radius) as a single shareable code
+- `--base` — Choose primitive library: `radix` (default) or `base-ui`
+- `--monorepo` — Set up a monorepo structure
 - `-y, --yes` — Skip confirmation prompts
 - `-f, --force` — Force overwrite existing configuration
 
+> **Deprecated in CLI v4**: `--base-color`, `--src-dir`, `--no-base-style`, and `--css-variables` flags are removed. The `registry:build` and `registry:mcp` registry types are also deprecated. Use `registry:base` and `registry:font` instead.
+
 The init command:
-1. Detects your framework (Next.js, Vite, Remix, Astro, Laravel)
+1. Detects your framework (Next.js, Vite, React Router, Astro, Laravel, TanStack Start)
 2. Installs required dependencies (Radix UI, tailwind-merge, class-variance-authority)
 3. Creates `components.json` configuration
 4. Sets up the `cn()` utility function
@@ -66,6 +78,9 @@ Options:
 - `-o, --overwrite` — Overwrite existing files
 - `-p, --path` — Custom install path
 - `-a, --all` — Install all components
+- `--dry-run` — Preview what will be added without writing files
+- `--diff` — Show diff of changes when updating existing components
+- `--view` — Display a registry item's source code inline
 
 ### Search & List
 
@@ -81,12 +96,60 @@ npx shadcn@latest build
 npx shadcn@latest build ./registry.json -o ./public/r
 ```
 
+### View, Info & Docs (CLI v4)
+
+```bash
+# View a registry item's source before installing
+npx shadcn@latest view button
+
+# Show project diagnostics — config, installed components, dependencies
+npx shadcn@latest info
+
+# Get docs, code, and examples for any component (agent-friendly output)
+npx shadcn@latest docs button
+npx shadcn@latest docs dialog
+```
+
+> **`shadcn docs`** gives coding agents the context to use primitives correctly — returns code examples, API reference, and usage patterns inline.
+
 ### Migrate
 
 ```bash
 npx shadcn@latest migrate rtl    # RTL support migration
+npx shadcn@latest migrate radix  # Migrate to unified radix-ui package
 npx shadcn@latest migrate icons  # Icon library changes
+
+# Migrate components outside the default ui directory
+npx shadcn@latest migrate radix src/components/custom
 ```
+
+## shadcn/skills (CLI v4)
+
+shadcn/skills gives coding agents the context they need to work with components and registries correctly. It covers both Radix and Base UI primitives, updated APIs, component patterns, and registry workflows. The skill knows how to use the CLI, when to invoke it, and which flags to pass — so agents produce code that matches your design system.
+
+Install: `pnpm dlx skills add shadcn/ui`
+
+## Unified Radix UI Package (February 2026)
+
+The `new-york` style now uses a single `radix-ui` package instead of individual `@radix-ui/react-*` packages:
+
+```tsx
+// OLD — individual packages
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+
+// NEW — unified package
+import { Dialog as DialogPrimitive } from "radix-ui"
+```
+
+To migrate existing projects: `npx shadcn@latest migrate radix`. After migration, remove unused `@radix-ui/react-*` packages from `package.json`.
+
+## Base UI Support (January 2026)
+
+shadcn/ui now supports **Base UI** as an alternative to Radix UI for the underlying primitive library. Components look and behave the same way regardless of which library you choose — only the underlying implementation changes.
+
+Choose during init: `npx shadcn@latest init --base base-ui`
+
+The CLI pulls the correct component variant based on your project configuration automatically.
 
 ## Configuration (components.json)
 
@@ -101,7 +164,7 @@ The `components.json` file configures how shadcn/ui works in your project:
   "tailwind": {
     "config": "tailwind.config.ts",
     "css": "src/app/globals.css",
-    "baseColor": "zinc",
+    "baseColor": "zinc",  // Options: gray, neutral, slate, stone, zinc, mauve, olive, mist, taupe
     "cssVariables": true
   },
   "aliases": {
@@ -173,6 +236,12 @@ shadcn/ui uses CSS custom properties for theming, defined in `globals.css`:
   --color-input: oklch(0.269 0 0);
   --color-ring: oklch(0.488 0.243 264.376);
   --radius: 0.625rem;
+  /* CLI v4: radius tokens use multiplicative calc instead of additive */
+  --radius-xs: calc(var(--radius) * 0.5);
+  --radius-sm: calc(var(--radius) * 0.75);
+  --radius-md: calc(var(--radius) * 0.875);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.5);
 }
 ```
 
@@ -244,6 +313,14 @@ Use in components:
 ## Building a Custom Registry
 
 Create your own component registry to share across projects:
+
+### Registry Types (CLI v4)
+
+| Type | Purpose |
+|------|---------|
+| `registry:ui` | Individual UI components |
+| `registry:base` | Full design system payload — components, deps, CSS vars, fonts, config |
+| `registry:font` | Font configuration as a first-class registry item |
 
 ### 1. Define registry.json
 
@@ -385,9 +462,24 @@ export default function RootLayout({ children }) {
 
 - **Next.js** — Full support (App Router + Pages Router)
 - **Vite** — Full support
-- **Remix** — Full support
+- **React Router** — Full support
 - **Astro** — Full support
 - **Laravel** — Full support (via Inertia)
+- **TanStack Start** — Full support
+
+## Presets (CLI v4)
+
+Presets bundle your entire design system config (colors, theme, icon library, fonts, radius) into a single shareable code. One string configures everything:
+
+```bash
+# Apply a preset during init
+npx shadcn@latest init --preset <code>
+
+# Switch presets in an existing project (reconfigures everything including components)
+npx shadcn@latest init --preset <code>
+```
+
+Build custom presets on `shadcn/create` — preview how colors, fonts, and radius apply to real components before publishing.
 
 ## RTL Support (2026)
 

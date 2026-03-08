@@ -86,17 +86,17 @@ describe("ai-sdk validation rules", () => {
     expect(violations.some((v) => v.message.includes("@ai-sdk/anthropic"))).toBe(true);
   });
 
-  test("flags ToolLoopAgent usage", () => {
+  test("flags Experimental_Agent usage", () => {
     const data = loadRealRules();
     const violations = runValidation(
-      `import { ToolLoopAgent } from 'ai';\nconst agent = new ToolLoopAgent({});\n`,
+      `import { Experimental_Agent } from 'ai';\nconst agent = new Experimental_Agent({});\n`,
       ["ai-sdk"],
       data!.rulesMap,
     );
-    // ToolLoopAgent is a plain string pattern, no escape issues
-    expect(violations.some((v) => v.message.includes("Agent"))).toBe(true);
+    // Experimental_Agent is a plain string pattern, no escape issues
+    expect(violations.some((v) => v.message.includes("ToolLoopAgent"))).toBe(true);
     // Should fire on both lines (import and usage)
-    expect(violations.filter((v) => v.message.includes("Agent")).length).toBeGreaterThanOrEqual(2);
+    expect(violations.filter((v) => v.message.includes("ToolLoopAgent")).length).toBeGreaterThanOrEqual(2);
   });
 
   test("flags toDataStreamResponse usage", () => {

@@ -34,14 +34,18 @@ validate:
 
 # Edge Runtime — Vercel's Edge JavaScript Runtime
 
-You are an expert in Vercel's Edge Runtime, the lightweight JavaScript runtime that powers Vercel Edge Functions and Middleware. It provides a subset of Web APIs optimized for low-latency execution at the edge.
+You are an expert in Vercel's Edge Runtime (v4.0+), the lightweight JavaScript runtime based on V8 isolates. It powers Vercel Functions using the `edge` runtime and Vercel Routing Middleware.
 
 ## Overview
 
 The Edge Runtime is designed for:
-- **Edge Functions** — serverless functions that run at the network edge
-- **Middleware** — intercept and transform requests before they reach your application
+- **Vercel Functions (edge runtime)** — functions that run on V8 isolates at the network edge
+- **Vercel Routing Middleware** — intercept and transform requests before cache
 - **Local development** — test edge behavior locally with the same runtime
+
+**Important**: The standalone "Edge Functions" and "Edge Middleware" products are **deprecated** and unified under **Vercel Functions** (powered by Fluid Compute). Edge Middleware is now **Vercel Routing Middleware**. Edge Functions are now **Vercel Functions using the `edge` runtime**. Vercel recommends **migrating to the Node.js runtime** where possible for improved performance and broader API support.
+
+**Execution limits**: Edge runtime functions have a **300-second** maximum execution duration. Streaming responses must begin within **25 seconds** to maintain streaming capabilities.
 
 ## Packages
 
@@ -91,7 +95,9 @@ The Edge Runtime provides a subset of standard Web APIs:
 - **Cache**: `CacheStorage`, `Cache`
 - **Structured Clone**: `structuredClone`
 
-## Edge Middleware Pattern (Next.js)
+## Routing Middleware Pattern (Next.js 15 and earlier)
+
+In Next.js 16+, `middleware.ts` is renamed to `proxy.ts` and runs on Node.js (not Edge). For Next.js 15 and earlier, or for Vercel Routing Middleware (non-Next.js):
 
 ```ts
 // middleware.ts
@@ -159,11 +165,12 @@ The Edge Runtime does **not** support:
 ## Key Points
 
 1. **Web Standards first** — uses standard Web APIs, not Node.js APIs
-2. **Cold start < 1ms** — no VM boot overhead at the edge
+2. **Cold start < 1ms** — no VM boot overhead at the edge (9x faster than traditional serverless)
 3. **Size limits** — edge functions have a 1-4 MB size limit (varies by platform)
 4. **No file system** — use fetch, KV, or external storage instead
-5. **Streaming supported** — use `ReadableStream` for streaming responses
+5. **Streaming supported** — use `ReadableStream` for streaming responses (300s max duration, 25s to first byte)
 6. **`export const runtime = 'edge'`** — opt into Edge Runtime in Next.js route handlers
+7. **Migration recommended** — Vercel recommends Node.js runtime for most use cases; edge runtime is best only when ultra-low latency at the edge is critical
 
 ## Official Resources
 

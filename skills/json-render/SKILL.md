@@ -37,6 +37,7 @@ interface UIMessage {
 // Part types:
 // - { type: 'text', text: string }
 // - { type: 'tool-<toolName>', toolCallId: string, state: string, input?: unknown, output?: unknown }
+//     state values: 'partial-call' | 'call' | 'output-available' | 'approval-requested' | 'approval-responded' | 'output-denied'
 // - { type: 'reasoning', text: string }
 // - { type: 'step-start' }  // internal, skip in rendering
 ```
@@ -103,6 +104,22 @@ export function Chat() {
 
               if (toolPart.state === 'output-available' && toolPart.output) {
                 return <ToolResultCard key={i} name={toolName} output={toolPart.output} />
+              }
+
+              if (toolPart.state === 'output-denied') {
+                return (
+                  <div key={i} className="text-sm text-muted-foreground">
+                    {toolName} was denied
+                  </div>
+                )
+              }
+
+              if (toolPart.state === 'approval-requested') {
+                return (
+                  <div key={i} className="text-sm text-yellow-500">
+                    {toolName} requires approval
+                  </div>
+                )
               }
 
               return (
@@ -213,10 +230,7 @@ import { DefaultChatTransport } from 'ai'
 
 const { messages, sendMessage, status } = useChat({
   // v6 uses transport instead of api
-  transport: new DefaultChatTransport({
-    api: '/api/chat',
-    body: { /* extra body params */ },
-  }),
+  transport: new DefaultChatTransport({ api: '/api/chat' }),
 })
 
 // v6 uses sendMessage instead of handleSubmit
@@ -292,6 +306,21 @@ Building a chat UI with AI SDK v6?
                  └─ Check part.type === 'text' and use part.text
             └─ Server errors?
                  └─ Check: await convertToModelMessages(), toUIMessageStreamResponse()
+```
+
+## Server-Side Message Validation
+
+Use `validateUIMessages` to validate incoming messages before processing:
+
+```ts
+import { validateUIMessages, convertToModelMessages, streamText, gateway } from 'ai'
+
+export async function POST(req: Request) {
+  const { messages } = await req.json()
+  const validatedMessages = validateUIMessages(messages)
+  const modelMessages = await convertToModelMessages(validatedMessages)
+  // ...
+}
 ```
 
 ## Official Documentation

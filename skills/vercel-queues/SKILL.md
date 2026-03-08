@@ -1,6 +1,6 @@
 ---
 name: vercel-queues
-description: Vercel Queues guidance — durable event streaming with topics, consumer groups, retries, and delayed delivery. Powers Workflow DevKit. Use when building async processing, fan-out patterns, or event-driven architectures.
+description: Vercel Queues guidance (public beta) — durable event streaming with topics, consumer groups, retries, and delayed delivery. $0.60/1M ops. Powers Workflow DevKit. Use when building async processing, fan-out patterns, or event-driven architectures.
 metadata:
   priority: 5
   pathPatterns:
@@ -10,6 +10,8 @@ metadata:
     - 'lib/queue.*'
     - 'src/lib/queues.*'
     - 'src/lib/queue.*'
+    - 'vercel.ts'
+    - 'vercel.mts'
   bashPatterns:
     - '\bnpm\s+(install|i|add)\s+[^\n]*@vercel/queue\b'
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@vercel/queue\b'
@@ -21,9 +23,21 @@ metadata:
 
 You are an expert in Vercel Queues — durable event streaming for serverless applications.
 
+## Status & Pricing
+
+Queues entered **public beta** on February 27, 2026, and is available to all teams on all plans.
+
+| Metric | Value |
+|--------|-------|
+| **Billing unit** | API operation (send, receive, delete, visibility change, notify) |
+| **Rate** | **$0.60 per 1M operations** (regionally priced) |
+| **Message metering** | 4 KiB chunks (12 KiB message = 3 ops) |
+| **2x billing** | Sends with idempotency key; push deliveries with max concurrency |
+| **Compute** | Push-mode functions charged at existing Fluid compute rates |
+
 ## What It Is
 
-Queues is a **durable, append-only event streaming system**. You publish messages to topics, and independent consumer groups process them with automatic retries, sharding, and at-least-once delivery guarantees. It is the lower-level primitive that **powers Vercel Workflow**.
+Queues is a **durable, append-only event streaming system**. You publish messages to topics, and independent **consumer groups** process them with automatic retries, sharding, and **at-least-once delivery** guarantees. It is the lower-level primitive that **powers Vercel Workflow**.
 
 - Messages are durably written to **3 availability zones** before `send()` returns
 - Messages retained up to 24 hours (configurable 60s–24h)
@@ -32,7 +46,7 @@ Queues is a **durable, append-only event streaming system**. You publish message
 
 ## Key APIs
 
-Package: `@vercel/queue` (Node.js 22+)
+Package: `@vercel/queue@^0.1.3` (Node.js 22+)
 
 ### Publishing Messages
 
@@ -156,6 +170,26 @@ import { QueueClient, BufferTransport, StreamTransport } from '@vercel/queue';
 ## Deployment Behavior
 
 Topics are **partitioned by deployment ID** by default in push mode. Messages are delivered back to the same deployment that published them — natural schema versioning with no cross-version compatibility concerns.
+
+## Observability
+
+The **Queues** observability tab (Project → Observability → Queues) provides real-time monitoring:
+
+| Level | Metrics |
+|-------|---------|
+| **Project** | Messages/s, Queued, Received, Deleted (with sparkline trends) |
+| **Queue** | Throughput per second (by consumer group), Max message age |
+| **Consumer** | Processed/s, Received, Deleted (per consumer group) |
+
+Use **Max message age** to detect consumer lag — if the oldest unprocessed message keeps growing, a consumer group may be falling behind.
+
+## Local Development
+
+Queues work locally — when you `send()` messages in development mode, the SDK sends them to the real Vercel Queue Service, then invokes your registered `handleCallback` handlers directly in-process. No local queue infrastructure needed.
+
+## Authentication
+
+The SDK authenticates via **OIDC** (OpenID Connect) tokens automatically on Vercel. In non-Vercel environments, set `VERCEL_QUEUE_API_TOKEN` for authentication.
 
 ## When to Use
 

@@ -13,6 +13,39 @@ metadata:
     - '\bbun\s+(install|i|add)\s+[^\n]*\bai-elements\b'
     - '\byarn\s+add\s+[^\n]*\bai-elements\b'
     - '\bnpx\s+shadcn@latest\s+add\s+[^\n]*elements\.ai-sdk\.dev\b'
+  promptSignals:
+    phrases:
+      - "ai elements"
+      - "ai components"
+      - "chat components"
+      - "voice elements"
+      - "code elements"
+      - "voice agent"
+      - "speech input"
+      - "transcription component"
+      - "code editor component"
+    allOf:
+      - [message, component]
+      - [conversation, component]
+    anyOf:
+      - "message component"
+      - "conversation component"
+      - "tool call display"
+      - "reasoning display"
+      - "voice conversation"
+      - "speech to text"
+      - "text to speech"
+      - "mic selector"
+      - "voice selector"
+      - "ai code editor"
+      - "file tree component"
+      - "terminal component"
+      - "stack trace component"
+      - "test results component"
+    noneOf:
+      - "vue"
+      - "svelte"
+    minScore: 6
 ---
 
 # AI Elements
@@ -28,7 +61,7 @@ The CLI adds components directly to your codebase with full source code access �
 ## Installation
 
 ```bash
-# Install all components at once
+# Install all components at once (current: ai-elements@^1.8.0)
 npx ai-elements@latest
 
 # Install specific components
@@ -162,6 +195,89 @@ import { PromptInput } from '@/components/ai-elements/prompt-input'
 | `suggestion` | Suggested follow-up prompts |
 | `terminal` | Terminal output display |
 | `web-preview` | Web page preview iframe |
+| `persona` | Animated AI visual (Rive WebGL2) — idle, listening, thinking, speaking, asleep states |
+| `speech-input` | Voice input capture via Web Speech API (Chrome/Edge) with MediaRecorder fallback |
+| `transcription` | Audio transcript display with playback sync, segment highlighting, click-to-seek |
+| `mic-selector` | Microphone device picker with auto-detection and permission handling |
+| `voice-selector` | AI voice picker with searchable list, metadata (gender, accent, age), context provider |
+| `agent` | AI SDK ToolLoopAgent config display — model, instructions, tools, schema |
+| `commit` | Git commit metadata display — hash, message, author, timestamp, files |
+| `environment-variables` | Env var display with masking, visibility toggle, copy |
+| `package-info` | Package dependency display with version changes and badges |
+| `snippet` | Lightweight terminal command / code snippet with copy |
+| `stack-trace` | JS/Node.js error formatting with clickable paths, collapsible frames |
+| `test-results` | Test suite results with statistics and error details |
+
+## AI Voice Elements (January 2026)
+
+Six components for building voice agents, transcription apps, and speech-powered interfaces. Integrates with AI SDK's Transcription and Speech functions.
+
+```bash
+# Install all voice components
+npx ai-elements@latest add persona speech-input transcription audio-player mic-selector voice-selector
+```
+
+### Persona — Animated AI Visual
+
+Rive WebGL2 animation that responds to conversation states (idle, listening, thinking, speaking, asleep). Multiple visual variants available.
+
+```tsx
+import { Persona } from '@/components/ai-elements/persona'
+
+<Persona state="listening" variant="orb" />
+```
+
+### SpeechInput — Voice Capture
+
+Uses Web Speech API on Chrome/Edge, falls back to MediaRecorder on Firefox/Safari.
+
+```tsx
+import { SpeechInput } from '@/components/ai-elements/speech-input'
+
+<SpeechInput onTranscript={(text) => sendMessage({ text })} />
+```
+
+### Transcription — Synchronized Transcript Display
+
+Highlights the current segment based on playback time with click-to-seek navigation.
+
+```tsx
+import { Transcription } from '@/components/ai-elements/transcription'
+
+<Transcription segments={segments} currentTime={playbackTime} onSeek={setTime} />
+```
+
+### AudioPlayer, MicSelector, VoiceSelector
+
+```tsx
+import { AudioPlayer } from '@/components/ai-elements/audio-player'   // media-chrome based, composable controls
+import { MicSelector } from '@/components/ai-elements/mic-selector'     // device picker with auto-detection
+import { VoiceSelector } from '@/components/ai-elements/voice-selector' // searchable voice list with metadata
+```
+
+## AI Code Elements (January 2026)
+
+Thirteen components for building IDEs, coding apps, and background agents. Designed for developer tooling with streaming indicators, status tracking, and syntax highlighting.
+
+```bash
+# Install code element components
+npx ai-elements@latest add agent code-block commit environment-variables file-tree package-info sandbox schema-display snippet stack-trace terminal test-results attachments
+```
+
+### Key Code Components
+
+```tsx
+import { Terminal } from '@/components/ai-elements/terminal'          // ANSI color support, auto-scroll
+import { FileTree } from '@/components/ai-elements/file-tree'         // expandable folder hierarchy
+import { StackTrace } from '@/components/ai-elements/stack-trace'     // clickable paths, collapsible frames
+import { TestResults } from '@/components/ai-elements/test-results'   // suite stats + error details
+import { Sandbox } from '@/components/ai-elements/sandbox'            // code + execution output, tabbed view
+import { Snippet } from '@/components/ai-elements/snippet'            // lightweight terminal commands with copy
+import { Commit } from '@/components/ai-elements/commit'              // git commit metadata display
+import { EnvironmentVariables } from '@/components/ai-elements/environment-variables' // masked env vars
+import { PackageInfo } from '@/components/ai-elements/package-info'   // dependency versions + badges
+import { SchemaDisplay } from '@/components/ai-elements/schema-display' // REST API visualization
+```
 
 ## Integration with AI SDK v6
 

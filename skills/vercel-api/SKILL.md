@@ -19,9 +19,9 @@ metadata:
 
 You are an expert in the Vercel platform APIs. This plugin bundles a connection to the **official Vercel MCP server** (`https://mcp.vercel.com`) which gives agents live, authenticated access to Vercel resources.
 
-## MCP Server
+## MCP Server (Public Beta)
 
-The plugin's `.mcp.json` configures the official Vercel MCP server using Streamable HTTP transport with OAuth authentication.
+The plugin's `.mcp.json` configures the official Vercel MCP server using Streamable HTTP transport with OAuth authentication. The MCP server is in **public beta** — read-only in the initial release. Write operations are on the roadmap. Supported clients: Claude, Cursor, and VS Code.
 
 ### Connection
 
@@ -82,6 +82,18 @@ The Vercel MCP server exposes these tool categories (read-only in initial releas
 2. Inspect deployment → check function region, runtime, memory
 3. Cross-reference with vercel-functions skill for optimization patterns
 ```
+
+## Deploying Your Own MCP Server
+
+Use the `mcp-handler` package (renamed from `@vercel/mcp-adapter`) to build and deploy custom MCP servers on Vercel with Next.js, Nuxt, or SvelteKit:
+
+```bash
+npm install mcp-handler
+```
+
+MCP servers deployed on Vercel use **Streamable HTTP** transport (replaced SSE in March 2025 MCP spec) — cuts CPU usage vs SSE with no persistent connections required. Used in production by Zapier, Composio, Vapi, and Solana.
+
+See [Deploy MCP servers to Vercel](https://vercel.com/docs/mcp/deploy-mcp-servers-to-vercel) and [GitHub: mcp-handler](https://github.com/vercel/mcp-handler).
 
 ## REST API (Direct Access)
 
@@ -218,12 +230,26 @@ const res = await fetch(
 // Parse as NDJSON — see observability skill for streaming code patterns
 ```
 
+## `vercel api` CLI Command (January 2026)
+
+The `vercel api` command gives agents direct access to the full Vercel REST API from the terminal with no additional configuration. It uses the CLI's existing authentication, so agents like Claude Code can call any endpoint immediately.
+
+```bash
+# Call any REST endpoint directly
+vercel api GET /v9/projects
+vercel api GET /v13/deployments
+vercel api POST /v9/projects/:id/env --body '{"key":"MY_VAR","value":"val","target":["production"]}'
+```
+
+This bridges the gap between the read-only MCP server and the full REST API — agents can perform write operations without needing `@vercel/sdk` or manual `curl` with tokens.
+
 ## When to Use MCP vs CLI vs REST API
 
 | Scenario | Use | Why |
 |----------|-----|-----|
 | Agent needs to inspect/read Vercel state | **MCP server** | OAuth, structured tools, no token management |
 | Agent needs to deploy or mutate state | **CLI** (`vercel deploy`, `vercel env add`) | Full write access, well-tested |
+| Agent needs ad-hoc API access | **`vercel api`** | Direct REST from terminal, no token setup |
 | Programmatic access from app code | **REST API / @vercel/sdk** | TypeScript types, fine-grained control |
 | CI/CD pipeline automation | **CLI + VERCEL_TOKEN** | Scriptable, `--prebuilt` for speed |
 | Searching Vercel documentation | **MCP server** | Indexed docs, AI-optimized results |

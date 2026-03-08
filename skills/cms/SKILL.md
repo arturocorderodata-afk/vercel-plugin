@@ -91,7 +91,7 @@ import { createClient } from "next-sanity";
 export const client = createClient({
   projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID!,
   dataset: process.env.NEXT_PUBLIC_SANITY_DATASET!,
-  apiVersion: "2024-01-01",
+  apiVersion: "2026-03-01",
   useCdn: true,
 });
 ```
@@ -146,17 +146,61 @@ export default defineConfig({
 });
 ```
 
+### Live Content with `defineLive()` (next-sanity v12)
+
+Use `defineLive()` for automatic real-time content updates without manual revalidation. In next-sanity v11+, `defineLive` must be imported from the `next-sanity/live` subpath:
+
+```ts
+// lib/sanity.ts
+import { createClient } from "next-sanity";
+import { defineLive } from "next-sanity/live";
+
+const client = createClient({
+  projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID!,
+  dataset: process.env.NEXT_PUBLIC_SANITY_DATASET!,
+  apiVersion: "2026-03-01",
+  useCdn: true,
+});
+
+export const { sanityFetch, SanityLive } = defineLive({
+  client,
+  // Required for draft content in Visual Editing — use a Viewer role token
+  serverToken: process.env.SANITY_API_TOKEN,
+  // Optional but recommended for faster live preview
+  browserToken: process.env.SANITY_BROWSER_TOKEN,
+});
+```
+
+```tsx
+// app/page.tsx
+import { sanityFetch, SanityLive } from "@/lib/sanity";
+
+export default async function Page() {
+  const { data: posts } = await sanityFetch({ query: `*[_type == "post"]` });
+  return (
+    <>
+      {posts.map((post) => <div key={post._id}>{post.title}</div>)}
+      <SanityLive />
+    </>
+  );
+}
+```
+
+> **Breaking change in v12**: `defineLive({fetchOptions: {revalidate}})` has been removed. `defineLive({stega})` is deprecated.
+
 ### Visual Editing (Presentation Mode)
 
-Sanity Visual Editing lets content editors click-to-edit content directly on the live site preview.
+Sanity Visual Editing lets content editors click-to-edit content directly on the live site preview. Requires Sanity Studio v5+ (React 19.2) and `@sanity/visual-editing` v5+.
 
 ```bash
 npm install @sanity/visual-editing
 ```
 
+In next-sanity v11+, `VisualEditing` must be imported from the `next-sanity/visual-editing` subpath:
+
 ```ts
 // app/layout.tsx
-import { VisualEditing } from "next-sanity";
+import { VisualEditing } from "next-sanity/visual-editing";
 import { draftMode } from "next/headers";
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -281,7 +325,8 @@ export async function GET(req: Request) {
 ## Official Documentation
 
 - [Sanity + Vercel Marketplace](https://vercel.com/marketplace/sanity)
-- [next-sanity Documentation](https://github.com/sanity-io/next-sanity)
+- [next-sanity Documentation](https://github.com/sanity-io/next-sanity) (v12)
+- [next-sanity v11→v12 Migration](https://github.com/sanity-io/next-sanity/releases)
 - [Sanity Visual Editing](https://www.sanity.io/docs/visual-editing)
 - [Contentful JavaScript SDK](https://www.contentful.com/developers/docs/javascript/)
 - [Next.js Draft Mode](https://nextjs.org/docs/app/building-your-application/configuring/draft-mode)
