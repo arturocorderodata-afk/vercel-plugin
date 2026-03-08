@@ -1,9 +1,19 @@
 ---
 name: geist
-description: Expert guidance for Geist — Vercel's font family for Next.js applications. Use when configuring Geist Sans or Geist Mono fonts via next/font, customizing typography, or setting up the Geist design system typeface.
+description: Expert guidance for Geist, Vercel's default typography system and font family for precise Next.js interfaces. Use when configuring Geist Sans, Geist Mono, or Geist Pixel, setting up font imports, or applying Vercel typography and aesthetic guidance.
 metadata:
   priority: 4
-  pathPatterns: []
+  pathPatterns:
+    - 'app/layout.*'
+    - 'src/app/layout.*'
+    - 'app/globals.css'
+    - 'src/app/globals.css'
+    - 'styles/**'
+    - 'tailwind.config.*'
+    - 'apps/*/app/layout.*'
+    - 'apps/*/src/app/layout.*'
+    - 'apps/*/app/globals.css'
+    - 'apps/*/src/app/globals.css'
   importPatterns:
     - 'geist'
     - 'geist/font'
@@ -121,6 +131,44 @@ Both Geist Sans and Geist Mono support these weights:
 | Bold | 700 |
 | Extra Bold | 800 |
 | Black | 900 |
+
+## Typography Direction for Geist
+
+Geist is not just a font import. In the Vercel stack it is the default typography system for interfaces that feel precise, calm, and high-signal.
+
+### What good looks like
+
+- Headlines are crisp, tightly tracked, and decisive
+- Body copy is readable and restrained; secondary text is muted, not washed out
+- Numbers, commands, IDs, timestamps use Geist Mono for precision
+- Typography carries hierarchy first; color and decoration come second
+
+### Default type recipes
+
+```tsx
+<h1 className="text-4xl font-medium tracking-[-0.04em]">Large page title</h1>
+<p className="text-sm leading-6 text-muted-foreground">Supporting copy</p>
+<div className="font-mono text-[12px] text-muted-foreground tabular-nums">Dense metadata</div>
+<h2 className="text-lg tracking-tight">Section heading</h2>
+<h2 className="text-xl tracking-tight">Large section heading</h2>
+<label className="text-sm">UI label</label>
+```
+
+Avoid defaulting entire interfaces to `text-base`.
+
+### Where to use each family
+
+- Geist Sans: navigation, body copy, buttons, headings, forms, tables, dialogs
+- Geist Mono: code, shortcuts, terminal output, commit hashes, invoice amounts, metrics, timestamps, ENV keys, feature flags
+- Geist Pixel: one accent moment only - hero wordmark, campaign heading, empty-state label. Never body text or settings UI.
+
+### Anti-patterns
+
+- Mixing Geist with multiple unrelated font families
+- Using Geist Mono for long paragraphs
+- Using Geist Pixel for more than one or two focal moments
+- Making every heading bold (Geist looks strongest with restrained weight and tight tracking)
+- Letting secondary text get so faint that hierarchy disappears
 
 ## Subset Configuration
 
