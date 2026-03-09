@@ -7,6 +7,10 @@ description: Run live eval sessions against the vercel-plugin to verify hook beh
 
 Launch real Claude Code sessions with the plugin installed, monitor debug logs in real-time, and verify every hook fires correctly with proper dedup.
 
+## CRITICAL: Do NOT Use `--print` Mode
+
+**Never use `claude --print` for evals.** Plugin hooks do not fire reliably in `--print` mode — tool calls may not execute, no session_id means dedup breaks, and the agent just prints text instead of actually building the project. Always use interactive WezTerm sessions with `x '<prompt>' --settings .claude/settings.json`.
+
 ## Quick Start
 
 **Always append a timestamp** to directory names so reruns don't overwrite old projects:

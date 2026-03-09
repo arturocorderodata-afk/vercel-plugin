@@ -542,6 +542,35 @@ describe("session-start-profiler", () => {
     expect(skills).toEqual([...skills].sort());
   });
 
+  test("formatEnvExport escapes shell metacharacters in env values", async () => {
+    const { formatEnvExport } = await import("../hooks/session-start-profiler.mjs");
+    const markerPath = join(tempDir, "profiler-should-not-exist");
+    const injectedValue = `safe,$(touch ${markerPath}),\`uname\`,"quoted"`;
+
+    writeFileSync(
+      envFile,
+      formatEnvExport("VERCEL_PLUGIN_LIKELY_SKILLS", injectedValue),
+      "utf-8",
+    );
+
+    const proc = Bun.spawn(
+      ["bash", "-lc", "source \"$1\"; printf '%s' \"$VERCEL_PLUGIN_LIKELY_SKILLS\"", "_", envFile],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    const code = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toBe(injectedValue);
+    expect(existsSync(markerPath)).toBe(false);
+  });
+
   test("hooks.json registers profiler after seen-skills init", () => {
     const hooksJson = JSON.parse(
       readFileSync(join(ROOT, "hooks", "hooks.json"), "utf-8"),

@@ -7,6 +7,24 @@ description: Advanced AI agent benchmark scenarios that push Vercel's cutting-ed
 
 Launch real Claude Code sessions with the plugin installed, verify skill injection, monitor PostToolUse validation catches, and produce a coverage report. This skill covers the full eval loop: setup → launch → monitor → verify → fix → release → repeat.
 
+## How Evals Work (The Only Correct Method)
+
+Evals are run by **you, in this conversation**, not by scripts. The process is:
+
+1. You create directories and install the plugin via Bash tool calls
+2. You spawn WezTerm panes with `wezterm cli spawn` — each pane runs an independent Claude Code interactive session
+3. You wait, then check debug logs and claim dirs to see what the plugin injected
+4. You inspect the generated source code for correctness
+5. You read conversation logs to find what the user had to correct
+6. You update skills/hooks, run `/release`, and spawn more evals
+
+**Never use `claude --print`, eval scripts, or `Bun.spawn(["claude", ...])`**. These do not work because:
+- Plugin hooks (PreToolUse, PostToolUse, UserPromptSubmit) only fire during interactive tool-calling sessions
+- `--print` mode generates text without executing tools — no files are created, no deps installed, no dev servers started
+- No `session_id` means dedup, profiler, and claim files don't work
+
+**The WezTerm interactive approach is the only method that exercises the plugin correctly.** Every eval in our history (60+ sessions) used this approach.
+
 ## Setup & Launch (Exact Commands)
 
 ### Naming convention

@@ -1,6 +1,7 @@
 import { existsSync, appendFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { requireEnvFile, safeReadJson } from "./hook-env.mjs";
 const FILE_MARKERS = [
   { file: "next.config.js", skills: ["nextjs", "turbopack"] },
@@ -73,6 +74,16 @@ const GREENFIELD_SETUP_SIGNALS = {
 };
 function readPackageJson(projectRoot) {
   return safeReadJson(join(projectRoot, "package.json"));
+}
+function escapeShellEnvValue(value) {
+  return value.replace(/(["\\$`])/g, "\\$1");
+}
+function formatEnvExport(key, value) {
+  return `export ${key}="${escapeShellEnvValue(value)}"
+`;
+}
+function appendEnvExport(envFile, key, value) {
+  appendFileSync(envFile, formatEnvExport(key, value));
 }
 function profileProject(projectRoot) {
   const skills = /* @__PURE__ */ new Set();
@@ -251,44 +262,36 @@ function main() {
   const setupSignals = greenfield ? GREENFIELD_SETUP_SIGNALS : profileBootstrapSignals(projectRoot);
   const agentBrowserAvailable = checkAgentBrowser();
   try {
-    appendFileSync(
-      envFile,
-      `export VERCEL_PLUGIN_AGENT_BROWSER_AVAILABLE="${agentBrowserAvailable ? "1" : "0"}"
-`
-    );
+    appendEnvExport(envFile, "VERCEL_PLUGIN_AGENT_BROWSER_AVAILABLE", agentBrowserAvailable ? "1" : "0");
     if (greenfield) {
-      appendFileSync(envFile, `export VERCEL_PLUGIN_GREENFIELD="true"
-`);
+      appendEnvExport(envFile, "VERCEL_PLUGIN_GREENFIELD", "true");
     }
     if (likelySkills.length > 0) {
-      appendFileSync(envFile, `export VERCEL_PLUGIN_LIKELY_SKILLS="${likelySkills.join(",")}"
-`);
+      appendEnvExport(envFile, "VERCEL_PLUGIN_LIKELY_SKILLS", likelySkills.join(","));
     }
     if (setupSignals.bootstrapHints.length > 0) {
-      appendFileSync(
-        envFile,
-        `export VERCEL_PLUGIN_BOOTSTRAP_HINTS="${setupSignals.bootstrapHints.join(",")}"
-`
-      );
+      appendEnvExport(envFile, "VERCEL_PLUGIN_BOOTSTRAP_HINTS", setupSignals.bootstrapHints.join(","));
     }
     if (setupSignals.resourceHints.length > 0) {
-      appendFileSync(
-        envFile,
-        `export VERCEL_PLUGIN_RESOURCE_HINTS="${setupSignals.resourceHints.join(",")}"
-`
-      );
+      appendEnvExport(envFile, "VERCEL_PLUGIN_RESOURCE_HINTS", setupSignals.resourceHints.join(","));
     }
     if (setupSignals.setupMode) {
-      appendFileSync(envFile, 'export VERCEL_PLUGIN_SETUP_MODE="1"\n');
+      appendEnvExport(envFile, "VERCEL_PLUGIN_SETUP_MODE", "1");
     }
   } catch {
   }
   process.exit(0);
 }
-main();
+const SESSION_START_PROFILER_ENTRYPOINT = fileURLToPath(import.meta.url);
+const isSessionStartProfilerEntrypoint = process.argv[1] ? resolve(process.argv[1]) === SESSION_START_PROFILER_ENTRYPOINT : false;
+if (isSessionStartProfilerEntrypoint) {
+  main();
+}
 export {
   checkAgentBrowser,
   checkGreenfield,
+  escapeShellEnvValue,
+  formatEnvExport,
   profileBootstrapSignals,
   profileProject
 };

@@ -12,7 +12,7 @@ import {
   syncSessionFileFromClaims,
   tryClaimSessionKey
 } from "./hook-env.mjs";
-import { buildSkillMap, validateSkillMap } from "./skill-map-frontmatter.mjs";
+import { buildSkillMap, extractFrontmatter, validateSkillMap } from "./skill-map-frontmatter.mjs";
 import {
   parseSeenSkills,
   appendSeenSkill,
@@ -528,11 +528,13 @@ function injectSkills(rankedSkills, options) {
       continue;
     }
     const skillPath = join(root, "skills", skill, "SKILL.md");
-    const content = safeReadFile(skillPath);
-    if (content === null) {
+    const raw = safeReadFile(skillPath);
+    if (raw === null) {
       l.issue("SKILL_FILE_MISSING", `SKILL.md not found for skill "${skill}"`, `Create skills/${skill}/SKILL.md with valid frontmatter`, { skillPath, error: "file not found or unreadable" });
       continue;
     }
+    const { body } = extractFrontmatter(raw);
+    const content = body.trimStart();
     const wrapped = `<!-- skill:${skill} -->
 ${content}
 <!-- /skill:${skill} -->`;
@@ -610,6 +612,9 @@ function buildBanner(injectedSkills, toolName, toolTarget, matchReasons) {
   }
   return lines.join("\n");
 }
+function encodeJsonForHtmlComment(value) {
+  return JSON.stringify(value).replace(/-->/g, "--\\u003E");
+}
 function formatOutput({ parts, matched, injectedSkills, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget, matchReasons }) {
   if (parts.length === 0) {
     return "{}";
@@ -624,7 +629,7 @@ function formatOutput({ parts, matched, injectedSkills, summaryOnly, droppedByCa
     droppedByCap,
     droppedByBudget: droppedByBudget || []
   };
-  const metaComment = `<!-- skillInjection: ${JSON.stringify(skillInjection)} -->`;
+  const metaComment = `<!-- skillInjection: ${encodeJsonForHtmlComment(skillInjection)} -->`;
   const banner = buildBanner(injectedSkills, toolName, toolTarget, matchReasons);
   const output = {
     hookSpecificOutput: {

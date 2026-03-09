@@ -32,7 +32,7 @@ import {
   tryClaimSessionKey,
 } from "./hook-env.mjs";
 
-import { buildSkillMap, validateSkillMap } from "./skill-map-frontmatter.mjs";
+import { buildSkillMap, extractFrontmatter, validateSkillMap } from "./skill-map-frontmatter.mjs";
 import type { SkillConfig } from "./skill-map-frontmatter.mjs";
 import {
   parseSeenSkills,
@@ -864,11 +864,15 @@ export function injectSkills(rankedSkills: string[], options?: InjectOptions): I
     }
 
     const skillPath = join(root, "skills", skill, "SKILL.md");
-    const content = safeReadFile(skillPath);
-    if (content === null) {
+    const raw = safeReadFile(skillPath);
+    if (raw === null) {
       l.issue("SKILL_FILE_MISSING", `SKILL.md not found for skill "${skill}"`, `Create skills/${skill}/SKILL.md with valid frontmatter`, { skillPath, error: "file not found or unreadable" });
       continue;
     }
+
+    // Strip YAML frontmatter — only the body is useful to the model
+    const { body } = extractFrontmatter(raw);
+    const content = body.trimStart();
 
     const wrapped = `<!-- skill:${skill} -->\n${content}\n<!-- /skill:${skill} -->`;
     const byteLen = Buffer.byteLength(wrapped, "utf-8");
@@ -979,6 +983,10 @@ function buildBanner(
   return lines.join("\n");
 }
 
+function encodeJsonForHtmlComment(value: unknown): string {
+  return JSON.stringify(value).replace(/-->/g, "--\\u003E");
+}
+
 export function formatOutput({ parts, matched, injectedSkills, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget, matchReasons }: FormatOutputParams): string {
   if (parts.length === 0) {
     return "{}";
@@ -998,7 +1006,7 @@ export function formatOutput({ parts, matched, injectedSkills, summaryOnly, drop
   // Embed injection metadata as an HTML comment inside additionalContext
   // (Claude Code validates hookSpecificOutput with a strict schema —
   //  extra keys like "skillInjection" cause validation failure)
-  const metaComment = `<!-- skillInjection: ${JSON.stringify(skillInjection)} -->`;
+  const metaComment = `<!-- skillInjection: ${encodeJsonForHtmlComment(skillInjection)} -->`;
 
   const banner = buildBanner(injectedSkills, toolName, toolTarget, matchReasons);
 

@@ -3143,6 +3143,20 @@ describe("hookSpecificOutput.skillInjection metadata", () => {
     expect(si.toolTarget).toBe("npx next build");
   });
 
+  test("Bash toolTarget keeps HTML comment terminators inside metadata JSON", async () => {
+    const command = "npx next build --> echo injected";
+    const { code, stdout } = await runHook({
+      tool_name: "Bash",
+      tool_input: { command },
+    });
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    const si = extractSkillInjection(result.hookSpecificOutput);
+    expect(si).toBeDefined();
+    expect(si.toolTarget).toBe(command);
+    expect(result.hookSpecificOutput.additionalContext).toContain("npx next build --\\u003E echo injected");
+  });
+
   test("Bash toolTarget redacts secrets in skillInjection output", async () => {
     const { code, stdout } = await runHookEnv(
       {
