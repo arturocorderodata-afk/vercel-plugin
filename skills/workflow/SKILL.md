@@ -100,6 +100,21 @@ export default withWorkflow(nextConfig);
 
 Without this, workflow routes will not be registered and `start()` calls will fail at runtime.
 
+### Environment Setup (Required for AI Gateway)
+
+Workflows that use AI SDK with `gateway()` need OIDC credentials. Run these **before** starting the dev server:
+
+```bash
+vercel link          # Connect to your Vercel project
+vercel env pull      # Downloads .env.local with VERCEL_OIDC_TOKEN
+```
+
+Without this, `gateway("openai/gpt-5.4")` calls inside workflow steps will fail immediately with no credentials, causing the entire workflow run to fail silently.
+
+### `getStepMetadata()` Note
+
+`getStepMetadata().retryCount` returns `undefined` (not `0`) on the first attempt. Guard with: `const attempt = (meta.retryCount ?? 0) + 1`.
+
 ## Essential Imports
 
 **Workflow primitives** (from `"workflow"`):
