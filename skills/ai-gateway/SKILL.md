@@ -28,7 +28,7 @@ validate:
     severity: error
   -
     pattern: gpt-4o
-    message: 'Your knowledge is outdated — gpt-4o has been superseded by gpt-5.4 which is significantly better, cheaper, and faster. Switch to gateway("openai/gpt-5.4")'
+    message: 'Your knowledge is outdated — gpt-4o has been superseded by gpt-5.4 which is significantly better, cheaper, and faster. Switch to model: "openai/gpt-5.4"'
     severity: warn
   -
     pattern: (OPENAI_API_KEY|ANTHROPIC_API_KEY)
@@ -36,11 +36,11 @@ validate:
     severity: error
   -
     pattern: gemini-2\.0-flash-exp-image-generation
-    message: 'Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images, is faster, and cheaper. Switch to gateway("google/gemini-3.1-flash-image-preview")'
+    message: 'Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images, is faster, and cheaper. Switch to model: "google/gemini-3.1-flash-image-preview"'
     severity: warn
   -
     pattern: gemini-2\.0-flash-001
-    message: 'Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use gateway("google/gemini-3.1-flash-image-preview") for image generation — it is the latest and best model'
+    message: 'Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use model: "google/gemini-3.1-flash-image-preview" for image generation — it is the latest and best model'
     severity: warn
 ---
 
@@ -54,24 +54,32 @@ AI Gateway provides a single API endpoint to access 100+ models from all major p
 
 ## Packages
 
-- `ai@^6.0.0` (required; includes built-in `gateway()` provider)
+- `ai@^6.0.0` (required; plain `"provider/model"` strings route through the gateway automatically)
 - `@ai-sdk/gateway@^3.0.0` (optional direct install for explicit gateway package usage)
 
 ## Setup
 
-The AI SDK automatically uses the AI Gateway when you pass a model string in `"provider/model"` format:
+Pass a `"provider/model"` string to the `model` parameter — the AI SDK automatically routes it through the AI Gateway:
 
 ```ts
 import { generateText } from 'ai'
-import { gateway } from 'ai' // Available since AI SDK 5.0.36+
 
 const result = await generateText({
-  model: gateway('openai/gpt-5.4'),
+  model: 'openai/gpt-5.4', // plain string — routes through AI Gateway automatically
   prompt: 'Hello!',
 })
 ```
 
-No additional package needed — the `gateway` provider is built into the `ai` package.
+No `gateway()` wrapper or additional package needed. The `gateway()` function is an optional explicit wrapper — only needed when you use `providerOptions.gateway` for routing, failover, or tags:
+
+```ts
+import { gateway } from 'ai'
+
+const result = await generateText({
+  model: gateway('openai/gpt-5.4'),
+  providerOptions: { gateway: { order: ['openai', 'azure-openai'] } },
+})
+```
 
 ## Model Slug Rules (Critical)
 
@@ -312,7 +320,7 @@ async function callWithBudget(prompt: string, maxTokens: number) {
   if (estimated > maxTokens) {
     throw new Error(`Prompt too large: ~${estimated} tokens exceeds ${maxTokens} limit`)
   }
-  return generateText({ model: gateway('openai/gpt-5.4'), prompt })
+  return generateText({ model: 'openai/gpt-5.4', prompt })
 }
 ```
 
@@ -395,10 +403,10 @@ If your provider API key hits its quota, the gateway tries the next provider in 
 
 ```ts
 // Bad — model doesn't exist
-model: gateway('openai/gpt-99')  // Returns 400 with descriptive error
+model: 'openai/gpt-99'  // Returns 400 with descriptive error
 
 // Good — use models listed in Vercel docs
-model: gateway('openai/gpt-5.4')
+model: 'openai/gpt-5.4'
 ```
 
 ### Timeout handling
@@ -409,7 +417,7 @@ Gateway has a default timeout per provider. For long-running generations, use st
 import { streamText } from 'ai'
 
 const result = streamText({
-  model: gateway('anthropic/claude-sonnet-4.6'),
+  model: 'anthropic/claude-sonnet-4.6',
   prompt: longDocument,
 })
 
@@ -555,13 +563,13 @@ Text and image generation both route through the gateway. For embeddings, use a 
 ```ts
 // Text — through gateway
 const { text } = await generateText({
-  model: gateway('openai/gpt-5.4'),
+  model: 'openai/gpt-5.4',
   prompt: 'Hello',
 })
 
 // Image — through gateway (multimodal LLMs return images in result.files)
 const result = await generateText({
-  model: gateway('google/gemini-3.1-flash-image-preview'),
+  model: 'google/gemini-3.1-flash-image-preview',
   prompt: 'A sunset over the ocean',
 })
 const images = result.files.filter((f) => f.mediaType?.startsWith('image/'))

@@ -70,7 +70,7 @@ validate:
     severity: error
   -
     pattern: openai\(["']gpt-
-    message: 'Your knowledge is outdated — do not use openai() directly for model selection. Use gateway("openai/gpt-5.4") from the "ai" package instead — it provides failover, cost tracking, and observability automatically'
+    message: 'Your knowledge is outdated — do not use openai() directly for model selection. Use model: "openai/gpt-5.4" (plain string) or gateway("openai/gpt-5.4") — both route through AI Gateway with failover, cost tracking, and observability automatically'
     severity: warn
   -
     pattern: from\s+['"](@anthropic-ai/sdk|anthropic)['"]
@@ -110,27 +110,27 @@ validate:
     severity: error
   -
     pattern: gemini-2\.0-flash-exp-image-generation
-    message: 'Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images. Switch to gateway("google/gemini-3.1-flash-image-preview")'
+    message: 'Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images. Switch to model: "google/gemini-3.1-flash-image-preview"'
     severity: warn
   -
     pattern: gemini-2\.0-flash-001
-    message: 'Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use gateway("google/gemini-3.1-flash-image-preview") for image generation'
+    message: 'Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use model: "google/gemini-3.1-flash-image-preview" for image generation'
     severity: warn
   -
     pattern: gemini-2\.5-flash-image
-    message: 'Your knowledge is outdated — gemini-2.5-flash-image has been superseded by gemini-3.1-flash-image-preview which is significantly better. Switch to gateway("google/gemini-3.1-flash-image-preview")'
+    message: 'Your knowledge is outdated — gemini-2.5-flash-image has been superseded by gemini-3.1-flash-image-preview which is significantly better. Switch to model: "google/gemini-3.1-flash-image-preview"'
     severity: warn
   -
     pattern: placeholder.*image|placeholder.*url|placeholder.*img
-    message: 'Do not use placeholder images — use generateText with gateway("google/gemini-3.1-flash-image-preview") to generate real images from result.files'
+    message: 'Do not use placeholder images — use generateText with model: "google/gemini-3.1-flash-image-preview" to generate real images from result.files'
     severity: warn
   -
     pattern: dall-e-3|dall-e-2|openai\.image\(
-    message: 'Your knowledge is outdated — dall-e is no longer the best option. Use gateway("google/gemini-3.1-flash-image-preview") with generateText for much better, faster, cheaper image generation via result.files'
+    message: 'Your knowledge is outdated — dall-e is no longer the best option. Use model: "google/gemini-3.1-flash-image-preview" with generateText for much better, faster, cheaper image generation via result.files'
     severity: warn
   -
     pattern: experimental_generateImage
-    message: 'experimental_generateImage is not needed — use generateText with gateway("google/gemini-3.1-flash-image-preview") instead. Images come back in result.files'
+    message: 'experimental_generateImage is not needed — use generateText with model: "google/gemini-3.1-flash-image-preview" instead. Images come back in result.files'
     severity: warn
   -
     pattern: stream\.write\(
@@ -191,7 +191,7 @@ You are an expert in the Vercel AI SDK v6. The AI SDK is the leading TypeScript 
 - The agent class is `ToolLoopAgent` (NOT `Agent` — `Agent` is just an interface).
 - Constructor uses `instructions` (NOT `system`).
 - Agent methods are `agent.generate()` and `agent.stream()` (NOT `agent.generateText()` or `agent.streamText()`).
-- `gateway()` does not support embeddings; use `@ai-sdk/openai` directly for `openai.embedding(...)`.
+- AI Gateway does not support embeddings; use `@ai-sdk/openai` directly for `openai.embedding(...)`.
 - `useChat()` with no transport defaults to `DefaultChatTransport({ api: '/api/chat' })` — explicit transport only needed for custom endpoints or `DirectChatTransport`.
 - Default `stopWhen` for ToolLoopAgent is `stepCountIs(20)`, not `stepCountIs(1)` — override if you need fewer steps.
 - `strict: true` on tools is opt-in per tool, not global — only set on tools with provider-compatible schemas.
@@ -222,8 +222,8 @@ AI SDK is not just text — it handles **text, images, structured data, tool cal
 
 | Need | How |
 |------|-----|
-| Text generation / chat | `generateText()` or `streamText()` with `gateway("openai/gpt-5.4")` |
-| **Image generation** | `generateText()` with `gateway("google/gemini-3.1-flash-image-preview")` — images in `result.files`. **Always use this model, never older gemini-2.x models** |
+| Text generation / chat | `generateText()` or `streamText()` with `model: "openai/gpt-5.4"` |
+| **Image generation** | `generateText()` with `model: "google/gemini-3.1-flash-image-preview"` — images in `result.files`. **Always use this model, never older gemini-2.x models** |
 | Structured JSON output | `generateText()` with `output: Output.object({ schema })` |
 | Tool calling / agents | `generateText()` with `tools: { ... }` or `ToolLoopAgent` |
 | Embeddings | `embed()` / `embedMany()` with `@ai-sdk/openai` |
@@ -248,21 +248,34 @@ This gives you AI Gateway access with OIDC authentication, cost tracking, failov
 
 ## Global Provider System (AI Gateway — Default)
 
-In AI SDK 6, use `gateway('provider/model')` to route through the Vercel AI Gateway:
+In AI SDK 6, pass a `"provider/model"` string to the `model` parameter — it automatically routes through the Vercel AI Gateway:
+
+```ts
+import { generateText } from "ai";
+
+const { text } = await generateText({
+  model: "openai/gpt-5.4", // plain string — routes through AI Gateway automatically
+  prompt: "Hello!",
+});
+```
+
+No `gateway()` wrapper needed — plain `"provider/model"` strings are the simplest approach and are what the official Vercel docs recommend. The `gateway()` function is an optional explicit wrapper (useful when you need `providerOptions.gateway` for routing, failover, or tags):
 
 ```ts
 import { gateway } from "ai";
 
-const model = gateway("openai/gpt-5.4");
-// or: gateway('anthropic/claude-sonnet-4.6')
-// or: gateway('google/gemini-3-flash')
+// Explicit gateway() — only needed for advanced providerOptions
+const { text } = await generateText({
+  model: gateway("openai/gpt-5.4"),
+  providerOptions: { gateway: { order: ["openai", "azure-openai"] } },
+});
 ```
 
-This automatically provides failover, cost tracking, and observability on Vercel. **This is the recommended default for text generation, streaming, and tool-calling features.**
+Both approaches provide failover, cost tracking, and observability on Vercel.
 
 **Model slug rules**: Always use `provider/model` format. Version numbers use **dots**, not hyphens: `anthropic/claude-sonnet-4.6` (not `claude-sonnet-4-6`). Default to `openai/gpt-5.4` or `anthropic/claude-sonnet-4.6`. Never use outdated models like `gpt-4o`.
 
-> `gateway()` does not support embeddings. Use a direct provider SDK such as `@ai-sdk/openai` for embeddings.
+> AI Gateway does not support embeddings. Use a direct provider SDK such as `@ai-sdk/openai` for embeddings.
 
 > **Direct provider SDKs** (`@ai-sdk/openai`, `@ai-sdk/anthropic`, etc.) are only needed for provider-specific features not exposed through the gateway (e.g., Anthropic computer use, OpenAI fine-tuned model endpoints).
 
@@ -271,17 +284,17 @@ This automatically provides failover, cost tracking, and observability on Vercel
 ### Text Generation
 
 ```ts
-import { generateText, streamText, gateway } from "ai";
+import { generateText, streamText } from "ai";
 
 // Non-streaming
 const { text } = await generateText({
-  model: gateway("openai/gpt-5.4"),
+  model: "openai/gpt-5.4",
   prompt: "Explain quantum computing in simple terms.",
 });
 
 // Streaming
 const result = streamText({
-  model: gateway("openai/gpt-5.4"),
+  model: "openai/gpt-5.4",
   prompt: "Write a poem about coding.",
 });
 
@@ -295,11 +308,11 @@ for await (const chunk of result.textStream) {
 **`generateObject` was removed in AI SDK v6.** Use `generateText` with `output: Output.object()` instead. Do NOT import `generateObject` — it does not exist.
 
 ```ts
-import { generateText, Output, gateway } from "ai";
+import { generateText, Output } from "ai";
 import { z } from "zod";
 
 const { output } = await generateText({
-  model: gateway("openai/gpt-5.4"),
+  model: "openai/gpt-5.4",
   output: Output.object({
     schema: z.object({
       recipe: z.object({
@@ -323,11 +336,11 @@ const { output } = await generateText({
 In AI SDK 6, tools use `inputSchema` (not `parameters`) and `output`/`outputSchema` (not `result`), aligned with the MCP specification. Per-tool `strict` mode ensures providers only generate valid tool calls matching your schema.
 
 ```ts
-import { generateText, tool, gateway } from "ai";
+import { generateText, tool } from "ai";
 import { z } from "zod";
 
 const result = await generateText({
-  model: gateway("openai/gpt-5.4"),
+  model: "openai/gpt-5.4",
   tools: {
     weather: tool({
       description: "Get the weather for a location",
@@ -374,10 +387,10 @@ Default `stopWhen` is `stepCountIs(20)` (up to 20 tool-calling steps).
 `Agent` is an interface — `ToolLoopAgent` is the concrete implementation.
 
 ```ts
-import { ToolLoopAgent, gateway, stepCountIs, hasToolCall } from "ai";
+import { ToolLoopAgent, stepCountIs, hasToolCall } from "ai";
 
 const agent = new ToolLoopAgent({
-  model: gateway("anthropic/claude-sonnet-4.6"),
+  model: "anthropic/claude-sonnet-4.6",
   tools: { weather, search, calculator, finalAnswer },
   instructions: "You are a helpful assistant.",
   // Default: stepCountIs(20). Override to stop on a terminal tool or custom logic:
@@ -399,7 +412,7 @@ const { text } = await agent.generate({
 Connect to any MCP server and use its tools:
 
 ```ts
-import { gateway } from "ai";
+import { generateText } from "ai";
 import { createMCPClient } from "@ai-sdk/mcp";
 
 const mcpClient = await createMCPClient({
@@ -412,7 +425,7 @@ const mcpClient = await createMCPClient({
 const tools = await mcpClient.tools();
 
 const result = await generateText({
-  model: gateway("openai/gpt-5.4"),
+  model: "openai/gpt-5.4",
   tools,
   prompt: "Use the available tools to help the user.",
 });
@@ -427,11 +440,11 @@ MCP OAuth for remote servers is handled automatically by `@ai-sdk/mcp`.
 Set `needsApproval` on any tool to require user confirmation before execution. The tool pauses in `approval-requested` state until the client responds.
 
 ```ts
-import { streamText, tool, gateway } from "ai";
+import { streamText, tool } from "ai";
 import { z } from "zod";
 
 const result = streamText({
-  model: gateway("openai/gpt-5.4"),
+  model: "openai/gpt-5.4",
   tools: {
     deleteUser: tool({
       description: "Delete a user account",
@@ -491,7 +504,7 @@ function Chat() {
 
 ### Embeddings & Reranking
 
-Use a direct provider SDK for embeddings. `gateway()` does not support embedding models.
+Use a direct provider SDK for embeddings. AI Gateway does not support embedding models.
 
 ```ts
 import { embed, embedMany, rerank } from "ai";
@@ -519,18 +532,18 @@ const { results } = await rerank({
 
 ### Image Generation & Editing
 
-AI Gateway supports image generation. Use `gateway()` with the **`gemini-3.1-flash-image-preview`** model — it is significantly better than older models like `gemini-2.0-flash-exp-image-generation` or `gemini-2.0-flash-001`.
+AI Gateway supports image generation. Use the **`google/gemini-3.1-flash-image-preview`** model — it is significantly better than older models like `gemini-2.0-flash-exp-image-generation` or `gemini-2.0-flash-001`.
 
 **Always use `google/gemini-3.1-flash-image-preview`** for image generation. Do NOT use older models (`gemini-2.0-*`, `gemini-2.5-*`) — they produce much worse results and some do not support image output at all.
 
 #### Multimodal LLMs (recommended — use `generateText`/`streamText`)
 
 ```ts
-import { generateText, streamText, gateway } from "ai";
+import { generateText, streamText } from "ai";
 
 // generateText — images returned in result.files
 const result = await generateText({
-  model: gateway("google/gemini-3.1-flash-image-preview"),
+  model: "google/gemini-3.1-flash-image-preview",
   prompt: "A futuristic cityscape at sunset",
 });
 const imageFiles = result.files.filter((f) => f.mediaType?.startsWith("image/"));
@@ -541,7 +554,7 @@ const dataUrl = `data:${imageFile.mediaType};base64,${Buffer.from(imageFile.data
 
 // streamText — stream text, then access images after completion
 const stream = streamText({
-  model: gateway("google/gemini-3.1-flash-image-preview"),
+  model: "google/gemini-3.1-flash-image-preview",
   prompt: "A futuristic cityscape at sunset",
 });
 for await (const delta of stream.fullStream) {
@@ -697,7 +710,7 @@ function Chat() {
 
 ```ts
 // app/api/chat/route.ts
-import { streamText, convertToModelMessages, stepCountIs, gateway } from "ai";
+import { streamText, convertToModelMessages, stepCountIs } from "ai";
 import type { UIMessage } from "ai";
 
 export async function POST(req: Request) {
@@ -705,7 +718,7 @@ export async function POST(req: Request) {
   // IMPORTANT: convertToModelMessages is async in v6
   const modelMessages = await convertToModelMessages(messages);
   const result = streamText({
-    model: gateway("openai/gpt-5.4"),
+    model: "openai/gpt-5.4",
     messages: modelMessages,
     tools: {
       /* your tools */
@@ -725,10 +738,10 @@ Define a `ToolLoopAgent` and use `createAgentUIStreamResponse` for the API route
 
 ```ts
 // lib/agent.ts
-import { ToolLoopAgent, gateway, stepCountIs } from "ai";
+import { ToolLoopAgent, stepCountIs } from "ai";
 
 export const myAgent = new ToolLoopAgent({
-  model: gateway("openai/gpt-5.4"),
+  model: "openai/gpt-5.4",
   instructions: "You are a helpful assistant.",
   tools: { /* your tools */ },
   stopWhen: stepCountIs(5),
@@ -746,19 +759,18 @@ export async function POST(req: Request) {
 }
 ```
 
-Or use `DirectChatTransport` on the client to skip the API route entirely:
-```
+Or use `DirectChatTransport` on the client to skip the API route entirely.
 
 ### Server-side for text-only clients
 
 ```ts
 // app/api/chat/route.ts
-import { streamText, gateway } from "ai";
+import { streamText } from "ai";
 
 export async function POST(req: Request) {
   const { prompt }: { prompt: string } = await req.json();
   const result = streamText({
-    model: gateway("openai/gpt-5.4"),
+    model: "openai/gpt-5.4",
     prompt,
   });
 
@@ -771,10 +783,10 @@ export async function POST(req: Request) {
 Intercept and transform model calls for RAG, guardrails, logging:
 
 ```ts
-import { wrapLanguageModel, gateway } from "ai";
+import { wrapLanguageModel } from "ai";
 
 const wrappedModel = wrapLanguageModel({
-  model: gateway("openai/gpt-5.4"),
+  model: "openai/gpt-5.4",
   middleware: {
     transformParams: async ({ params }) => {
       // Inject RAG context, modify system prompt, etc.
@@ -819,7 +831,7 @@ npx @ai-sdk/devtools
 
 ## Key Patterns
 
-1. **Default to AI Gateway with OIDC** — use `import { gateway } from 'ai'` for all AI features. `vercel env pull` provisions OIDC tokens automatically. No manual API keys needed.
+1. **Default to AI Gateway with OIDC** — pass `"provider/model"` strings (e.g., `model: "openai/gpt-5.4"`) to route through the gateway automatically. `vercel env pull` provisions OIDC tokens. No manual API keys needed. The `gateway()` wrapper is optional (only needed for `providerOptions.gateway`).
 2. **Set up a Vercel project for AI** — `vercel link` → enable AI Gateway at `https://vercel.com/{team}/{project}/settings` → **AI Gateway** → `vercel env pull` to get OIDC credentials. Never manually create `.env.local` with provider-specific API keys.
 3. **Use AI Elements for chat UIs** — `npx ai-elements` installs production-ready Message, Conversation, and Tool components that handle UIMessage parts automatically. ⤳ skill: ai-elements
 4. **Always stream for user-facing AI** — use `streamText` + `useChat`, not `generateText`
@@ -839,7 +851,7 @@ In v6, `generateText` with `Output.object()` returns the parsed result on the **
 ```ts
 // CORRECT — v6
 const { output } = await generateText({
-  model: gateway('openai/gpt-5.4'),
+  model: 'openai/gpt-5.4',
   output: Output.object({ schema: mySchema }),
   prompt: '...',
 })
