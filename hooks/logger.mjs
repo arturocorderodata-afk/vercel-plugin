@@ -6,6 +6,7 @@ const LEVEL_INDEX = {
   debug: 2,
   trace: 3
 };
+const VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY = "__vercelPluginSharedLoggerContext__";
 function readErrorField(error, field) {
   return field in error ? error[field] : void 0;
 }
@@ -49,11 +50,28 @@ function resolveLogLevel() {
   }
   return "off";
 }
+function getSharedLoggerContext() {
+  const loggerGlobal = globalThis;
+  if (!loggerGlobal[VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY]) {
+    loggerGlobal[VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY] = {};
+  }
+  return loggerGlobal[VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY];
+}
+function resolveInvocationId(active, explicitInvocationId) {
+  if (!active) return "";
+  if (explicitInvocationId) return explicitInvocationId;
+  const sharedContext = getSharedLoggerContext();
+  if (!sharedContext.invocationId) {
+    sharedContext.invocationId = randomBytes(4).toString("hex");
+  }
+  return sharedContext.invocationId;
+}
 function createLogger(opts) {
-  const level = typeof opts === "string" ? opts : opts && opts.level || resolveLogLevel();
+  const options = typeof opts === "string" ? { level: opts } : opts || {};
+  const level = options.level || resolveLogLevel();
   const rank = LEVEL_INDEX[level] || 0;
   const active = rank > 0;
-  const invocationId = active ? randomBytes(4).toString("hex") : "";
+  const invocationId = resolveInvocationId(active, options.invocationId);
   const safeNow = typeof performance !== "undefined" && typeof performance.now === "function" ? () => performance.now() : () => Date.now();
   const t0 = active ? safeNow() : 0;
   function emit(minLevel, event, data) {

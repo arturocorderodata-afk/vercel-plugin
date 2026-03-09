@@ -122,11 +122,11 @@ function checkTsxReviewTrigger(toolName, toolInput, _injectedSkills, dedupOff, l
   const l = logger || log;
   const threshold = getReviewThreshold();
   if (dedupOff) {
-    l.summary("tsx-review-not-fired", { reason: "dedup-off" });
+    l.debug("tsx-review-not-fired", { reason: "dedup-off" });
     return { triggered: false, count: 0, threshold, debounced: false };
   }
   if (!isTsxEditTool(toolName, toolInput)) {
-    l.summary("tsx-review-not-fired", { reason: "not-tsx-edit", tool: toolName });
+    l.debug("tsx-review-not-fired", { reason: "not-tsx-edit", tool: toolName });
     return { triggered: false, count: getTsxEditCount(), threshold, debounced: false };
   }
   const prevCount = getTsxEditCount();
@@ -135,11 +135,10 @@ function checkTsxReviewTrigger(toolName, toolInput, _injectedSkills, dedupOff, l
   l.debug("tsx-edit-count", { count, threshold, file: toolInput.file_path || "" });
   l.trace("tsx-edit-counter-state", { previous: prevCount, current: count, delta, threshold, remaining: Math.max(0, threshold - count), file: toolInput.file_path || "" });
   if (count >= threshold) {
-    l.summary("tsx-review-triggered", { count, threshold });
     l.debug("tsx-review-triggered", { count, threshold });
     return { triggered: true, count, threshold, debounced: false };
   }
-  l.summary("tsx-review-not-fired", { reason: "below-threshold", count, threshold });
+  l.debug("tsx-review-not-fired", { reason: "below-threshold", count, threshold });
   return { triggered: false, count, threshold, debounced: false };
 }
 function getDevServerVerifyCount() {
@@ -167,48 +166,48 @@ function checkDevServerVerify(toolName, toolInput, _injectedSkills, _dedupOff, l
   const l = logger || log;
   const noResult = { triggered: false, unavailable: false, loopGuardHit: false, iterationCount: 0 };
   if (toolName !== "Bash") {
-    l.summary("dev-server-verify-not-fired", { reason: "not-bash", tool: toolName });
+    l.debug("dev-server-verify-not-fired", { reason: "not-bash", tool: toolName });
     return noResult;
   }
   const command = toolInput.command || "";
   if (!isDevServerCommand(command)) {
-    l.summary("dev-server-verify-not-fired", { reason: "not-dev-server-command" });
+    l.debug("dev-server-verify-not-fired", { reason: "not-dev-server-command" });
     return noResult;
   }
   l.debug("dev-server-detected", { command: command.slice(0, 100) });
   const available = process.env.VERCEL_PLUGIN_AGENT_BROWSER_AVAILABLE;
   if (available === "0") {
-    l.summary("dev-server-verify-not-fired", { reason: "agent-browser-unavailable" });
+    l.debug("dev-server-verify-not-fired", { reason: "agent-browser-unavailable" });
     l.debug("dev-server-verify-unavailable", { reason: "agent-browser not installed" });
     return { triggered: false, unavailable: true, loopGuardHit: false, iterationCount: 0 };
   }
   const count = getDevServerVerifyCount();
   l.trace("dev-server-verify-counter-state", { current: count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS, remaining: Math.max(0, DEV_SERVER_VERIFY_MAX_ITERATIONS - count), command: command.slice(0, 100) });
   if (count >= DEV_SERVER_VERIFY_MAX_ITERATIONS) {
-    l.summary("dev-server-verify-not-fired", { reason: "loop-guard", count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
+    l.debug("dev-server-verify-not-fired", { reason: "loop-guard", count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
     l.debug("dev-server-verify-loop-guard", { count, max: DEV_SERVER_VERIFY_MAX_ITERATIONS });
     return { triggered: false, unavailable: false, loopGuardHit: true, iterationCount: count };
   }
-  l.summary("dev-server-verify-triggered", { iterationCount: count });
+  l.debug("dev-server-verify-triggered", { iterationCount: count });
   return { triggered: true, unavailable: false, loopGuardHit: false, iterationCount: count };
 }
 function checkVercelEnvHelp(toolName, toolInput, injectedSkills, dedupOff, logger) {
   const l = logger || log;
   if (toolName !== "Bash") {
-    l.summary("vercel-env-help-not-fired", { reason: "not-bash", tool: toolName });
+    l.debug("vercel-env-help-not-fired", { reason: "not-bash", tool: toolName });
     return { triggered: false };
   }
   const command = toolInput.command || "";
   const match = command.match(VERCEL_ENV_COMMAND);
   if (!match) {
-    l.summary("vercel-env-help-not-fired", { reason: "no-command-match" });
+    l.debug("vercel-env-help-not-fired", { reason: "no-command-match" });
     return { triggered: false };
   }
   if (!dedupOff && injectedSkills.has(VERCEL_ENV_HELP_ONCE_KEY)) {
-    l.summary("vercel-env-help-not-fired", { reason: "already-shown", subcommand: match[1] });
+    l.debug("vercel-env-help-not-fired", { reason: "already-shown", subcommand: match[1] });
     return { triggered: false };
   }
-  l.summary("vercel-env-help-triggered", { subcommand: match[1] });
+  l.debug("vercel-env-help-triggered", { subcommand: match[1] });
   return { triggered: true, subcommand: match[1] };
 }
 function parseInput(raw, logger) {

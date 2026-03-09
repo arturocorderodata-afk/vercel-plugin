@@ -25,6 +25,8 @@ const LEVEL_INDEX: Record<string, number> = {
   trace: 3,
 };
 
+const VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY = "__vercelPluginSharedLoggerContext__" as const;
+
 interface CompleteCounts {
   matchedCount: number;
   injectedCount: number;
@@ -37,6 +39,19 @@ interface CompleteCounts {
   droppedByCap?: string[];
   droppedByBudget?: string[];
   boostsApplied?: string[];
+}
+
+interface SharedLoggerContext {
+  invocationId?: string;
+}
+
+type LoggerGlobal = typeof globalThis & {
+  [VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY]?: SharedLoggerContext;
+};
+
+export interface CreateLoggerOptions {
+  level?: LogLevel;
+  invocationId?: string;
 }
 
 export interface Logger {
@@ -117,14 +132,35 @@ export function resolveLogLevel(): LogLevel {
   return "off";
 }
 
+function getSharedLoggerContext(): SharedLoggerContext {
+  const loggerGlobal = globalThis as LoggerGlobal;
+  if (!loggerGlobal[VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY]) {
+    loggerGlobal[VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY] = {};
+  }
+  return loggerGlobal[VERCEL_PLUGIN_SHARED_LOGGER_CONTEXT_KEY]!;
+}
+
+function resolveInvocationId(active: boolean, explicitInvocationId?: string): string {
+  if (!active) return "";
+  if (explicitInvocationId) return explicitInvocationId;
+
+  const sharedContext = getSharedLoggerContext();
+  if (!sharedContext.invocationId) {
+    sharedContext.invocationId = randomBytes(4).toString("hex");
+  }
+  return sharedContext.invocationId;
+}
+
 /**
- * Create a logger instance bound to a specific invocation.
+ * Create a logger instance bound to the current process invocation.
+ * All hook modules in the same process reuse one invocationId by default.
  */
-export function createLogger(opts?: { level?: LogLevel } | LogLevel): Logger {
-  const level = typeof opts === "string" ? opts : (opts && opts.level) || resolveLogLevel();
+export function createLogger(opts?: CreateLoggerOptions | LogLevel): Logger {
+  const options = typeof opts === "string" ? { level: opts } : (opts || {});
+  const level = options.level || resolveLogLevel();
   const rank = LEVEL_INDEX[level] || 0;
   const active = rank > 0;
-  const invocationId = active ? randomBytes(4).toString("hex") : "";
+  const invocationId = resolveInvocationId(active, options.invocationId);
 
   const safeNow =
     typeof performance !== "undefined" && typeof performance.now === "function"
