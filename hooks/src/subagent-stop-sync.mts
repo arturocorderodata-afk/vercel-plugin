@@ -17,6 +17,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listSessionKeys } from "./hook-env.mjs";
 import { createLogger, logCaughtError, type Logger } from "./logger.mjs";
 
 const log: Logger = createLogger();
@@ -90,12 +91,37 @@ function main(): void {
 
   log.debug("subagent-stop-sync", { sessionId, agentId, agentType });
 
-  appendLedger({
-    timestamp: new Date().toISOString(),
-    session_id: sessionId,
+  let ledgerEntryWritten = false;
+  try {
+    appendLedger({
+      timestamp: new Date().toISOString(),
+      session_id: sessionId,
+      agent_id: agentId,
+      agent_type: agentType,
+      agent_transcript_path: input.agent_transcript_path,
+    });
+    ledgerEntryWritten = true;
+  } catch (error) {
+    logCaughtError(log, "subagent-stop-sync:ledger-write-failed", error, {
+      sessionId,
+      agentId,
+    });
+  }
+
+  // Count skills injected for this agent by reading the scoped claim dir
+  let skillsInjected = 0;
+  try {
+    const claimed = listSessionKeys(sessionId, "seen-skills", agentId !== "unknown" ? agentId : undefined);
+    skillsInjected = claimed.length;
+  } catch {
+    // Non-critical — claim dir may not exist if no skills were injected
+  }
+
+  log.summary("subagent-stop-sync:complete", {
     agent_id: agentId,
     agent_type: agentType,
-    agent_transcript_path: input.agent_transcript_path,
+    skills_injected: skillsInjected,
+    ledger_entry_written: ledgerEntryWritten,
   });
 
   process.exit(0);

@@ -9,8 +9,8 @@
       "version": 1,
       "toolName": "Write",
       "toolTarget": "/Users/me/project/middleware.ts",
-      "matchedSkills": ["auth", "investigation-mode", "routing-middleware"],
-      "injectedSkills": ["investigation-mode", "auth", "routing-middleware"],
+      "matchedSkills": ["auth", "edge-runtime", "investigation-mode", "routing-middleware"],
+      "injectedSkills": ["investigation-mode", "auth", "routing-middleware", "edge-runtime"],
       "droppedByCap": [],
       "droppedByBudget": []
     }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-09T22:37:51.862Z",
+  "generatedAt": "2026-03-09T23:56:02.199Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -1512,6 +1512,14 @@
         "lib/queue.*",
         "src/lib/queues.*",
         "src/lib/queue.*",
+        "workflows/*.ts",
+        "workflows/*.mts",
+        "src/workflows/*.ts",
+        "src/workflows/*.mts",
+        "app/api/workflow/**",
+        "src/app/api/workflow/**",
+        "app/api/workflows/**",
+        "src/app/api/workflows/**",
         "vercel.ts",
         "vercel.mts"
       ],
@@ -1521,7 +1529,10 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/queue\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/queue\\b"
       ],
-      "importPatterns": [],
+      "importPatterns": [
+        "workflow",
+        "@vercel/workflow"
+      ],
       "bodyPath": "skills/vercel-queues/SKILL.md",
       "pathRegexSources": [
         "^lib\\/queues\\/.*$",
@@ -1530,6 +1541,14 @@
         "^lib\\/queue\\.[^/]*$",
         "^src\\/lib\\/queues\\.[^/]*$",
         "^src\\/lib\\/queue\\.[^/]*$",
+        "^workflows\\/[^/]*\\.ts$",
+        "^workflows\\/[^/]*\\.mts$",
+        "^src\\/workflows\\/[^/]*\\.ts$",
+        "^src\\/workflows\\/[^/]*\\.mts$",
+        "^app\\/api\\/workflow\\/.*$",
+        "^src\\/app\\/api\\/workflow\\/.*$",
+        "^app\\/api\\/workflows\\/.*$",
+        "^src\\/app\\/api\\/workflows\\/.*$",
         "^vercel\\.ts$",
         "^vercel\\.mts$"
       ],
@@ -1539,7 +1558,16 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/queue\\b",
         "\\byarn\\s+add\\s+[^\\n]*@vercel/queue\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]workflow(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@vercel\\/workflow(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        }
+      ]
     },
     "turbopack": {
       "priority": 4,
@@ -3187,58 +3215,12 @@
       ],
       "promptSignals": {
         "phrases": [
-          "vercel sandbox",
           "@vercel/sandbox",
-          "sandbox environment",
-          "sandbox execution",
-          "sandbox microvm",
-          "firecracker vm",
-          "firecracker microvm",
-          "isolated sandbox",
-          "isolated environment",
-          "isolated execution",
-          "isolated container",
-          "execute in isolation",
-          "run in isolation",
-          "execute code safely",
-          "run code safely",
-          "safe code execution",
-          "safe execution",
-          "sandboxed execution",
-          "sandboxed environment",
-          "execute untrusted code",
-          "run untrusted code",
-          "untrusted code",
-          "user-submitted code",
-          "user submitted code",
-          "student code",
-          "execute code on the server",
-          "run code on the server",
-          "server-side code execution",
-          "server side code execution",
-          "run arbitrary code",
-          "execute arbitrary code",
-          "run user code",
-          "execute user code",
-          "run commands in sandbox",
-          "execute commands in sandbox",
-          "run ffmpeg",
-          "ffmpeg processing",
-          "media processing",
-          "audio processing",
-          "video processing",
-          "image processing pipeline",
-          "code playground",
+          "sandbox",
           "code sandbox",
-          "coding sandbox",
-          "coding tutor",
-          "code tutor",
-          "coding environment",
-          "code runner",
-          "code execution environment",
-          "interactive coding",
-          "run student code",
-          "execute student code"
+          "vercel sandbox",
+          "isolated environment",
+          "sandboxed execution"
         ],
         "allOf": [
           [
@@ -3454,6 +3436,7 @@
       "priority": 8,
       "summary": "",
       "pathPatterns": [
+        "app/api/chat/**",
         "app/api/chat-bot/**",
         "app/api/bot/**",
         "app/api/slack/**",
@@ -3470,6 +3453,7 @@
         "app/api/webhooks/telegram/**",
         "app/api/webhooks/github/**",
         "app/api/webhooks/linear/**",
+        "src/app/api/chat/**",
         "src/app/api/chat-bot/**",
         "src/app/api/bot/**",
         "src/app/api/slack/**",
@@ -3518,6 +3502,7 @@
       ],
       "bodyPath": "skills/chat-sdk/SKILL.md",
       "pathRegexSources": [
+        "^app\\/api\\/chat\\/.*$",
         "^app\\/api\\/chat-bot\\/.*$",
         "^app\\/api\\/bot\\/.*$",
         "^app\\/api\\/slack\\/.*$",
@@ -3534,6 +3519,7 @@
         "^app\\/api\\/webhooks\\/telegram\\/.*$",
         "^app\\/api\\/webhooks\\/github\\/.*$",
         "^app\\/api\\/webhooks\\/linear\\/.*$",
+        "^src\\/app\\/api\\/chat\\/.*$",
         "^src\\/app\\/api\\/chat-bot\\/.*$",
         "^src\\/app\\/api\\/bot\\/.*$",
         "^src\\/app\\/api\\/slack\\/.*$",
@@ -3591,6 +3577,7 @@
           "chat sdk",
           "chat bot",
           "chatbot",
+          "conversational interface",
           "slack bot",
           "telegram bot",
           "discord bot",
@@ -3946,7 +3933,19 @@
           "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]v0(?:\\/[^'\"]*)?['\"]",
           "flags": "m"
         }
-      ]
+      ],
+      "promptSignals": {
+        "phrases": [
+          "generate with v0",
+          "v0 components",
+          "use v0",
+          "v0 generate"
+        ],
+        "allOf": [],
+        "anyOf": [],
+        "noneOf": [],
+        "minScore": 6
+      }
     },
     "env-vars": {
       "priority": 7,
@@ -4008,7 +4007,10 @@
         "lib/resend.*",
         "src/lib/resend.*",
         "lib/email.*",
-        "src/lib/email.*"
+        "src/lib/email.*",
+        "lib/email*",
+        "src/lib/email*",
+        "**/email-template*"
       ],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bresend\\b",
@@ -4040,7 +4042,10 @@
         "^lib\\/resend\\.[^/]*$",
         "^src\\/lib\\/resend\\.[^/]*$",
         "^lib\\/email\\.[^/]*$",
-        "^src\\/lib\\/email\\.[^/]*$"
+        "^src\\/lib\\/email\\.[^/]*$",
+        "^lib\\/email[^/]*$",
+        "^src\\/lib\\/email[^/]*$",
+        "^(?:[^/]+\\/)*email-template[^/]*$"
       ],
       "bashRegexSources": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bresend\\b",
@@ -4112,6 +4117,261 @@
       "bashRegexSources": [],
       "importRegexSources": []
     },
+    "next-forge": {
+      "priority": 6,
+      "summary": "next-forge monorepo SaaS starter (Turborepo, Clerk, Prisma/Neon, Stripe, Resend, shadcn/ui, Sentry, PostHog). See => skill:next-forge for full guide.",
+      "pathPatterns": [
+        "pnpm-workspace.yaml",
+        "apps/app/**",
+        "apps/web/**",
+        "apps/api/**",
+        "apps/email/**",
+        "apps/docs/**",
+        "apps/studio/**",
+        "apps/storybook/**",
+        "packages/auth/**",
+        "packages/database/**",
+        "packages/design-system/**",
+        "packages/payments/**",
+        "packages/email/**",
+        "packages/analytics/**",
+        "packages/observability/**",
+        "packages/security/**",
+        "packages/ai/**",
+        "packages/cms/**",
+        "packages/collaboration/**",
+        "packages/feature-flags/**",
+        "packages/internationalization/**",
+        "packages/notifications/**",
+        "packages/rate-limit/**",
+        "packages/seo/**",
+        "packages/storage/**",
+        "packages/webhooks/**",
+        "packages/next-config/**",
+        "packages/typescript-config/**",
+        "**/keys.ts",
+        "**/env.ts",
+        "**/proxy.ts",
+        "biome.jsonc"
+      ],
+      "bashPatterns": [
+        "\\bnext-forge\\b",
+        "\\bnpx\\s+next-forge\\b",
+        "\\bpnpm\\s+migrate\\b",
+        "\\bpnpm\\s+bump-deps\\b",
+        "\\bpnpm\\s+bump-ui\\b",
+        "\\bprisma\\s+(generate|db\\s+push|format|studio)\\b",
+        "\\bstripe\\s+listen\\b",
+        "\\bnpx\\s+shadcn@latest\\s+add\\b.*-c\\s+packages/design-system\\b"
+      ],
+      "importPatterns": [
+        "@repo/auth",
+        "@repo/database",
+        "@repo/design-system",
+        "@repo/payments",
+        "@repo/email",
+        "@repo/analytics",
+        "@repo/observability",
+        "@repo/security",
+        "@repo/ai",
+        "@repo/cms",
+        "@repo/collaboration",
+        "@repo/feature-flags",
+        "@repo/internationalization",
+        "@repo/notifications",
+        "@repo/rate-limit",
+        "@repo/seo",
+        "@repo/storage",
+        "@repo/webhooks",
+        "@repo/next-config",
+        "@t3-oss/env-nextjs",
+        "@rescale/nemo"
+      ],
+      "bodyPath": "skills/next-forge/SKILL.md",
+      "pathRegexSources": [
+        "^pnpm-workspace\\.yaml$",
+        "^apps\\/app\\/.*$",
+        "^apps\\/web\\/.*$",
+        "^apps\\/api\\/.*$",
+        "^apps\\/email\\/.*$",
+        "^apps\\/docs\\/.*$",
+        "^apps\\/studio\\/.*$",
+        "^apps\\/storybook\\/.*$",
+        "^packages\\/auth\\/.*$",
+        "^packages\\/database\\/.*$",
+        "^packages\\/design-system\\/.*$",
+        "^packages\\/payments\\/.*$",
+        "^packages\\/email\\/.*$",
+        "^packages\\/analytics\\/.*$",
+        "^packages\\/observability\\/.*$",
+        "^packages\\/security\\/.*$",
+        "^packages\\/ai\\/.*$",
+        "^packages\\/cms\\/.*$",
+        "^packages\\/collaboration\\/.*$",
+        "^packages\\/feature-flags\\/.*$",
+        "^packages\\/internationalization\\/.*$",
+        "^packages\\/notifications\\/.*$",
+        "^packages\\/rate-limit\\/.*$",
+        "^packages\\/seo\\/.*$",
+        "^packages\\/storage\\/.*$",
+        "^packages\\/webhooks\\/.*$",
+        "^packages\\/next-config\\/.*$",
+        "^packages\\/typescript-config\\/.*$",
+        "^(?:[^/]+\\/)*keys\\.ts$",
+        "^(?:[^/]+\\/)*env\\.ts$",
+        "^(?:[^/]+\\/)*proxy\\.ts$",
+        "^biome\\.jsonc$"
+      ],
+      "bashRegexSources": [
+        "\\bnext-forge\\b",
+        "\\bnpx\\s+next-forge\\b",
+        "\\bpnpm\\s+migrate\\b",
+        "\\bpnpm\\s+bump-deps\\b",
+        "\\bpnpm\\s+bump-ui\\b",
+        "\\bprisma\\s+(generate|db\\s+push|format|studio)\\b",
+        "\\bstripe\\s+listen\\b",
+        "\\bnpx\\s+shadcn@latest\\s+add\\b.*-c\\s+packages/design-system\\b"
+      ],
+      "importRegexSources": [
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/auth(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/database(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/design-system(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/payments(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/email(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/analytics(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/observability(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/security(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/ai(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/cms(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/collaboration(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/feature-flags(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/internationalization(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/notifications(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/rate-limit(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/seo(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/storage(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/webhooks(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@repo\\/next-config(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@t3-oss\\/env-nextjs(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@rescale\\/nemo(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        }
+      ],
+      "validate": [
+        {
+          "pattern": "\"pipeline\"\\s*:",
+          "message": "turbo.json \"pipeline\" was renamed to \"tasks\" in Turborepo v2 — update to \"tasks\"",
+          "severity": "error"
+        },
+        {
+          "pattern": "new Pool\\(",
+          "message": "PrismaNeon expects a connection config object, not a Pool instance — use PrismaNeon({ connectionString: url })",
+          "severity": "error",
+          "skipIfFileContains": "pg\\.Pool"
+        },
+        {
+          "pattern": "prisma studio --schema",
+          "message": "Prisma v7 removed --schema flag for studio — use --config instead",
+          "severity": "error"
+        },
+        {
+          "pattern": "middleware\\.ts",
+          "message": "next-forge uses proxy.ts (Next.js 16+), not middleware.ts — rename to proxy.ts",
+          "severity": "warn",
+          "skipIfFileContains": "proxy\\.ts"
+        }
+      ],
+      "promptSignals": {
+        "phrases": [
+          "next-forge",
+          "next forge",
+          "@repo/"
+        ],
+        "allOf": [
+          [
+            "monorepo",
+            "saas",
+            "starter"
+          ],
+          [
+            "turborepo",
+            "clerk",
+            "stripe"
+          ]
+        ],
+        "anyOf": [
+          "saas starter",
+          "production monorepo",
+          "keys.ts",
+          "pnpm-workspace"
+        ],
+        "noneOf": [
+          "create-t3-app"
+        ],
+        "minScore": 6
+      }
+    },
     "vercel-firewall": {
       "priority": 5,
       "summary": "",
@@ -4129,13 +4389,30 @@
       "bashRegexSources": [
         "\\bvercel\\s+firewall\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [],
+      "promptSignals": {
+        "phrases": [
+          "rate limit",
+          "rate limiting",
+          "firewall",
+          "WAF",
+          "DDoS protection"
+        ],
+        "allOf": [],
+        "anyOf": [],
+        "noneOf": [],
+        "minScore": 6
+      }
     },
     "edge-runtime": {
       "priority": 4,
       "summary": "",
       "pathPatterns": [
-        "edge-runtime.config.*"
+        "edge-runtime.config.*",
+        "middleware.ts",
+        "middleware.js",
+        "src/middleware.ts",
+        "src/middleware.js"
       ],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bedge-runtime\\b",
@@ -4153,7 +4430,11 @@
       ],
       "bodyPath": "skills/edge-runtime/SKILL.md",
       "pathRegexSources": [
-        "^edge-runtime\\.config\\.[^/]*$"
+        "^edge-runtime\\.config\\.[^/]*$",
+        "^middleware\\.ts$",
+        "^middleware\\.js$",
+        "^src\\/middleware\\.ts$",
+        "^src\\/middleware\\.js$"
       ],
       "bashRegexSources": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bedge-runtime\\b",
@@ -4206,7 +4487,18 @@
           "message": "new Function() is not allowed in Edge Runtime — refactor to avoid dynamic code evaluation",
           "severity": "error"
         }
-      ]
+      ],
+      "promptSignals": {
+        "phrases": [
+          "edge runtime",
+          "edge function",
+          "run at the edge"
+        ],
+        "allOf": [],
+        "anyOf": [],
+        "noneOf": [],
+        "minScore": 6
+      }
     },
     "vercel-functions": {
       "priority": 8,

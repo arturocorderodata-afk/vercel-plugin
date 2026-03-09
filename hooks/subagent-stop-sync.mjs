@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { listSessionKeys } from "./hook-env.mjs";
 import { createLogger, logCaughtError } from "./logger.mjs";
 const log = createLogger();
 function parseInput() {
@@ -38,12 +39,33 @@ function main() {
   const agentId = input.agent_id ?? "unknown";
   const agentType = input.agent_type ?? "unknown";
   log.debug("subagent-stop-sync", { sessionId, agentId, agentType });
-  appendLedger({
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    session_id: sessionId,
+  let ledgerEntryWritten = false;
+  try {
+    appendLedger({
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      session_id: sessionId,
+      agent_id: agentId,
+      agent_type: agentType,
+      agent_transcript_path: input.agent_transcript_path
+    });
+    ledgerEntryWritten = true;
+  } catch (error) {
+    logCaughtError(log, "subagent-stop-sync:ledger-write-failed", error, {
+      sessionId,
+      agentId
+    });
+  }
+  let skillsInjected = 0;
+  try {
+    const claimed = listSessionKeys(sessionId, "seen-skills", agentId !== "unknown" ? agentId : void 0);
+    skillsInjected = claimed.length;
+  } catch {
+  }
+  log.summary("subagent-stop-sync:complete", {
     agent_id: agentId,
     agent_type: agentType,
-    agent_transcript_path: input.agent_transcript_path
+    skills_injected: skillsInjected,
+    ledger_entry_written: ledgerEntryWritten
   });
   process.exit(0);
 }

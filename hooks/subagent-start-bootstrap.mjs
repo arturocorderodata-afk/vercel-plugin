@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pluginRoot as resolvePluginRoot, profileCachePath, safeReadFile, safeReadJson } from "./hook-env.mjs";
+import { pluginRoot as resolvePluginRoot, profileCachePath, safeReadFile, safeReadJson, tryClaimSessionKey } from "./hook-env.mjs";
 import { createLogger, logCaughtError } from "./logger.mjs";
 import { compilePromptSignals, matchPromptWithReason, normalizePromptText } from "./prompt-patterns.mjs";
 import { loadSkills } from "./pretooluse-skill-inject.mjs";
@@ -234,6 +234,29 @@ function main() {
   if (Buffer.byteLength(context, "utf8") > maxBytes) {
     context = Buffer.from(context, "utf8").subarray(0, maxBytes).toString("utf8");
   }
+  const scopeId = agentId !== "unknown" ? agentId : void 0;
+  if (sessionId && likelySkills.length > 0) {
+    const claimed = [];
+    for (const skill of likelySkills) {
+      if (tryClaimSessionKey(sessionId, "seen-skills", skill, scopeId)) {
+        claimed.push(skill);
+      }
+    }
+    if (claimed.length > 0) {
+      log.debug("subagent-start-bootstrap:dedup-claims", { sessionId, agentId, scopeId, claimed });
+    }
+  }
+  const budgetUsed = Buffer.byteLength(context, "utf8");
+  const pendingLaunchMatched = likelySkills.length !== profilerLikelySkills.length || likelySkills.some((s) => !profilerLikelySkills.includes(s));
+  log.summary("subagent-start-bootstrap:complete", {
+    agent_id: agentId,
+    agent_type: agentType,
+    claimed_skills: likelySkills.length,
+    budget_used: budgetUsed,
+    budget_max: maxBytes,
+    budget_category: category,
+    pending_launch_matched: pendingLaunchMatched
+  });
   const output = {
     hookSpecificOutput: {
       hookEventName: "SubagentStart",

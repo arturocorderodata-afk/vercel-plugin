@@ -70,6 +70,7 @@ const FILE_MARKERS: FileMarker[] = [
   { file: "middleware.js", skills: ["routing-middleware"] },
   { file: "components.json", skills: ["shadcn"] },
   { file: ".env.local", skills: ["env-vars"] },
+  { file: "pnpm-workspace.yaml", skills: ["turborepo"] },
 ];
 
 /**
@@ -95,6 +96,11 @@ const PACKAGE_MARKERS: Record<string, string[]> = {
   "@vercel/sandbox": ["vercel-sandbox"],
   "@vercel/sdk": ["vercel-api"],
   "turbo": ["turborepo"],
+  "@repo/auth": ["next-forge"],
+  "@repo/database": ["next-forge"],
+  "@repo/design-system": ["next-forge"],
+  "@repo/payments": ["next-forge"],
+  "@t3-oss/env-nextjs": ["next-forge"],
 };
 
 const SETUP_ENV_TEMPLATE_FILES: string[] = [

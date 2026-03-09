@@ -100,6 +100,45 @@ describe("user-prompt-submit-skill-inject.mjs", () => {
     expect(meta.injectedSkills).toContain("workflow");
   });
 
+  test("injects chat-sdk skill for conversational interface bot prompt", async () => {
+    const { code, stdout } = await runHook(
+      "Build a conversational interface for a Discord bot that responds to mentions",
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+
+    const meta = extractSkillInjection(result.hookSpecificOutput);
+    expect(meta).toBeDefined();
+    expect(meta.injectedSkills).toContain("chat-sdk");
+  });
+
+  test("injects v0-dev skill for prompt-based v0 generation requests", async () => {
+    const { code, stdout } = await runHook(
+      "Use v0 to generate a dashboard and give me the v0 components to start from",
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+
+    const meta = extractSkillInjection(result.hookSpecificOutput);
+    expect(meta).toBeDefined();
+    expect(meta.injectedSkills).toContain("v0-dev");
+  });
+
+  test("injects vercel-sandbox skill for isolated code sandbox prompts", async () => {
+    const { code, stdout } = await runHook(
+      "Set up a code sandbox with sandboxed execution in an isolated environment for user code",
+    );
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.hookSpecificOutput).toBeDefined();
+
+    const meta = extractSkillInjection(result.hookSpecificOutput);
+    expect(meta).toBeDefined();
+    expect(meta.injectedSkills).toContain("vercel-sandbox");
+  });
+
   test("returns {} for empty/short prompt", async () => {
     const { code, stdout } = await runHook("hi");
     expect(code).toBe(0);

@@ -98,7 +98,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-stop-sync.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-stop-sync.mjs\"",
+            "timeout": 5
           }
         ]
       }

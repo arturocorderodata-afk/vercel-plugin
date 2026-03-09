@@ -100,11 +100,13 @@
           "toolTarget": "/Users/me/project/app/api/chat/route.ts",
           "matchedSkills": [
             "ai-sdk",
+            "chat-sdk",
             "nextjs",
             "vercel-functions"
           ],
           "injectedSkills": [
             "ai-sdk",
+            "chat-sdk",
             "vercel-functions",
             "nextjs"
           ],
@@ -127,12 +129,14 @@
           "toolName": "Read",
           "toolTarget": "/Users/me/project/app/api/chat/route.ts",
           "matchedSkills": [
-            "nextjs",
             "ai-sdk",
+            "chat-sdk",
+            "nextjs",
             "vercel-functions"
           ],
           "injectedSkills": [
             "ai-sdk",
+            "chat-sdk",
             "vercel-functions",
             "nextjs"
           ],
@@ -157,12 +161,14 @@
           "matchedSkills": [
             "routing-middleware",
             "auth",
-            "investigation-mode"
+            "investigation-mode",
+            "edge-runtime"
           ],
           "injectedSkills": [
             "investigation-mode",
             "auth",
-            "routing-middleware"
+            "routing-middleware",
+            "edge-runtime"
           ],
           "droppedByCap": [],
           "droppedByBudget": []

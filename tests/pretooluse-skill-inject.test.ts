@@ -1407,10 +1407,11 @@ describe("? wildcard in glob patterns", () => {
 describe("priority ordering for file-path matches", () => {
   test("app/api/chat/route.ts matches multiple skills; highest-priority ones win", async () => {
     // This path matches:
-    //   nextjs (priority 10): app/**
+    //   chat-sdk (priority 8): app/api/chat/**
     //   ai-sdk (priority 8): app/api/chat/**
     //   vercel-functions (priority 8): app/**/route.*
-    // All 3 fit under MAX_SKILLS=3, so all should inject, ordered by priority
+    //   nextjs (priority 5): app/**
+    // All 4 fit under the default cap, so all should inject, ordered by priority
     const { code, stdout } = await runHook({
       tool_name: "Read",
       tool_input: { file_path: "/Users/me/project/app/api/chat/route.ts" },
@@ -1420,6 +1421,7 @@ describe("priority ordering for file-path matches", () => {
     const ctx = result.hookSpecificOutput.additionalContext;
     expect(ctx).toContain("skill:nextjs");
     expect(ctx).toContain("skill:ai-sdk");
+    expect(ctx).toContain("skill:chat-sdk");
     expect(ctx).toContain("skill:vercel-functions");
   });
 
@@ -1619,7 +1621,7 @@ describe("cap observability (debug mode)", () => {
 
 describe("injection byte budget", () => {
   test("small budget limits injection to fewer skills than MAX_SKILLS", async () => {
-    // app/api/chat/route.ts matches ai-sdk (~15KB), vercel-functions (~5.7KB), nextjs (~10KB)
+    // app/api/chat/route.ts matches ai-sdk, chat-sdk, vercel-functions, and nextjs
     // With a 6000-byte budget, only 1 skill should fit (first skill always allowed)
     const { code, stdout } = await runHookEnv(
       {
@@ -1632,7 +1634,7 @@ describe("injection byte budget", () => {
     const result = JSON.parse(stdout);
     const si = extractSkillInjection(result.hookSpecificOutput);
     expect(si).toBeDefined();
-    expect(si.injectedSkills.length).toBeLessThan(3);
+    expect(si.injectedSkills.length).toBeLessThan(4);
     expect(si.droppedByBudget.length).toBeGreaterThan(0);
   });
 
@@ -1649,7 +1651,7 @@ describe("injection byte budget", () => {
     const result = JSON.parse(stdout);
     const si = extractSkillInjection(result.hookSpecificOutput);
     expect(si).toBeDefined();
-    expect(si.injectedSkills.length).toBe(3);
+    expect(si.injectedSkills.length).toBe(4);
     expect(si.droppedByBudget.length).toBe(0);
   });
 
@@ -2299,9 +2301,10 @@ describe("coverage matrix — file paths", () => {
   });
 
   // 6. AI SDK chat route
-  test("app/api/chat/route.ts → ai-sdk + vercel-functions + nextjs", async () => {
+  test("app/api/chat/route.ts → ai-sdk + chat-sdk + vercel-functions + nextjs", async () => {
     const skills = await matchFile("/project/app/api/chat/route.ts");
     expect(skills).toContain("ai-sdk");
+    expect(skills).toContain("chat-sdk");
     expect(skills).toContain("vercel-functions");
     expect(skills).toContain("nextjs");
   });
@@ -2310,6 +2313,11 @@ describe("coverage matrix — file paths", () => {
   test("apps/web/app/api/chat/route.ts → ai-sdk (monorepo)", async () => {
     const skills = await matchFile("/project/apps/web/app/api/chat/route.ts");
     expect(skills).toContain("ai-sdk");
+  });
+
+  test("src/app/api/chat/route.ts → chat-sdk via src app route pattern", async () => {
+    const skills = await matchFile("/project/src/app/api/chat/route.ts");
+    expect(skills).toContain("chat-sdk");
   });
 
   // 8. Auth route → sign-in-with-vercel

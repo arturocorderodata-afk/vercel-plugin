@@ -11,6 +11,13 @@ metadata:
     - '\bnpx\s+v0\b'
     - '\bbunx\s+v0\b'
     - '\bv0\s+(generate|dev|chat)\b'
+  promptSignals:
+    phrases:
+      - 'generate with v0'
+      - 'v0 components'
+      - 'use v0'
+      - 'v0 generate'
+    minScore: 6
 ---
 
 # v0 by Vercel

@@ -22,7 +22,8 @@ const FILE_MARKERS = [
   { file: "middleware.ts", skills: ["routing-middleware"] },
   { file: "middleware.js", skills: ["routing-middleware"] },
   { file: "components.json", skills: ["shadcn"] },
-  { file: ".env.local", skills: ["env-vars"] }
+  { file: ".env.local", skills: ["env-vars"] },
+  { file: "pnpm-workspace.yaml", skills: ["turborepo"] }
 ];
 const PACKAGE_MARKERS = {
   "next": ["nextjs"],
@@ -43,7 +44,12 @@ const PACKAGE_MARKERS = {
   "@vercel/queue": ["vercel-queues"],
   "@vercel/sandbox": ["vercel-sandbox"],
   "@vercel/sdk": ["vercel-api"],
-  "turbo": ["turborepo"]
+  "turbo": ["turborepo"],
+  "@repo/auth": ["next-forge"],
+  "@repo/database": ["next-forge"],
+  "@repo/design-system": ["next-forge"],
+  "@repo/payments": ["next-forge"],
+  "@t3-oss/env-nextjs": ["next-forge"]
 };
 const SETUP_ENV_TEMPLATE_FILES = [
   ".env.example",

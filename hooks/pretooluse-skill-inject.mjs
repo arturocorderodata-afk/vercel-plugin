@@ -232,9 +232,11 @@ function parseInput(raw, logger) {
   const cwdCandidate = input.cwd ?? input.working_directory;
   const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
   const toolTarget = toolName === "Bash" ? toolInput.command || "" : toolInput.file_path || "";
-  l.debug("input-parsed", { toolName, sessionId, cwd });
+  const agentId = typeof input.agent_id === "string" && input.agent_id.length > 0 ? input.agent_id : void 0;
+  const scopeId = agentId;
+  l.debug("input-parsed", { toolName, sessionId, cwd, scopeId });
   l.debug("tool-target", { toolName, target: redactCommand(toolTarget) });
-  return { toolName, toolInput, sessionId, cwd, toolTarget };
+  return { toolName, toolInput, sessionId, cwd, toolTarget, scopeId };
 }
 function loadSkills(pluginRoot, logger) {
   const root = pluginRoot || PLUGIN_ROOT;
@@ -496,7 +498,7 @@ function deduplicateSkills({ matchedEntries, matched, toolName, toolInput, injec
   return { newEntries, rankedSkills, vercelJsonRouting, profilerBoosted, setupModeRouting };
 }
 function injectSkills(rankedSkills, options) {
-  const { pluginRoot, hasEnvDedup, sessionId, injectedSkills, budgetBytes, maxSkills, skillMap, logger, forceSummarySkills } = options || {};
+  const { pluginRoot, hasEnvDedup, sessionId, scopeId, injectedSkills, budgetBytes, maxSkills, skillMap, logger, forceSummarySkills } = options || {};
   const root = pluginRoot || PLUGIN_ROOT;
   const l = logger || log;
   const budget = budgetBytes ?? getInjectionBudget();
@@ -512,13 +514,13 @@ function injectSkills(rankedSkills, options) {
     if (!hasEnvDedup || !sessionId) {
       return true;
     }
-    const claimed = tryClaimSessionKey(sessionId, "seen-skills", skill);
+    const claimed = tryClaimSessionKey(sessionId, "seen-skills", skill, scopeId);
     if (!claimed) {
       skippedByConcurrentClaim.push(skill);
-      l.debug("skill-skipped-concurrent-claim", { skill, sessionId });
+      l.debug("skill-skipped-concurrent-claim", { skill, sessionId, scopeId });
       return false;
     }
-    process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills");
+    process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills", scopeId);
     return true;
   };
   for (const skill of rankedSkills) {
@@ -684,7 +686,7 @@ function run() {
   const parsed = parseInput(raw, log);
   if (!parsed) return "{}";
   if (log.active) timing.stdin_parse = Math.round(log.now() - tPhase);
-  const { toolName, toolInput, sessionId, cwd, toolTarget } = parsed;
+  const { toolName, toolInput, sessionId, cwd, toolTarget, scopeId } = parsed;
   const tSkillmap = log.active ? log.now() : 0;
   const skills = loadSkills(PLUGIN_ROOT, log);
   if (!skills) return "{}";
@@ -693,8 +695,8 @@ function run() {
   const dedupOff = process.env.VERCEL_PLUGIN_HOOK_DEDUP === "off";
   const hasFileDedup = !dedupOff && !!sessionId;
   const seenEnv = getSeenSkillsEnv();
-  const seenClaims = hasFileDedup ? listSessionKeys(sessionId, "seen-skills").join(",") : "";
-  const seenFile = hasFileDedup ? readSessionFile(sessionId, "seen-skills") : "";
+  const seenClaims = hasFileDedup ? listSessionKeys(sessionId, "seen-skills", scopeId).join(",") : "";
+  const seenFile = hasFileDedup ? readSessionFile(sessionId, "seen-skills", scopeId) : "";
   const seenState = hasFileDedup ? mergeSeenSkillStates(seenEnv, seenFile, seenClaims) : seenEnv;
   if (hasFileDedup && seenEnv === "") {
     process.env.VERCEL_PLUGIN_SEEN_SKILLS = seenState;
@@ -767,9 +769,9 @@ function run() {
     if (!injectedSkills.has(warningKey)) {
       let warningClaimed = true;
       if (sessionId) {
-        warningClaimed = tryClaimSessionKey(sessionId, "seen-skills", warningKey);
+        warningClaimed = tryClaimSessionKey(sessionId, "seen-skills", warningKey, scopeId);
         if (warningClaimed) {
-          process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills");
+          process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills", scopeId);
         }
       }
       if (warningClaimed) {
@@ -846,9 +848,9 @@ function run() {
   if (vercelEnvHelp.triggered) {
     let helpClaimed = true;
     if (sessionId) {
-      helpClaimed = tryClaimSessionKey(sessionId, "seen-skills", VERCEL_ENV_HELP_ONCE_KEY);
+      helpClaimed = tryClaimSessionKey(sessionId, "seen-skills", VERCEL_ENV_HELP_ONCE_KEY, scopeId);
       if (helpClaimed) {
-        process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills");
+        process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills", scopeId);
       }
     }
     if (helpClaimed) {
@@ -885,6 +887,7 @@ function run() {
     pluginRoot: PLUGIN_ROOT,
     hasEnvDedup,
     sessionId,
+    scopeId,
     injectedSkills,
     skillMap: skills.skillMap,
     logger: log,

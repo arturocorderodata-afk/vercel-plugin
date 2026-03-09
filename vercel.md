@@ -78,6 +78,10 @@ VERCEL PLATFORM                            📖 docs: https://vercel.com/docs
 │   → Deployment Engine (one-click deploy)
 │   ↔ Vercel Marketplace (pre-configured integrations)
 │   ↔ Next.js, AI SDK, v0 (framework starters)
+│   ⊃ next-forge (production SaaS monorepo starter)    ⤳ skill: next-forge
+│       → Turborepo, Clerk, Prisma/Neon, Stripe, Resend, shadcn/ui, Sentry, PostHog
+│       → 7 apps (app, web, api, email, docs, studio, storybook)
+│       → 20 @repo/* workspace packages
 │
 ├── Vercel Queues (durable event streaming)
 │   ⊃ Topics, consumer groups, delayed delivery
@@ -925,6 +929,8 @@ Next.js (App Router) → Neon Postgres (data) → Clerk (auth, via Marketplace)
                      → Stripe (payments, via Marketplace) → Vercel Blob (uploads)
                      → Edge Config (feature flags) → Vercel Analytics
 ```
+
+**Starter kit**: Use `npx next-forge@latest init` to scaffold a production-ready SaaS monorepo with all of the above pre-wired (plus email, observability, security, AI, i18n, and more). ⤳ skill: next-forge
 
 **Clerk integration gotchas**:
 - `vercel integration add clerk` requires terms acceptance in the terminal (AI agents are blocked — user must run it manually)

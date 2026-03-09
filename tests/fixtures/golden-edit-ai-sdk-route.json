@@ -9,8 +9,8 @@
       "version": 1,
       "toolName": "Edit",
       "toolTarget": "/Users/me/project/app/api/chat/route.ts",
-      "matchedSkills": ["ai-sdk", "nextjs", "vercel-functions"],
-      "injectedSkills": ["ai-sdk", "vercel-functions", "nextjs"],
+      "matchedSkills": ["ai-sdk", "chat-sdk", "nextjs", "vercel-functions"],
+      "injectedSkills": ["ai-sdk", "chat-sdk", "vercel-functions", "nextjs"],
       "droppedByCap": [],
       "droppedByBudget": []
     }

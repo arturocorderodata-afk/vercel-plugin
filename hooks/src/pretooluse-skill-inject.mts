@@ -377,6 +377,8 @@ export interface ParsedInput {
   sessionId: string | null;
   cwd: string | null;
   toolTarget: string;
+  /** Agent-scoped dedup: present when running inside a subagent. */
+  scopeId: string | undefined;
 }
 
 /**
@@ -410,10 +412,16 @@ export function parseInput(raw: string, logger?: Logger): ParsedInput | null {
     ? ((toolInput.command as string) || "")
     : ((toolInput.file_path as string) || "");
 
-  l.debug("input-parsed", { toolName, sessionId: sessionId as string, cwd });
+  // Extract agent_id for scoped dedup (present when running inside a subagent)
+  const agentId = typeof input.agent_id === "string" && input.agent_id.length > 0
+    ? input.agent_id
+    : undefined;
+  const scopeId = agentId;
+
+  l.debug("input-parsed", { toolName, sessionId: sessionId as string, cwd, scopeId });
   l.debug("tool-target", { toolName, target: redactCommand(toolTarget) });
 
-  return { toolName, toolInput, sessionId, cwd, toolTarget };
+  return { toolName, toolInput, sessionId, cwd, toolTarget, scopeId };
 }
 
 // ---------------------------------------------------------------------------
@@ -804,6 +812,8 @@ export interface InjectOptions {
   pluginRoot?: string;
   hasEnvDedup?: boolean;
   sessionId?: string | null;
+  /** Agent-scoped dedup: isolates claims per subagent. */
+  scopeId?: string;
   injectedSkills?: Set<string>;
   budgetBytes?: number;
   maxSkills?: number;
@@ -828,7 +838,7 @@ export interface InjectResult {
  * When a full body would exceed the budget but a summary exists, the summary is injected instead.
  */
 export function injectSkills(rankedSkills: string[], options?: InjectOptions): InjectResult {
-  const { pluginRoot, hasEnvDedup, sessionId, injectedSkills, budgetBytes, maxSkills, skillMap, logger, forceSummarySkills } = options || {};
+  const { pluginRoot, hasEnvDedup, sessionId, scopeId, injectedSkills, budgetBytes, maxSkills, skillMap, logger, forceSummarySkills } = options || {};
   const root = pluginRoot || PLUGIN_ROOT;
   const l = logger || log;
   const budget = budgetBytes ?? getInjectionBudget();
@@ -846,14 +856,14 @@ export function injectSkills(rankedSkills: string[], options?: InjectOptions): I
       return true;
     }
 
-    const claimed = tryClaimSessionKey(sessionId, "seen-skills", skill);
+    const claimed = tryClaimSessionKey(sessionId, "seen-skills", skill, scopeId);
     if (!claimed) {
       skippedByConcurrentClaim.push(skill);
-      l.debug("skill-skipped-concurrent-claim", { skill, sessionId });
+      l.debug("skill-skipped-concurrent-claim", { skill, sessionId, scopeId });
       return false;
     }
 
-    process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills");
+    process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills", scopeId);
     return true;
   };
 
@@ -1080,7 +1090,7 @@ function run(): string {
   if (!parsed) return "{}";
   if (log.active) timing.stdin_parse = Math.round(log.now() - tPhase);
 
-  const { toolName, toolInput, sessionId, cwd, toolTarget } = parsed;
+  const { toolName, toolInput, sessionId, cwd, toolTarget, scopeId } = parsed;
 
   // Stage 2: loadSkills
   const tSkillmap = log.active ? log.now() : 0;
@@ -1094,8 +1104,8 @@ function run(): string {
   const dedupOff = process.env.VERCEL_PLUGIN_HOOK_DEDUP === "off";
   const hasFileDedup = !dedupOff && !!sessionId;
   const seenEnv = getSeenSkillsEnv();
-  const seenClaims = hasFileDedup ? listSessionKeys(sessionId as string, "seen-skills").join(",") : "";
-  const seenFile = hasFileDedup ? readSessionFile(sessionId as string, "seen-skills") : "";
+  const seenClaims = hasFileDedup ? listSessionKeys(sessionId as string, "seen-skills", scopeId).join(",") : "";
+  const seenFile = hasFileDedup ? readSessionFile(sessionId as string, "seen-skills", scopeId) : "";
   const seenState = hasFileDedup
     ? mergeSeenSkillStates(seenEnv, seenFile, seenClaims)
     : seenEnv;
@@ -1198,9 +1208,9 @@ function run(): string {
     if (!injectedSkills.has(warningKey)) {
       let warningClaimed = true;
       if (sessionId) {
-        warningClaimed = tryClaimSessionKey(sessionId, "seen-skills", warningKey);
+        warningClaimed = tryClaimSessionKey(sessionId, "seen-skills", warningKey, scopeId);
         if (warningClaimed) {
-          process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills");
+          process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills", scopeId);
         }
       }
 
@@ -1293,9 +1303,9 @@ function run(): string {
   if (vercelEnvHelp.triggered) {
     let helpClaimed = true;
     if (sessionId) {
-      helpClaimed = tryClaimSessionKey(sessionId, "seen-skills", VERCEL_ENV_HELP_ONCE_KEY);
+      helpClaimed = tryClaimSessionKey(sessionId, "seen-skills", VERCEL_ENV_HELP_ONCE_KEY, scopeId);
       if (helpClaimed) {
-        process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills");
+        process.env.VERCEL_PLUGIN_SEEN_SKILLS = syncSessionFileFromClaims(sessionId, "seen-skills", scopeId);
       }
     }
     if (helpClaimed) {
@@ -1335,6 +1345,7 @@ function run(): string {
     pluginRoot: PLUGIN_ROOT,
     hasEnvDedup,
     sessionId,
+    scopeId,
     injectedSkills,
     skillMap: skills.skillMap,
     logger: log,

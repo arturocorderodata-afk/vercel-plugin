@@ -17,7 +17,7 @@
       "description": "middleware.ts triggers routing-middleware, auth, and investigation-mode",
       "type": "path",
       "input": "middleware.ts",
-      "expectedSkills": ["routing-middleware", "auth", "investigation-mode"]
+      "expectedSkills": ["routing-middleware", "auth", "investigation-mode", "edge-runtime"]
     },
     {
       "description": ".env.local triggers env-vars",
@@ -29,7 +29,7 @@
       "description": "app/api/chat/route.ts triggers ai-sdk, nextjs, and vercel-functions",
       "type": "path",
       "input": "app/api/chat/route.ts",
-      "expectedSkills": ["ai-sdk", "nextjs", "vercel-functions"]
+      "expectedSkills": ["ai-sdk", "nextjs", "vercel-functions", "chat-sdk"]
     },
     {
       "description": "turbo.json triggers turborepo",

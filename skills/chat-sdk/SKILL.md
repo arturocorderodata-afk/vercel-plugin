@@ -4,6 +4,7 @@ description: Vercel Chat SDK expert guidance. Use when building multi-platform c
 metadata:
   priority: 8
   pathPatterns:
+    - "app/api/chat/**"
     - "app/api/chat-bot/**"
     - "app/api/bot/**"
     - "app/api/slack/**"
@@ -20,6 +21,7 @@ metadata:
     - "app/api/webhooks/telegram/**"
     - "app/api/webhooks/github/**"
     - "app/api/webhooks/linear/**"
+    - "src/app/api/chat/**"
     - "src/app/api/chat-bot/**"
     - "src/app/api/bot/**"
     - "src/app/api/slack/**"
@@ -68,6 +70,7 @@ metadata:
       - "chat sdk"
       - "chat bot"
       - "chatbot"
+      - "conversational interface"
       - "slack bot"
       - "telegram bot"
       - "discord bot"
