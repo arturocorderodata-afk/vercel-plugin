@@ -481,16 +481,6 @@ NCC (Node.js Compiler Collection)          ⤳ skill: ncc  📖 docs: https://gi
 │
 └── Use When: Single-file deployment, reducing node_modules, bundling serverless functions
 
-STYLED-JSX (CSS-in-JS)                    ⤳ skill: styled-jsx  📖 docs: https://github.com/vercel/styled-jsx
-├── Purpose: Scoped CSS-in-JS for React components
-│   ⊃ <style jsx> scoped styles
-│   ⊃ Dynamic styles with template literals
-│   ⊃ Global styles with <style jsx global>
-│   ⊃ styled-jsx/css API for external style definitions
-│   ⊃ css.resolve for child component styling
-│
-└── Use When: Component-scoped CSS in React/Next.js, bundled with Next.js by default
-
 MICRO (HTTP Microservices)                 ⤳ skill: micro  📖 docs: https://github.com/vercel/micro
 ├── Purpose: Lightweight async HTTP microservices framework
 │   ⊃ Single-endpoint HTTP servers

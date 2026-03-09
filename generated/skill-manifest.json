@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-09T14:10:50.276Z",
+  "generatedAt": "2026-03-09T17:05:44.284Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -30,39 +30,6 @@
         "\\bvercel\\s+agent\\b"
       ],
       "importRegexSources": []
-    },
-    "styled-jsx": {
-      "priority": 4,
-      "summary": "",
-      "pathPatterns": [],
-      "bashPatterns": [
-        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bstyled-jsx\\b",
-        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*\\bstyled-jsx\\b",
-        "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bstyled-jsx\\b",
-        "\\byarn\\s+add\\s+[^\\n]*\\bstyled-jsx\\b"
-      ],
-      "importPatterns": [
-        "styled-jsx",
-        "styled-jsx/css"
-      ],
-      "bodyPath": "skills/styled-jsx/SKILL.md",
-      "pathRegexSources": [],
-      "bashRegexSources": [
-        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bstyled-jsx\\b",
-        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*\\bstyled-jsx\\b",
-        "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bstyled-jsx\\b",
-        "\\byarn\\s+add\\s+[^\\n]*\\bstyled-jsx\\b"
-      ],
-      "importRegexSources": [
-        {
-          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]styled-jsx(?:\\/[^'\"]*)?['\"]",
-          "flags": "m"
-        },
-        {
-          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]styled-jsx\\/css(?:\\/[^'\"]*)?['\"]",
-          "flags": "m"
-        }
-      ]
     },
     "routing-middleware": {
       "priority": 6,
@@ -148,7 +115,96 @@
         "\\bnuxt\\s+dev\\b",
         "\\bvercel\\s+dev\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [],
+      "promptSignals": {
+        "phrases": [
+          "check the page",
+          "check the browser",
+          "check the site",
+          "is the page working",
+          "is it loading",
+          "blank page",
+          "white screen",
+          "nothing showing",
+          "page is broken",
+          "screenshot the page",
+          "take a screenshot",
+          "check for errors",
+          "console errors",
+          "browser errors",
+          "page is stuck",
+          "page is hanging",
+          "page not loading",
+          "page frozen",
+          "spinner not stopping",
+          "page not responding"
+        ],
+        "allOf": [
+          [
+            "check",
+            "page"
+          ],
+          [
+            "check",
+            "browser"
+          ],
+          [
+            "check",
+            "site"
+          ],
+          [
+            "blank",
+            "page"
+          ],
+          [
+            "white",
+            "screen"
+          ],
+          [
+            "console",
+            "errors"
+          ],
+          [
+            "page",
+            "broken"
+          ],
+          [
+            "page",
+            "loading"
+          ],
+          [
+            "not",
+            "rendering"
+          ],
+          [
+            "page",
+            "stuck"
+          ],
+          [
+            "page",
+            "hanging"
+          ],
+          [
+            "page",
+            "frozen"
+          ],
+          [
+            "page",
+            "timeout"
+          ]
+        ],
+        "anyOf": [
+          "page",
+          "browser",
+          "screen",
+          "rendering",
+          "visual",
+          "spinner",
+          "loading"
+        ],
+        "noneOf": [],
+        "minScore": 6
+      }
     },
     "micro": {
       "priority": 4,
@@ -608,6 +664,294 @@
         }
       ]
     },
+    "investigation-mode": {
+      "priority": 8,
+      "summary": "Debug stuck/hung apps: check logs → workflow runs → browser → deployment",
+      "pathPatterns": [
+        "**/middleware.{ts,js,mjs}",
+        "**/lib/logger.{ts,js}",
+        "**/utils/logger.{ts,js}",
+        "**/instrumentation.{ts,js}",
+        "**/*.log",
+        "**/error.{tsx,ts,js,jsx}",
+        "**/global-error.{tsx,ts,js,jsx}",
+        "**/not-found.{tsx,ts,js,jsx}"
+      ],
+      "bashPatterns": [
+        "\\bvercel\\s+logs?\\b",
+        "\\bvercel\\s+inspect\\b",
+        "\\btail\\s+-f\\b.*\\.log",
+        "\\bworkflow\\s+runs?\\b",
+        "\\bvercel\\s+ls\\b",
+        "\\bcurl\\s+-[vI]"
+      ],
+      "importPatterns": [],
+      "bodyPath": "skills/investigation-mode/SKILL.md",
+      "pathRegexSources": [
+        "^(?:[^/]+\\/)*middleware\\.\\{ts,js,mjs\\}$",
+        "^(?:[^/]+\\/)*lib\\/logger\\.\\{ts,js\\}$",
+        "^(?:[^/]+\\/)*utils\\/logger\\.\\{ts,js\\}$",
+        "^(?:[^/]+\\/)*instrumentation\\.\\{ts,js\\}$",
+        "^(?:[^/]+\\/)*[^/]*\\.log$",
+        "^(?:[^/]+\\/)*error\\.\\{tsx,ts,js,jsx\\}$",
+        "^(?:[^/]+\\/)*global-error\\.\\{tsx,ts,js,jsx\\}$",
+        "^(?:[^/]+\\/)*not-found\\.\\{tsx,ts,js,jsx\\}$"
+      ],
+      "bashRegexSources": [
+        "\\bvercel\\s+logs?\\b",
+        "\\bvercel\\s+inspect\\b",
+        "\\btail\\s+-f\\b.*\\.log",
+        "\\bworkflow\\s+runs?\\b",
+        "\\bvercel\\s+ls\\b",
+        "\\bcurl\\s+-[vI]"
+      ],
+      "importRegexSources": [],
+      "promptSignals": {
+        "phrases": [
+          "it's stuck",
+          "it's hung",
+          "nothing is happening",
+          "not responding",
+          "just sitting there",
+          "seems frozen",
+          "is it frozen",
+          "why is it hanging",
+          "check the logs",
+          "check logs",
+          "where are the logs",
+          "how do I debug",
+          "how to debug",
+          "white screen",
+          "blank page",
+          "spinning forever",
+          "timed out",
+          "keeps timing out",
+          "no response",
+          "not loading",
+          "debug this",
+          "investigate why",
+          "what went wrong",
+          "why did it fail",
+          "why is it failing",
+          "something is broken",
+          "something broke",
+          "check what happened",
+          "check the status",
+          "where is the error",
+          "find the error",
+          "why is it slow",
+          "taking forever",
+          "still loading",
+          "not finishing",
+          "seems dead",
+          "been waiting",
+          "waiting forever",
+          "stuck on",
+          "hung up",
+          "not progressing",
+          "stalled out",
+          "is it running",
+          "did it crash",
+          "keeps failing",
+          "why no response",
+          "where did it go",
+          "lost connection",
+          "never finishes",
+          "pending forever",
+          "queue stuck",
+          "job stuck",
+          "build stuck",
+          "request hanging",
+          "api not responding"
+        ],
+        "allOf": [
+          [
+            "stuck",
+            "workflow"
+          ],
+          [
+            "stuck",
+            "deploy"
+          ],
+          [
+            "stuck",
+            "loading"
+          ],
+          [
+            "stuck",
+            "build"
+          ],
+          [
+            "stuck",
+            "queue"
+          ],
+          [
+            "stuck",
+            "job"
+          ],
+          [
+            "hung",
+            "request"
+          ],
+          [
+            "hung",
+            "api"
+          ],
+          [
+            "frozen",
+            "page"
+          ],
+          [
+            "frozen",
+            "app"
+          ],
+          [
+            "check",
+            "why"
+          ],
+          [
+            "check",
+            "broken"
+          ],
+          [
+            "check",
+            "error"
+          ],
+          [
+            "check",
+            "status"
+          ],
+          [
+            "debug",
+            "workflow"
+          ],
+          [
+            "debug",
+            "deploy"
+          ],
+          [
+            "debug",
+            "api"
+          ],
+          [
+            "logs",
+            "error"
+          ],
+          [
+            "logs",
+            "check"
+          ],
+          [
+            "slow",
+            "response"
+          ],
+          [
+            "slow",
+            "loading"
+          ],
+          [
+            "timeout",
+            "api"
+          ],
+          [
+            "timeout",
+            "request"
+          ],
+          [
+            "waiting",
+            "response"
+          ],
+          [
+            "waiting",
+            "forever"
+          ],
+          [
+            "waiting",
+            "deploy"
+          ],
+          [
+            "not working",
+            "why"
+          ],
+          [
+            "not",
+            "responding"
+          ],
+          [
+            "hanging",
+            "for"
+          ],
+          [
+            "been",
+            "hanging"
+          ],
+          [
+            "been",
+            "stuck"
+          ],
+          [
+            "been",
+            "waiting"
+          ],
+          [
+            "why",
+            "slow"
+          ],
+          [
+            "why",
+            "failing"
+          ],
+          [
+            "why",
+            "stuck"
+          ],
+          [
+            "why",
+            "hanging"
+          ],
+          [
+            "job",
+            "failing"
+          ],
+          [
+            "queue",
+            "processing"
+          ]
+        ],
+        "anyOf": [
+          "stuck",
+          "hung",
+          "frozen",
+          "broken",
+          "failing",
+          "timeout",
+          "slow",
+          "debug",
+          "investigate",
+          "check",
+          "logs",
+          "error",
+          "hanging",
+          "waiting",
+          "stalled",
+          "pending",
+          "processing",
+          "loading",
+          "unresponsive"
+        ],
+        "noneOf": [
+          "css stuck",
+          "sticky position",
+          "position: sticky",
+          "z-index",
+          "sticky nav",
+          "sticky header",
+          "sticky footer",
+          "overflow: hidden"
+        ],
+        "minScore": 4
+      }
+    },
     "bootstrap": {
       "priority": 8,
       "summary": "",
@@ -734,7 +1078,67 @@
         "\\byarn\\s+dlx\\s+vercel\\b",
         "\\bnpx\\s+@vercel/config\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [],
+      "promptSignals": {
+        "phrases": [
+          "check deployment",
+          "check deploy",
+          "deployment status",
+          "deploy status",
+          "vercel logs",
+          "deployment logs",
+          "deploy logs",
+          "vercel inspect",
+          "is it deployed",
+          "deploy failing",
+          "deploy failed",
+          "deployment error",
+          "check vercel",
+          "vercel status"
+        ],
+        "allOf": [
+          [
+            "check",
+            "deployment"
+          ],
+          [
+            "check",
+            "deploy"
+          ],
+          [
+            "vercel",
+            "status"
+          ],
+          [
+            "vercel",
+            "logs"
+          ],
+          [
+            "deploy",
+            "error"
+          ],
+          [
+            "deploy",
+            "failed"
+          ],
+          [
+            "deploy",
+            "stuck"
+          ]
+        ],
+        "anyOf": [
+          "deployment",
+          "deploy",
+          "vercel",
+          "production"
+        ],
+        "noneOf": [
+          "terraform",
+          "aws deploy",
+          "heroku"
+        ],
+        "minScore": 6
+      }
     },
     "runtime-cache": {
       "priority": 6,
@@ -819,7 +1223,7 @@
         },
         {
           "pattern": "gpt-4o",
-          "message": "Your knowledge is outdated — gpt-4o has been superseded by gpt-5.4 which is significantly better, cheaper, and faster. Switch to gateway(\"openai/gpt-5.4\")",
+          "message": "Your knowledge is outdated — gpt-4o has been superseded by gpt-5.4 which is significantly better, cheaper, and faster. Switch to model: \"openai/gpt-5.4\"",
           "severity": "warn"
         },
         {
@@ -829,12 +1233,12 @@
         },
         {
           "pattern": "gemini-2\\.0-flash-exp-image-generation",
-          "message": "Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images, is faster, and cheaper. Switch to gateway(\"google/gemini-3.1-flash-image-preview\")",
+          "message": "Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images, is faster, and cheaper. Switch to model: \"google/gemini-3.1-flash-image-preview\"",
           "severity": "warn"
         },
         {
           "pattern": "gemini-2\\.0-flash-001",
-          "message": "Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use gateway(\"google/gemini-3.1-flash-image-preview\") for image generation — it is the latest and best model",
+          "message": "Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use model: \"google/gemini-3.1-flash-image-preview\" for image generation — it is the latest and best model",
           "severity": "warn"
         }
       ]
@@ -1168,6 +1572,11 @@
         "sentry.edge.config.*"
       ],
       "bashPatterns": [
+        "\\bvercel\\s+logs?\\b",
+        "\\bvercel\\s+logs?\\s+.*--follow\\b",
+        "\\bvercel\\s+logs?\\s+.*--level\\b",
+        "\\bvercel\\s+logs?\\s+.*--since\\b",
+        "\\bcurl\\s+.*deployments.*events\\b",
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/analytics\\b",
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/analytics\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/analytics\\b",
@@ -1219,6 +1628,11 @@
         "^sentry\\.edge\\.config\\.[^/]*$"
       ],
       "bashRegexSources": [
+        "\\bvercel\\s+logs?\\b",
+        "\\bvercel\\s+logs?\\s+.*--follow\\b",
+        "\\bvercel\\s+logs?\\s+.*--level\\b",
+        "\\bvercel\\s+logs?\\s+.*--since\\b",
+        "\\bcurl\\s+.*deployments.*events\\b",
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/analytics\\b",
         "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/analytics\\b",
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@vercel/analytics\\b",
@@ -1248,7 +1662,97 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bnewrelic\\b",
         "\\byarn\\s+add\\s+[^\\n]*\\bnewrelic\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [],
+      "validate": [
+        {
+          "pattern": "export (async )?function (GET|POST|PUT|PATCH|DELETE)",
+          "message": "API route handlers should include error logging — wrap in try/catch with console.error for production debugging",
+          "severity": "warn",
+          "skipIfFileContains": "console\\\\.error|logger\\\\.|captureException|Sentry"
+        }
+      ],
+      "promptSignals": {
+        "phrases": [
+          "add logging",
+          "add logs",
+          "set up logging",
+          "setup logging",
+          "configure logging",
+          "structured logging",
+          "log drain",
+          "log drains",
+          "vercel analytics",
+          "speed insights",
+          "web analytics",
+          "opentelemetry",
+          "otel",
+          "instrumentation",
+          "monitoring",
+          "set up monitoring",
+          "add observability",
+          "track errors",
+          "error tracking",
+          "sentry",
+          "datadog"
+        ],
+        "allOf": [
+          [
+            "add",
+            "logging"
+          ],
+          [
+            "add",
+            "monitoring"
+          ],
+          [
+            "set up",
+            "logs"
+          ],
+          [
+            "configure",
+            "analytics"
+          ],
+          [
+            "vercel",
+            "logs"
+          ],
+          [
+            "vercel",
+            "analytics"
+          ],
+          [
+            "track",
+            "performance"
+          ],
+          [
+            "track",
+            "errors"
+          ]
+        ],
+        "anyOf": [
+          "logging",
+          "monitoring",
+          "analytics",
+          "observability",
+          "telemetry",
+          "traces",
+          "metrics",
+          "debug",
+          "debugging",
+          "stuck",
+          "hanging",
+          "hung",
+          "waiting",
+          "stalled",
+          "spinning",
+          "timeout",
+          "slow",
+          "pending",
+          "unresponsive"
+        ],
+        "noneOf": [],
+        "minScore": 6
+      }
     },
     "cms": {
       "priority": 4,
@@ -1547,6 +2051,18 @@
           "message": "Native fetch() is not available in workflow sandbox scope — import fetch from \"workflow\" or move the call into a \"use step\" function",
           "severity": "warn",
           "skipIfFileContains": "use step"
+        },
+        {
+          "pattern": "\"use step\"",
+          "message": "Workflow steps should include console.log or structured logging for observability — add logging at step entry/exit to debug hangs",
+          "severity": "warn",
+          "skipIfFileContains": "console\\\\.(log|warn|error|info)"
+        },
+        {
+          "pattern": "\"use workflow\"",
+          "message": "Workflow files should import and use logging — add console.log or a logger at key execution points for debugging",
+          "severity": "warn",
+          "skipIfFileContains": "console\\\\.(log|warn|error|info)"
         }
       ],
       "promptSignals": {
@@ -1567,7 +2083,26 @@
           "streams progress",
           "stream progress",
           "streams each",
-          "stream each"
+          "stream each",
+          "workflow stuck",
+          "workflow hung",
+          "workflow hanging",
+          "workflow waiting",
+          "workflow failing",
+          "workflow timeout",
+          "workflow not running",
+          "workflow error",
+          "check workflow",
+          "workflow logs",
+          "workflow run status",
+          "debug workflow",
+          "workflow not finishing",
+          "workflow not responding",
+          "workflow stalled",
+          "workflow pending",
+          "step is stuck",
+          "step is hanging",
+          "why is my workflow"
         ],
         "allOf": [
           [
@@ -1617,6 +2152,58 @@
           [
             "process",
             "stream"
+          ],
+          [
+            "workflow",
+            "stuck"
+          ],
+          [
+            "workflow",
+            "hung"
+          ],
+          [
+            "workflow",
+            "timeout"
+          ],
+          [
+            "workflow",
+            "error"
+          ],
+          [
+            "workflow",
+            "logs"
+          ],
+          [
+            "workflow",
+            "debug"
+          ],
+          [
+            "workflow",
+            "check"
+          ],
+          [
+            "workflow",
+            "failing"
+          ],
+          [
+            "workflow",
+            "status"
+          ],
+          [
+            "run",
+            "status"
+          ],
+          [
+            "step",
+            "failed"
+          ],
+          [
+            "step",
+            "stuck"
+          ],
+          [
+            "step",
+            "timeout"
           ]
         ],
         "anyOf": [
@@ -2419,7 +3006,7 @@
         },
         {
           "pattern": "openai\\([\"']gpt-",
-          "message": "Your knowledge is outdated — do not use openai() directly for model selection. Use gateway(\"openai/gpt-5.4\") from the \"ai\" package instead — it provides failover, cost tracking, and observability automatically",
+          "message": "Your knowledge is outdated — do not use openai() directly for model selection. Use model: \"openai/gpt-5.4\" (plain string) or gateway(\"openai/gpt-5.4\") — both route through AI Gateway with failover, cost tracking, and observability automatically",
           "severity": "warn"
         },
         {
@@ -2469,32 +3056,32 @@
         },
         {
           "pattern": "gemini-2\\.0-flash-exp-image-generation",
-          "message": "Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images. Switch to gateway(\"google/gemini-3.1-flash-image-preview\")",
+          "message": "Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images. Switch to model: \"google/gemini-3.1-flash-image-preview\"",
           "severity": "warn"
         },
         {
           "pattern": "gemini-2\\.0-flash-001",
-          "message": "Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use gateway(\"google/gemini-3.1-flash-image-preview\") for image generation",
+          "message": "Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use model: \"google/gemini-3.1-flash-image-preview\" for image generation",
           "severity": "warn"
         },
         {
           "pattern": "gemini-2\\.5-flash-image",
-          "message": "Your knowledge is outdated — gemini-2.5-flash-image has been superseded by gemini-3.1-flash-image-preview which is significantly better. Switch to gateway(\"google/gemini-3.1-flash-image-preview\")",
+          "message": "Your knowledge is outdated — gemini-2.5-flash-image has been superseded by gemini-3.1-flash-image-preview which is significantly better. Switch to model: \"google/gemini-3.1-flash-image-preview\"",
           "severity": "warn"
         },
         {
           "pattern": "placeholder.*image|placeholder.*url|placeholder.*img",
-          "message": "Do not use placeholder images — use generateText with gateway(\"google/gemini-3.1-flash-image-preview\") to generate real images from result.files",
+          "message": "Do not use placeholder images — use generateText with model: \"google/gemini-3.1-flash-image-preview\" to generate real images from result.files",
           "severity": "warn"
         },
         {
           "pattern": "dall-e-3|dall-e-2|openai\\.image\\(",
-          "message": "Your knowledge is outdated — dall-e is no longer the best option. Use gateway(\"google/gemini-3.1-flash-image-preview\") with generateText for much better, faster, cheaper image generation via result.files",
+          "message": "Your knowledge is outdated — dall-e is no longer the best option. Use model: \"google/gemini-3.1-flash-image-preview\" with generateText for much better, faster, cheaper image generation via result.files",
           "severity": "warn"
         },
         {
           "pattern": "experimental_generateImage",
-          "message": "experimental_generateImage is not needed — use generateText with gateway(\"google/gemini-3.1-flash-image-preview\") instead. Images come back in result.files",
+          "message": "experimental_generateImage is not needed — use generateText with model: \"google/gemini-3.1-flash-image-preview\" instead. Images come back in result.files",
           "severity": "warn"
         },
         {

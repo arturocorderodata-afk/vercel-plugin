@@ -89,7 +89,7 @@ Describe **products and features**, never name specific technologies. Let the pl
 | Feature flags + CRM | vercel-flags, vercel-queues, ai-sdk |
 | Email pipeline | email, satori, ai-sdk, vercel-storage |
 | Marketplace/payments | payments, marketplace, cms |
-| Kitchen sink | micro, ncc, styled-jsx, all niche skills |
+| Kitchen sink | micro, ncc, all niche skills |
 
 ### Hard-to-trigger skills (8 of 44)
 
@@ -100,7 +100,6 @@ These need explicit technology references in the prompt because agents don't nat
 - `vercel-firewall` — say "use Vercel Firewall for rate limiting"
 - `marketplace` — say "publish to the Vercel Marketplace"
 - `geist` — say "install the geist font package"
-- `styled-jsx` — say "use styled-jsx for scoped CSS"
 - `edge-runtime` — say "use the edge-runtime package"
 - `json-render` — name files `components/chat-*.tsx`
 
