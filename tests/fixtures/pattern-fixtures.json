@@ -83,7 +83,7 @@
       "description": "next dev --turbo triggers turbopack, nextjs, and agent-browser",
       "type": "bash",
       "input": "next dev --turbo",
-      "expectedSkills": ["turbopack", "nextjs", "agent-browser", "agent-browser-verify"]
+      "expectedSkills": ["turbopack", "nextjs", "agent-browser", "agent-browser-verify", "verification"]
     },
     {
       "description": "vercel env pull triggers env-vars, ai-gateway, and vercel-cli",
@@ -128,28 +128,28 @@
       "expectedSkills": ["react-best-practices", "nextjs"]
     },
     {
-      "description": "npm run dev triggers nextjs, agent-browser, agent-browser-verify",
+      "description": "npm run dev triggers nextjs, agent-browser, agent-browser-verify, verification",
       "type": "bash",
       "input": "npm run dev",
-      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify"]
+      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify", "verification"]
     },
     {
-      "description": "pnpm dev triggers nextjs, agent-browser, agent-browser-verify",
+      "description": "pnpm dev triggers nextjs, agent-browser, agent-browser-verify, verification",
       "type": "bash",
       "input": "pnpm dev",
-      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify"]
+      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify", "verification"]
     },
     {
-      "description": "bun run dev triggers nextjs, agent-browser, agent-browser-verify",
+      "description": "bun run dev triggers nextjs, agent-browser, agent-browser-verify, verification",
       "type": "bash",
       "input": "bun run dev",
-      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify"]
+      "expectedSkills": ["nextjs", "agent-browser", "agent-browser-verify", "verification"]
     },
     {
-      "description": "vite triggers agent-browser, agent-browser-verify",
+      "description": "vite triggers agent-browser, agent-browser-verify, verification",
       "type": "bash",
       "input": "vite",
-      "expectedSkills": ["agent-browser", "agent-browser-verify"]
+      "expectedSkills": ["agent-browser", "agent-browser-verify", "verification"]
     }
   ]
 }

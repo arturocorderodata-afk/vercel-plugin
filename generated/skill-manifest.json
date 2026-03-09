@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-09T17:37:53.799Z",
+  "generatedAt": "2026-03-09T18:22:36.231Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -1341,6 +1341,167 @@
       ],
       "importRegexSources": []
     },
+    "ai-generation-persistence": {
+      "priority": 6,
+      "summary": "Persist every AI generation: unique ID, save to DB/Blob, addressable URL /chat/[id], track token cost",
+      "pathPatterns": [
+        "app/api/generate/**",
+        "app/api/generations/**",
+        "src/app/api/generate/**",
+        "src/app/api/generations/**",
+        "app/chat/[id]/**",
+        "app/generate/[id]/**",
+        "src/app/chat/[id]/**",
+        "src/app/generate/[id]/**",
+        "lib/generations/**",
+        "src/lib/generations/**"
+      ],
+      "bashPatterns": [],
+      "importPatterns": [
+        "ai",
+        "@ai-sdk/*",
+        "@vercel/blob",
+        "nanoid",
+        "@paralleldrive/cuid2"
+      ],
+      "bodyPath": "skills/ai-generation-persistence/SKILL.md",
+      "pathRegexSources": [
+        "^app\\/api\\/generate\\/.*$",
+        "^app\\/api\\/generations\\/.*$",
+        "^src\\/app\\/api\\/generate\\/.*$",
+        "^src\\/app\\/api\\/generations\\/.*$",
+        "^app\\/chat\\/\\[id\\]\\/.*$",
+        "^app\\/generate\\/\\[id\\]\\/.*$",
+        "^src\\/app\\/chat\\/\\[id\\]\\/.*$",
+        "^src\\/app\\/generate\\/\\[id\\]\\/.*$",
+        "^lib\\/generations\\/.*$",
+        "^src\\/lib\\/generations\\/.*$"
+      ],
+      "bashRegexSources": [],
+      "importRegexSources": [
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]ai(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@ai-sdk\\/[^'\"]*(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@vercel\\/blob(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]nanoid(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@paralleldrive\\/cuid2(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        }
+      ],
+      "validate": [
+        {
+          "pattern": "streamText\\\\(|generateText\\\\(",
+          "message": "Ensure this AI generation is persisted with a unique ID (nanoid/cuid2) — generations are expensive assets that should be saved and addressable via URL",
+          "severity": "warn",
+          "skipIfFileContains": "nanoid|cuid|createId|randomUUID|uuid"
+        }
+      ],
+      "promptSignals": {
+        "phrases": [
+          "save generations",
+          "persist generations",
+          "generation history",
+          "chat history",
+          "save chat",
+          "generation id",
+          "ai chat",
+          "chat app",
+          "chatbot",
+          "image generation",
+          "text generation",
+          "ai app"
+        ],
+        "allOf": [
+          [
+            "generate",
+            "save"
+          ],
+          [
+            "generate",
+            "persist"
+          ],
+          [
+            "generate",
+            "store"
+          ],
+          [
+            "ai",
+            "persist"
+          ],
+          [
+            "ai",
+            "history"
+          ],
+          [
+            "ai",
+            "database"
+          ],
+          [
+            "chat",
+            "persist"
+          ],
+          [
+            "chat",
+            "database"
+          ],
+          [
+            "chat",
+            "url"
+          ],
+          [
+            "generation",
+            "url"
+          ],
+          [
+            "generation",
+            "id"
+          ],
+          [
+            "image",
+            "generate"
+          ],
+          [
+            "stream",
+            "save"
+          ],
+          [
+            "stream",
+            "persist"
+          ]
+        ],
+        "anyOf": [
+          "shareable",
+          "retrievable",
+          "permalink",
+          "cost tracking",
+          "token usage",
+          "nanoid",
+          "cuid",
+          "openai",
+          "anthropic",
+          "llm",
+          "gpt",
+          "claude"
+        ],
+        "noneOf": [
+          "github actions",
+          "ci workflow"
+        ],
+        "minScore": 6
+      }
+    },
     "vercel-queues": {
       "priority": 5,
       "summary": "",
@@ -1790,6 +1951,106 @@
           "unresponsive"
         ],
         "noneOf": [],
+        "minScore": 6
+      }
+    },
+    "verification": {
+      "priority": 7,
+      "summary": "Verify full user story: browser + server + data flow + env",
+      "pathPatterns": [],
+      "bashPatterns": [
+        "\\bnext\\s+dev\\b",
+        "\\bnpm\\s+run\\s+dev\\b",
+        "\\bpnpm\\s+dev\\b",
+        "\\bbun\\s+run\\s+dev\\b",
+        "\\byarn\\s+dev\\b",
+        "\\bvite\\s*(dev)?\\b",
+        "\\bvercel\\s+dev\\b"
+      ],
+      "importPatterns": [],
+      "bodyPath": "skills/verification/SKILL.md",
+      "pathRegexSources": [],
+      "bashRegexSources": [
+        "\\bnext\\s+dev\\b",
+        "\\bnpm\\s+run\\s+dev\\b",
+        "\\bpnpm\\s+dev\\b",
+        "\\bbun\\s+run\\s+dev\\b",
+        "\\byarn\\s+dev\\b",
+        "\\bvite\\s*(dev)?\\b",
+        "\\bvercel\\s+dev\\b"
+      ],
+      "importRegexSources": [],
+      "promptSignals": {
+        "phrases": [
+          "verify the flow",
+          "verify everything works",
+          "test the whole thing",
+          "does it actually work",
+          "check end to end",
+          "end to end test",
+          "why isn't it working right",
+          "why doesn't it work",
+          "it's not working correctly",
+          "something's off",
+          "not quite right",
+          "almost works but",
+          "works locally but",
+          "verify the feature",
+          "make sure it works",
+          "full verification"
+        ],
+        "allOf": [
+          [
+            "verify",
+            "flow"
+          ],
+          [
+            "verify",
+            "works"
+          ],
+          [
+            "check",
+            "everything"
+          ],
+          [
+            "test",
+            "end",
+            "end"
+          ],
+          [
+            "not",
+            "working",
+            "right"
+          ],
+          [
+            "something",
+            "off"
+          ],
+          [
+            "almost",
+            "works"
+          ],
+          [
+            "make",
+            "sure",
+            "works"
+          ]
+        ],
+        "anyOf": [
+          "verify",
+          "verification",
+          "end-to-end",
+          "full flow",
+          "works",
+          "working"
+        ],
+        "noneOf": [
+          "unit test",
+          "jest",
+          "vitest",
+          "playwright test",
+          "cypress test"
+        ],
         "minScore": 6
       }
     },

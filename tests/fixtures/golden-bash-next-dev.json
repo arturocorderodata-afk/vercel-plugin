@@ -15,10 +15,12 @@
         "agent-browser",
         "agent-browser-verify",
         "nextjs",
-        "turbopack"
+        "turbopack",
+        "verification"
       ],
       "injectedSkills": [
         "agent-browser-verify",
+        "verification",
         "nextjs",
         "turbopack",
         "agent-browser"

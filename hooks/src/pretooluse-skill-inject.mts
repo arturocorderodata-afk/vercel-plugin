@@ -69,6 +69,10 @@ const DEV_SERVER_VERIFY_SKILL = "agent-browser-verify";
 const DEV_SERVER_VERIFY_PRIORITY_BOOST = 45;
 const DEV_SERVER_VERIFY_MAX_ITERATIONS = 2;
 const DEV_SERVER_VERIFY_MARKER = "<!-- marker:dev-server-verify -->";
+
+// Companion skills co-injected alongside agent-browser-verify on dev server detection.
+// These share the same iteration guard and loop-guard bypass logic.
+const DEV_SERVER_COMPANION_SKILLS: string[] = ["verification"];
 const DEV_SERVER_UNAVAILABLE_WARNING = `<!-- agent-browser-unavailable -->
 **Recommendation: Install agent-browser for automatic verification**
 
@@ -1083,13 +1087,13 @@ function run(): string {
   // Stage 3.7: Vercel env command quick-help trigger
   const vercelEnvHelp = checkVercelEnvHelp(toolName, toolInput, injectedSkills, dedupOff, log);
 
-  // Stage 3.8: Boost agent-browser-verify priority when dev-server detected
+  // Stage 3.8: Boost agent-browser-verify and companion skills priority when dev-server detected
   if (devServerVerify.triggered) {
+    const devServerBoostSkills = new Set([DEV_SERVER_VERIFY_SKILL, ...DEV_SERVER_COMPANION_SKILLS]);
     for (const entry of matchedEntries) {
-      if (entry.skill === DEV_SERVER_VERIFY_SKILL) {
+      if (devServerBoostSkills.has(entry.skill)) {
         entry.effectivePriority = DEV_SERVER_VERIFY_PRIORITY_BOOST;
         log.debug("dev-server-verify-priority-boost", { skill: entry.skill, effectivePriority: entry.effectivePriority });
-        break;
       }
     }
   }
@@ -1185,6 +1189,38 @@ function run(): string {
     log.debug("dev-server-verify-synthetic-inject", { skill: DEV_SERVER_VERIFY_SKILL, iteration: devServerVerify.iterationCount });
   } else if (devServerVerify.triggered && rankedSkills.includes(DEV_SERVER_VERIFY_SKILL)) {
     devServerVerifyInjected = true;
+  }
+
+  // Stage 4.7: Co-inject companion skills alongside agent-browser-verify on dev server detection.
+  // Companions share the same iteration guard and loop-guard bypass as agent-browser-verify.
+  if (devServerVerify.triggered && !devServerVerify.unavailable) {
+    for (const companion of DEV_SERVER_COMPANION_SKILLS) {
+      if (rankedSkills.includes(companion)) continue; // already present via pattern match
+      if (!dedupOff && injectedSkills.has(companion)) {
+        // Bypass dedup for companions — same as agent-browser-verify iteration-based bypass
+        log.debug("dev-server-companion-dedup-bypass", { skill: companion });
+      }
+      const companionTemplate = compiledSkills.find((e) => e.skill === companion);
+      const _companionEntry: CompiledSkillEntry = companionTemplate
+        ? { ...companionTemplate, effectivePriority: DEV_SERVER_VERIFY_PRIORITY_BOOST }
+        : {
+            skill: companion,
+            priority: 0,
+            compiledPaths: [],
+            compiledBash: [],
+            compiledImports: [],
+            effectivePriority: DEV_SERVER_VERIFY_PRIORITY_BOOST,
+          };
+      // Insert after agent-browser-verify (or at front if verify not present)
+      const verifyIdx = rankedSkills.indexOf(DEV_SERVER_VERIFY_SKILL);
+      if (verifyIdx !== -1) {
+        rankedSkills.splice(verifyIdx + 1, 0, companion);
+      } else {
+        rankedSkills.unshift(companion);
+      }
+      matched.add(companion);
+      log.debug("dev-server-companion-inject", { skill: companion, iteration: devServerVerify.iterationCount });
+    }
   }
 
   let vercelEnvHelpInjected = false;
@@ -1449,7 +1485,7 @@ if (isMainModule()) {
 export {
   run, validateSkillMap,
   TSX_REVIEW_SKILL, REVIEW_MARKER, DEFAULT_REVIEW_THRESHOLD, isTsxEditTool, getTsxEditCount, resetTsxEditCount,
-  DEV_SERVER_VERIFY_SKILL, DEV_SERVER_VERIFY_MARKER, DEV_SERVER_VERIFY_MAX_ITERATIONS,
+  DEV_SERVER_VERIFY_SKILL, DEV_SERVER_VERIFY_MARKER, DEV_SERVER_VERIFY_MAX_ITERATIONS, DEV_SERVER_COMPANION_SKILLS,
   checkVercelEnvHelp,
   DEV_SERVER_UNAVAILABLE_WARNING,
 };

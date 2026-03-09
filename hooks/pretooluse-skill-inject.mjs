@@ -40,6 +40,7 @@ const DEV_SERVER_VERIFY_SKILL = "agent-browser-verify";
 const DEV_SERVER_VERIFY_PRIORITY_BOOST = 45;
 const DEV_SERVER_VERIFY_MAX_ITERATIONS = 2;
 const DEV_SERVER_VERIFY_MARKER = "<!-- marker:dev-server-verify -->";
+const DEV_SERVER_COMPANION_SKILLS = ["verification"];
 const DEV_SERVER_UNAVAILABLE_WARNING = `<!-- agent-browser-unavailable -->
 **Recommendation: Install agent-browser for automatic verification**
 
@@ -682,11 +683,11 @@ function run() {
   const devServerVerify = checkDevServerVerify(toolName, toolInput, injectedSkills, dedupOff, log);
   const vercelEnvHelp = checkVercelEnvHelp(toolName, toolInput, injectedSkills, dedupOff, log);
   if (devServerVerify.triggered) {
+    const devServerBoostSkills = /* @__PURE__ */ new Set([DEV_SERVER_VERIFY_SKILL, ...DEV_SERVER_COMPANION_SKILLS]);
     for (const entry of matchedEntries) {
-      if (entry.skill === DEV_SERVER_VERIFY_SKILL) {
+      if (devServerBoostSkills.has(entry.skill)) {
         entry.effectivePriority = DEV_SERVER_VERIFY_PRIORITY_BOOST;
         log.debug("dev-server-verify-priority-boost", { skill: entry.skill, effectivePriority: entry.effectivePriority });
-        break;
       }
     }
   }
@@ -765,6 +766,31 @@ function run() {
     log.debug("dev-server-verify-synthetic-inject", { skill: DEV_SERVER_VERIFY_SKILL, iteration: devServerVerify.iterationCount });
   } else if (devServerVerify.triggered && rankedSkills.includes(DEV_SERVER_VERIFY_SKILL)) {
     devServerVerifyInjected = true;
+  }
+  if (devServerVerify.triggered && !devServerVerify.unavailable) {
+    for (const companion of DEV_SERVER_COMPANION_SKILLS) {
+      if (rankedSkills.includes(companion)) continue;
+      if (!dedupOff && injectedSkills.has(companion)) {
+        log.debug("dev-server-companion-dedup-bypass", { skill: companion });
+      }
+      const companionTemplate = compiledSkills.find((e) => e.skill === companion);
+      const _companionEntry = companionTemplate ? { ...companionTemplate, effectivePriority: DEV_SERVER_VERIFY_PRIORITY_BOOST } : {
+        skill: companion,
+        priority: 0,
+        compiledPaths: [],
+        compiledBash: [],
+        compiledImports: [],
+        effectivePriority: DEV_SERVER_VERIFY_PRIORITY_BOOST
+      };
+      const verifyIdx = rankedSkills.indexOf(DEV_SERVER_VERIFY_SKILL);
+      if (verifyIdx !== -1) {
+        rankedSkills.splice(verifyIdx + 1, 0, companion);
+      } else {
+        rankedSkills.unshift(companion);
+      }
+      matched.add(companion);
+      log.debug("dev-server-companion-inject", { skill: companion, iteration: devServerVerify.iterationCount });
+    }
   }
   let vercelEnvHelpInjected = false;
   if (vercelEnvHelp.triggered) {
@@ -973,6 +999,7 @@ if (isMainModule()) {
 }
 export {
   DEFAULT_REVIEW_THRESHOLD,
+  DEV_SERVER_COMPANION_SKILLS,
   DEV_SERVER_UNAVAILABLE_WARNING,
   DEV_SERVER_VERIFY_MARKER,
   DEV_SERVER_VERIFY_MAX_ITERATIONS,

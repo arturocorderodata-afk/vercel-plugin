@@ -4,7 +4,9 @@
 
 - **Build hooks**: `bun run build:hooks` (compiles `hooks/src/*.mts` → `hooks/*.mjs` via tsup)
 - **Build manifest**: `bun run build:manifest` (generates `generated/skill-manifest.json` from SKILL.md frontmatter)
-- **Build all**: `bun run build` (hooks + manifest)
+- **Build from skills**: `bun run build:from-skills` (compiles `*.md.tmpl` → `*.md` by resolving `{{include:skill:…}}` markers)
+- **Check from skills**: `bun run build:from-skills:check` (verify generated `.md` files are up-to-date; exits non-zero on drift)
+- **Build all**: `bun run build` (hooks + manifest + from-skills)
 - **Test**: `bun test` (typecheck + 32 test files)
 - **Single test**: `bun test tests/<file>.test.ts`
 - **Typecheck only**: `bun run typecheck` (tsc on hooks/tsconfig.json)
@@ -14,6 +16,8 @@
 - **Playground**: `bun run playground:generate` (generate static skill files for external tools)
 
 Run `bun run build:hooks` after editing any `.mts` file. A pre-commit hook auto-compiles when `.mts` files are staged.
+
+Run `bun run build:from-skills` after editing any skill referenced by a `.md.tmpl` template. The `build` script includes this step automatically.
 
 ## Architecture
 
@@ -127,6 +131,23 @@ Uses inline `parseSimpleYaml` in `skill-map-frontmatter.mjs`, **not** js-yaml:
 ### Playground (`.playground/`)
 
 Generates static skill files for external tools (Cursor, VSCode Copilot, Gemini CLI, etc.). Run `bun run playground:generate`. Generators live in `.playground/<tool-name>/`, fixtures in `.playground/_fixtures/`, snapshots in `.playground/_snapshots/`.
+
+### Template Include Engine (`scripts/build-from-skills.ts`)
+
+Agents and commands derive instructions from skills via `.md.tmpl` templates. Skills are the single source of truth — templates pull content at build time so agents/commands stay in sync without duplicating prose.
+
+**Convention**: `agents/<name>.md.tmpl` and `commands/<name>.md.tmpl` compile to `agents/<name>.md` and `commands/<name>.md` (committed). Two include marker formats:
+
+```
+{{include:skill:<name>:<heading>}}            — extracts a markdown section by heading
+{{include:skill:<name>:frontmatter:<field>}}  — extracts a frontmatter field value
+```
+
+Heading extraction is case-insensitive and captures everything from the heading to the next heading of equal or higher level.
+
+**Build**: `bun run build:from-skills` resolves all includes and writes output files. `bun run build:from-skills:check` verifies outputs are up-to-date (useful in CI). Both are part of `bun run build`.
+
+**Current templates** (8): `agents/ai-architect.md.tmpl`, `agents/deployment-expert.md.tmpl`, `agents/performance-optimizer.md.tmpl`, `commands/bootstrap.md.tmpl`, `commands/deploy.md.tmpl`, `commands/env.md.tmpl`, `commands/marketplace.md.tmpl`, `commands/status.md.tmpl`.
 
 ## Testing
 

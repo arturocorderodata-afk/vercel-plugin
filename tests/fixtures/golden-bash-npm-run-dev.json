@@ -9,8 +9,8 @@
       "version": 1,
       "toolName": "Bash",
       "toolTarget": "npm run dev",
-      "matchedSkills": ["agent-browser", "agent-browser-verify", "nextjs"],
-      "injectedSkills": ["agent-browser-verify", "nextjs", "agent-browser"],
+      "matchedSkills": ["agent-browser", "agent-browser-verify", "nextjs", "verification"],
+      "injectedSkills": ["agent-browser-verify", "verification", "nextjs", "agent-browser"],
       "droppedByCap": [],
       "droppedByBudget": []
     }

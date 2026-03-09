@@ -238,6 +238,7 @@ AI SDK (v6, TypeScript)                    ⤳ skill: ai-sdk  📖 docs: https:/
     ↔ Next.js (chat apps, AI features in web apps)
     ↔ Workflow DevKit (durable agents)
     ↔ AI Gateway (model routing, cost tracking)
+    ↔ Generation Persistence (IDs, URLs, cost tracking) ⤳ skill: ai-generation-persistence
     ↔ v0 (AI-generated UI components)
     ↔ AI Elements (production chat UI components)      ⤳ skill: ai-elements
     ↔ shadcn/ui (component foundation)                 ⤳ skill: shadcn
@@ -446,6 +447,14 @@ AGENT BROWSER VERIFY                       ⤳ skill: agent-browser-verify
 │   ⊃ Runs visual gut-check: page loads, no errors, key UI renders
 │
 └── Use When: After starting a dev server, before continuing development
+
+VERIFICATION                                   ⤳ skill: verification
+├── Purpose: Full-story verification orchestrator
+│   ⊃ Infers the user story from recent edits and project structure
+│   ⊃ Verifies end-to-end: browser → API → data → response
+│   ⊃ Coordinates agent-browser-verify, investigation-mode, observability
+│
+└── Use When: Dev server starts, user says "something's off", or verifying a feature works end-to-end
 
 REACT BEST PRACTICES                       ⤳ skill: react-best-practices
 ├── Purpose: TSX/JSX quality review checklist
