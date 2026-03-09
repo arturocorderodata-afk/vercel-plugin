@@ -39,30 +39,50 @@ metadata:
       - "durable workflow"
       - "durable execution"
       - "durable function"
+      - "durable pipeline"
+      - "durable process"
       - "step function"
       - "step functions"
       - "use workflow"
       - "use step"
+      - "multi-step pipeline"
+      - "multi step pipeline"
+      - "streams progress"
+      - "stream progress"
+      - "streams each"
+      - "stream each"
     allOf:
       - [workflow, durable]
       - [workflow, retry]
       - [workflow, resume]
       - [pause, resume]
       - [survive, crash]
+      - [pipeline, stream]
+      - [pipeline, step]
+      - [pipeline, durable]
+      - [multi-step, stream]
+      - [generation, pipeline]
+      - [creation, pipeline]
+      - [process, stream]
     anyOf:
       - "long-running"
       - "long running"
-      - "api route"
-      - "route handler"
-      - "agent"
+      - "multi-step"
+      - "multi step"
+      - "pipeline"
       - "orchestration"
-      - "observability"
+      - "step-by-step"
+      - "step by step"
+      - "each piece"
+      - "each step"
+      - "phase"
+      - "phases"
     noneOf:
       - "github actions"
       - ".github/workflows"
       - "ci workflow"
       - "aws step functions"
-    minScore: 6
+    minScore: 4
 ---
 
 # Vercel Workflow DevKit (WDK)

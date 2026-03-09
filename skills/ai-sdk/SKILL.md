@@ -144,6 +144,20 @@ npm install @ai-sdk/vercel@^2.0.37      # Optional: v0 model provider (v0-1.0-md
 
 > **Only install a direct provider SDK** (e.g., `@ai-sdk/anthropic`) if you need provider-specific features not exposed through the gateway.
 
+## What AI SDK Can Do
+
+AI SDK is not just text — it handles **text, images, structured data, tool calling, and agents** through one unified API:
+
+| Need | How |
+|------|-----|
+| Text generation / chat | `generateText()` or `streamText()` with `gateway("openai/gpt-5.4")` |
+| **Image generation** | `generateText()` with `gateway("google/gemini-3.1-flash-image-preview")` — images in `result.files` |
+| Structured JSON output | `generateText()` with `output: Output.object({ schema })` |
+| Tool calling / agents | `generateText()` with `tools: { ... }` or `ToolLoopAgent` |
+| Embeddings | `embed()` / `embedMany()` with `@ai-sdk/openai` |
+
+**If the product needs generated images** (portraits, posters, cover art, illustrations, comics, diagrams), use `generateText` with an image model — do NOT use placeholder images or skip image generation.
+
 ## Setup for AI Projects
 
 For the smoothest experience, link to a Vercel project so AI Gateway credentials are auto-provisioned via OIDC:
