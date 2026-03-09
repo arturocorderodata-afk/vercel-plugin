@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
  * SessionEnd hook: best-effort cleanup of session-scoped temp files.
+ * Deletes main and all agent-scoped claim dirs, session files, and profile cache.
  * Always exits successfully.
  */
 
-import { readFileSync, rmSync, unlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,9 +14,27 @@ type SessionEndHookInput = {
   session_id?: string;
 };
 
+const SAFE_SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+function tempSessionIdSegment(sessionId: string): string {
+  if (SAFE_SESSION_ID_RE.test(sessionId)) {
+    return sessionId;
+  }
+
+  return createHash("sha256").update(sessionId).digest("hex");
+}
+
 function removeFileIfPresent(path: string): void {
   try {
     unlinkSync(path);
+  } catch {
+    // Silently ignore cleanup failures
+  }
+}
+
+function removeDirIfPresent(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true });
   } catch {
     // Silently ignore cleanup failures
   }
@@ -37,28 +57,24 @@ function parseSessionIdFromStdin(): string | null {
 const sessionId = parseSessionIdFromStdin();
 if (sessionId !== null) {
   const tempRoot = tmpdir();
-  removeFileIfPresent(join(tempRoot, `vercel-plugin-${sessionId}-seen-skills.txt`));
-  removeFileIfPresent(join(tempRoot, `vercel-plugin-${sessionId}-validated-files.txt`));
+  const prefix = `vercel-plugin-${tempSessionIdSegment(sessionId)}-`;
 
+  // Glob all session-scoped temp entries (main + agent-scoped claim dirs, files, profile cache)
+  let entries: string[] = [];
   try {
-    rmSync(join(tempRoot, `vercel-plugin-${sessionId}-seen-skills.d`), {
-      recursive: true,
-      force: true,
-    });
+    entries = readdirSync(tempRoot).filter((name) => name.startsWith(prefix));
   } catch {
-    // Silently ignore cleanup failures
+    // Silently ignore readdir failures
   }
 
-  try {
-    rmSync(join(tempRoot, `vercel-plugin-${sessionId}-validated-files.d`), {
-      recursive: true,
-      force: true,
-    });
-  } catch {
-    // Silently ignore cleanup failures
+  for (const entry of entries) {
+    const fullPath = join(tempRoot, entry);
+    if (entry.endsWith(".d") || entry.endsWith("-pending-launches")) {
+      removeDirIfPresent(fullPath);
+    } else {
+      removeFileIfPresent(fullPath);
+    }
   }
-
-  removeFileIfPresent(join(tempRoot, `vercel-plugin-${sessionId}-subagent-ledger.jsonl`));
 }
 
 process.exit(0);

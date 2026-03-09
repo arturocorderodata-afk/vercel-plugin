@@ -5,29 +5,33 @@
  * Input: JSON on stdin with { session_id, cwd, agent_id, agent_type, hook_event_name }
  * Output: JSON on stdout with { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: "..." } } or {}
  *
- * Reads the profiler's VERCEL_PLUGIN_LIKELY_SKILLS env var and injects
- * lightweight skill summaries as additionalContext, scaled by agent type.
+ * Reads the cached profiler results from disk (profile.json) rather than
+ * re-running the profiler, falling back to env var when cache is unavailable.
  *
  * Agent type budgets:
- *   Explore / Plan  — minimal (~1KB): project profile + top skill names only
- *   general-purpose — standard (~8KB): profile + top skill summaries
- *   other / custom  — standard (~8KB): treat as general-purpose
+ *   Explore            — minimal  (~1KB): project profile + top skill names only
+ *   Plan               — light    (~3KB): profile + top skill summaries + deployment constraints
+ *   general-purpose    — standard (~8KB): profile + top skills with full bodies
+ *   other / custom     — standard (~8KB): treat as general-purpose
  */
 
 import type { SyncHookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pluginRoot as resolvePluginRoot, safeReadFile } from "./hook-env.mjs";
+import { pluginRoot as resolvePluginRoot, profileCachePath, safeReadFile, safeReadJson } from "./hook-env.mjs";
+import { createLogger, logCaughtError, type Logger } from "./logger.mjs";
+import { compilePromptSignals, matchPromptWithReason, normalizePromptText } from "./prompt-patterns.mjs";
 import { loadSkills } from "./pretooluse-skill-inject.mjs";
-import { createLogger, type Logger } from "./logger.mjs";
+import { buildSkillMap, extractFrontmatter } from "./skill-map-frontmatter.mjs";
+import { claimPendingLaunch } from "./subagent-state.mjs";
 
 const PLUGIN_ROOT = resolvePluginRoot();
 
-/** Budget caps per agent type category. */
-const MINIMAL_BUDGET_BYTES = 1_024;
-const STANDARD_BUDGET_BYTES = 8_000;
-const MINIMAL_AGENT_TYPES = new Set(["Explore", "Plan"]);
+/** Budget caps per agent type category (bytes). */
+export const MINIMAL_BUDGET_BYTES = 1_024;
+export const LIGHT_BUDGET_BYTES = 3_072;
+export const STANDARD_BUDGET_BYTES = 8_000;
 
 const log: Logger = createLogger();
 
@@ -54,36 +58,145 @@ function parseInput(): SubagentStartInput | null {
 }
 
 // ---------------------------------------------------------------------------
-// Context assembly
+// Profile cache
 // ---------------------------------------------------------------------------
 
-function getLikelySkills(): string[] {
+interface ProfileCache {
+  projectRoot: string;
+  likelySkills: string[];
+  greenfield: boolean;
+  bootstrapHints: string[];
+  resourceHints: string[];
+  setupMode: boolean;
+  agentBrowserAvailable: boolean;
+  timestamp: string;
+}
+
+/**
+ * Read likely skills from the cached profile on disk, falling back to the
+ * VERCEL_PLUGIN_LIKELY_SKILLS env var if the cache is unavailable.
+ */
+function getLikelySkills(sessionId: string | undefined): string[] {
+  // Try disk cache first
+  if (sessionId) {
+    const cache = safeReadJson<ProfileCache>(profileCachePath(sessionId));
+    if (cache && Array.isArray(cache.likelySkills) && cache.likelySkills.length > 0) {
+      log.debug("subagent-start-bootstrap:profile-cache-hit", { sessionId, skills: cache.likelySkills });
+      return cache.likelySkills;
+    }
+    log.debug("subagent-start-bootstrap:profile-cache-miss", { sessionId });
+  }
+
+  // Fallback to env var
   const raw = process.env.VERCEL_PLUGIN_LIKELY_SKILLS;
   if (!raw || raw.trim() === "") return [];
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+// ---------------------------------------------------------------------------
+// Budget category resolution
+// ---------------------------------------------------------------------------
+
+type BudgetCategory = "minimal" | "light" | "standard";
+
+function resolveBudgetCategory(agentType: string): BudgetCategory {
+  if (agentType === "Explore") return "minimal";
+  if (agentType === "Plan") return "light";
+  return "standard";
+}
+
+function budgetBytesForCategory(category: BudgetCategory): number {
+  switch (category) {
+    case "minimal": return MINIMAL_BUDGET_BYTES;
+    case "light": return LIGHT_BUDGET_BYTES;
+    case "standard": return STANDARD_BUDGET_BYTES;
+  }
+}
+
+function getPromptMatchedSkills(promptText: string): string[] {
+  const normalizedPrompt = normalizePromptText(promptText);
+  if (!normalizedPrompt) return [];
+
+  try {
+    const { skills: skillMap, diagnostics } = buildSkillMap(join(PLUGIN_ROOT, "skills"));
+    if (diagnostics.length > 0) {
+      log.debug("subagent-start-bootstrap:prompt-skill-diagnostics", {
+        diagnosticCount: diagnostics.length,
+      });
+    }
+
+    const matches: Array<{ skill: string; score: number; priority: number }> = [];
+    for (const [skill, config] of Object.entries(skillMap)) {
+      if (!config.promptSignals) continue;
+
+      const compiled = compilePromptSignals(config.promptSignals);
+      const result = matchPromptWithReason(normalizedPrompt, compiled);
+      if (!result.matched) continue;
+
+      matches.push({
+        skill,
+        score: result.score,
+        priority: config.priority,
+      });
+    }
+
+    matches.sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      if (right.priority !== left.priority) return right.priority - left.priority;
+      return left.skill.localeCompare(right.skill);
+    });
+
+    const matchedSkills = matches.map((entry) => entry.skill);
+    log.debug("subagent-start-bootstrap:prompt-skill-match", {
+      promptLength: promptText.length,
+      matchedSkills,
+    });
+    return matchedSkills;
+  } catch (error) {
+    logCaughtError(log, "subagent-start-bootstrap:prompt-skill-match-failed", error, {
+      promptLength: promptText.length,
+    });
+    return [];
+  }
+}
+
+function mergeLikelySkills(likelySkills: string[], promptMatchedSkills: string[]): string[] {
+  if (promptMatchedSkills.length === 0) return likelySkills;
+  return [...new Set([...promptMatchedSkills, ...likelySkills])];
+}
+
+// ---------------------------------------------------------------------------
+// Context assembly
+// ---------------------------------------------------------------------------
+
+function profileLine(agentType: string, likelySkills: string[]): string {
+  return "Vercel plugin active. Project likely uses: " + (likelySkills.length > 0 ? likelySkills.join(", ") : "unknown stack") + ".";
+}
+
 /**
- * Build a minimal context string: project profile line + skill name list.
+ * Build minimal context (~1KB): project profile + skill name list.
+ * Used for Explore agents that only need orientation.
  */
 function buildMinimalContext(agentType: string, likelySkills: string[]): string {
   const parts: string[] = [];
-  parts.push(`<!-- vercel-plugin:subagent-bootstrap agent_type="${agentType}" -->`);
-  parts.push("Vercel plugin active. Project likely uses: " + (likelySkills.length > 0 ? likelySkills.join(", ") : "unknown stack") + ".");
+  parts.push(`<!-- vercel-plugin:subagent-bootstrap agent_type="${agentType}" budget="minimal" -->`);
+  parts.push(profileLine(agentType, likelySkills));
   parts.push("<!-- /vercel-plugin:subagent-bootstrap -->");
   return parts.join("\n");
 }
 
 /**
- * Build standard context: project profile + top skill summaries (from frontmatter).
+ * Build light context (~3KB): profile + skill summaries + deployment constraints.
+ * Used for Plan agents that need enough context to architect solutions.
  */
-function buildStandardContext(agentType: string, likelySkills: string[], budgetBytes: number): string {
+function buildLightContext(agentType: string, likelySkills: string[], budgetBytes: number): string {
   const parts: string[] = [];
-  parts.push(`<!-- vercel-plugin:subagent-bootstrap agent_type="${agentType}" -->`);
-  parts.push("Vercel plugin active. Project likely uses: " + (likelySkills.length > 0 ? likelySkills.join(", ") : "unknown stack") + ".");
+  parts.push(`<!-- vercel-plugin:subagent-bootstrap agent_type="${agentType}" budget="light" -->`);
+  parts.push(profileLine(agentType, likelySkills));
 
-  // Load skill summaries for likely skills
   let usedBytes = Buffer.byteLength(parts.join("\n"), "utf8");
+
+  // Add skill summaries
   const loaded = loadSkills(PLUGIN_ROOT, log);
   if (loaded) {
     for (const skill of likelySkills) {
@@ -97,6 +210,65 @@ function buildStandardContext(agentType: string, likelySkills: string[], budgetB
       if (usedBytes + lineBytes + 1 > budgetBytes) break;
       parts.push(line);
       usedBytes += lineBytes + 1;
+    }
+  }
+
+  // Add deployment constraints if budget allows
+  const constraints = [
+    "Deployment targets Vercel. Use framework conventions (e.g. Next.js app router, API routes).",
+    "Environment variables are managed via `vercel env`. Do not hardcode secrets.",
+  ];
+  for (const constraint of constraints) {
+    const lineBytes = Buffer.byteLength(constraint, "utf8");
+    if (usedBytes + lineBytes + 1 > budgetBytes) break;
+    parts.push(constraint);
+    usedBytes += lineBytes + 1;
+  }
+
+  parts.push("<!-- /vercel-plugin:subagent-bootstrap -->");
+  return parts.join("\n");
+}
+
+/**
+ * Build standard context (~8KB): profile + top skill full bodies.
+ * Used for general-purpose agents that need actionable skill content.
+ */
+function buildStandardContext(agentType: string, likelySkills: string[], budgetBytes: number): string {
+  const parts: string[] = [];
+  parts.push(`<!-- vercel-plugin:subagent-bootstrap agent_type="${agentType}" budget="standard" -->`);
+  parts.push(profileLine(agentType, likelySkills));
+
+  let usedBytes = Buffer.byteLength(parts.join("\n"), "utf8");
+
+  // Load skill map once for summary fallbacks
+  const loaded = loadSkills(PLUGIN_ROOT, log);
+
+  // Inject full skill bodies for likely skills, falling back to summaries
+  for (const skill of likelySkills) {
+    const skillPath = join(PLUGIN_ROOT, "skills", skill, "SKILL.md");
+    const raw = safeReadFile(skillPath);
+    if (raw !== null) {
+      const { body } = extractFrontmatter(raw);
+      const content = body.trimStart();
+      const wrapped = `<!-- skill:${skill} -->\n${content}\n<!-- /skill:${skill} -->`;
+      const byteLen = Buffer.byteLength(wrapped, "utf8");
+
+      if (usedBytes + byteLen + 1 <= budgetBytes) {
+        parts.push(wrapped);
+        usedBytes += byteLen + 1;
+        continue;
+      }
+    }
+
+    // Fallback to summary if full body doesn't fit or file is missing
+    const summary = loaded?.skillMap[skill]?.summary;
+    if (summary) {
+      const line = `<!-- skill:${skill} mode:summary -->\n${summary}\n<!-- /skill:${skill} -->`;
+      const lineBytes = Buffer.byteLength(line, "utf8");
+      if (usedBytes + lineBytes + 1 <= budgetBytes) {
+        parts.push(line);
+        usedBytes += lineBytes + 1;
+      }
     }
   }
 
@@ -116,23 +288,46 @@ function main(): void {
 
   const agentId = input.agent_id ?? "unknown";
   const agentType = input.agent_type ?? "unknown";
+  const sessionId = input.session_id;
 
-  log.debug("subagent-start-bootstrap", { agentId, agentType });
+  log.debug("subagent-start-bootstrap", { agentId, agentType, sessionId });
 
-  const likelySkills = getLikelySkills();
-  const isMinimal = MINIMAL_AGENT_TYPES.has(agentType);
+  const pendingLaunch = sessionId ? claimPendingLaunch(sessionId, agentType) : null;
+  const likelySkills = getLikelySkills(sessionId);
+  const launchPromptSkills = pendingLaunch
+    ? getPromptMatchedSkills(`${pendingLaunch.description} ${pendingLaunch.prompt}`.trim())
+    : [];
+  const effectiveLikelySkills = pendingLaunch
+    ? mergeLikelySkills(likelySkills, launchPromptSkills)
+    : likelySkills;
+
+  log.debug("subagent-start-bootstrap:pending-launch", {
+    sessionId,
+    agentType,
+    claimedLaunch: pendingLaunch !== null,
+    launchPromptSkills,
+    likelySkills: effectiveLikelySkills,
+  });
+
+  const category = resolveBudgetCategory(agentType);
+  const maxBytes = budgetBytesForCategory(category);
 
   let context: string;
-  if (isMinimal) {
-    context = buildMinimalContext(agentType, likelySkills);
-  } else {
-    context = buildStandardContext(agentType, likelySkills, STANDARD_BUDGET_BYTES);
+  switch (category) {
+    case "minimal":
+      context = buildMinimalContext(agentType, effectiveLikelySkills);
+      break;
+    case "light":
+      context = buildLightContext(agentType, effectiveLikelySkills, maxBytes);
+      break;
+    case "standard":
+      context = buildStandardContext(agentType, effectiveLikelySkills, maxBytes);
+      break;
   }
 
-  // Enforce byte budget
-  const maxBytes = isMinimal ? MINIMAL_BUDGET_BYTES : STANDARD_BUDGET_BYTES;
+  // Hard-truncate if over budget (safety net)
   if (Buffer.byteLength(context, "utf8") > maxBytes) {
-    context = context.slice(0, maxBytes);
+    context = Buffer.from(context, "utf8").subarray(0, maxBytes).toString("utf8");
   }
 
   const output: SyncHookJSONOutput = {
@@ -156,4 +351,5 @@ if (isEntrypoint) {
 }
 
 // Exports for testing
-export { parseInput, buildMinimalContext, buildStandardContext, getLikelySkills, main };
+export { parseInput, buildMinimalContext, buildLightContext, buildStandardContext, getLikelySkills, getPromptMatchedSkills, mergeLikelySkills, main };
+export type { SubagentStartInput, ProfileCache, BudgetCategory };
