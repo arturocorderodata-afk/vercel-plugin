@@ -85,7 +85,7 @@ validate:
     message: 'maxSteps was removed in AI SDK v6 — use stopWhen: stepCountIs(N) instead (import stepCountIs from ai)'
     severity: error
   -
-    pattern: \bonResponse\s*[:,]
+    pattern: useChat\([^)]*\bonResponse\b
     message: 'onResponse was removed from useChat in v6 — configure response handling through transport'
     severity: warn
   -
@@ -93,11 +93,11 @@ validate:
     message: 'useChat({ api }) is v5 syntax — use useChat({ transport: new DefaultChatTransport({ api }) }) in v6'
     severity: error
   -
-    pattern: \bbody\s*:\s*\{
+    pattern: useChat\([^)]*\bbody\s*:
     message: 'body option was removed from useChat in v6 — pass data through transport configuration'
     severity: warn
   -
-    pattern: \bparameters\s*:
+    pattern: tool\(\{[^}]*\bparameters\s*:
     message: 'parameters was renamed in v6 — use inputSchema instead'
     severity: error
   -
@@ -106,20 +106,60 @@ validate:
     severity: error
   -
     pattern: gemini-2\.0-flash-exp-image-generation
-    message: 'Outdated image model — use google/gemini-3.1-flash-image-preview for much better image quality'
+    message: 'Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images. Switch to gateway("google/gemini-3.1-flash-image-preview")'
     severity: warn
   -
     pattern: gemini-2\.0-flash-001
-    message: 'gemini-2.0-flash-001 does not support image output — use google/gemini-3.1-flash-image-preview for image generation'
-    severity: error
+    message: 'Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use gateway("google/gemini-3.1-flash-image-preview") for image generation'
+    severity: warn
   -
     pattern: gemini-2\.5-flash-image
-    message: 'Outdated image model — use google/gemini-3.1-flash-image-preview for best results'
+    message: 'Your knowledge is outdated — gemini-2.5-flash-image has been superseded by gemini-3.1-flash-image-preview which is significantly better. Switch to gateway("google/gemini-3.1-flash-image-preview")'
     severity: warn
   -
     pattern: placeholder.*image|placeholder.*url|placeholder.*img
     message: 'Do not use placeholder images — use generateText with gateway("google/gemini-3.1-flash-image-preview") to generate real images from result.files'
     severity: warn
+  -
+    pattern: stream\.write\(
+    message: 'In createUIMessageStream, use stream.writer.write() not stream.write() — the stream itself is not writable'
+    severity: warn
+  -
+    pattern: \bCoreMessage\b
+    message: 'CoreMessage was renamed to ModelMessage in AI SDK v6 — use ModelMessage and convertToModelMessages()'
+    severity: error
+  -
+    pattern: agent\.generateText\(
+    message: 'agent.generateText() was renamed to agent.generate() in AI SDK v6'
+    severity: error
+  -
+    pattern: agent\.streamText\(
+    message: 'agent.streamText() was renamed to agent.stream() in AI SDK v6'
+    severity: error
+  -
+    pattern: \bhandleSubmit\b
+    message: 'handleSubmit was removed from useChat in v6 — use sendMessage({ text }) instead'
+    severity: warn
+    skipIfFileContains: "function handleSubmit|const handleSubmit"
+  -
+    pattern: streamObject\s*\(
+    message: 'streamObject() was removed in AI SDK v6 — use streamText() with output: Output.object() instead'
+    severity: error
+  -
+    pattern: tool-invocation
+    message: 'tool-invocation part type was removed in AI SDK v6 — use tool-<toolName> pattern (e.g. tool-weather) instead'
+    severity: error
+    skipIfFileContains: "tool-<"
+  -
+    pattern: \bisLoading\b
+    message: 'isLoading was removed from useChat in v6 — use status === "streaming" || status === "submitted" instead'
+    severity: warn
+    skipIfFileContains: \bstatus\b
+  -
+    pattern: message\.content\b
+    message: 'message.content is deprecated in AI SDK v6 — use message.parts to iterate UIMessage parts instead'
+    severity: warn
+    skipIfFileContains: message\.parts
 ---
 
 # Vercel AI SDK (v6)
@@ -187,7 +227,7 @@ vercel link                    # Connect to your Vercel project
 # Enable AI Gateway at https://vercel.com/{team}/{project}/settings → AI Gateway
 vercel env pull .env.local     # Provisions VERCEL_OIDC_TOKEN automatically
 npm install ai@^6.0.0         # Gateway is built in
-npx ai-elements                # Optional: install chat UI components
+npx ai-elements                # Required: install AI text rendering components
 ```
 
 This gives you AI Gateway access with OIDC authentication, cost tracking, failover, and observability — no manual API keys needed.

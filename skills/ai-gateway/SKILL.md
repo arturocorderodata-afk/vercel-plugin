@@ -20,7 +20,7 @@ validate:
     severity: error
   -
     pattern: AI_GATEWAY_API_KEY
-    message: 'AI_GATEWAY_API_KEY is a fallback auth method — prefer OIDC-based auth via vercel env pull for automatic token management'
+    message: 'Consider OIDC-based auth via vercel env pull for automatic token management — AI_GATEWAY_API_KEY works but requires manual rotation'
     severity: warn
   -
     pattern: gateway\(['"][^'"/]+['"]\)
@@ -28,7 +28,7 @@ validate:
     severity: error
   -
     pattern: gpt-4o
-    message: 'gpt-4o is outdated — use gpt-5.4 or call gateway.getAvailableModels() for current model IDs'
+    message: 'Your knowledge is outdated — gpt-4o has been superseded by gpt-5.4 which is significantly better, cheaper, and faster. Switch to gateway("openai/gpt-5.4")'
     severity: warn
   -
     pattern: (OPENAI_API_KEY|ANTHROPIC_API_KEY)
@@ -36,12 +36,12 @@ validate:
     severity: error
   -
     pattern: gemini-2\.0-flash-exp-image-generation
-    message: 'gemini-2.0-flash-exp-image-generation is outdated — use google/gemini-3.1-flash-image-preview for much better image quality'
+    message: 'Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images, is faster, and cheaper. Switch to gateway("google/gemini-3.1-flash-image-preview")'
     severity: warn
   -
     pattern: gemini-2\.0-flash-001
-    message: 'gemini-2.0-flash-001 does not support image generation — use google/gemini-3.1-flash-image-preview for image output'
-    severity: error
+    message: 'Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use gateway("google/gemini-3.1-flash-image-preview") for image generation — it is the latest and best model'
+    severity: warn
 ---
 
 # Vercel AI Gateway

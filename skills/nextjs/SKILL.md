@@ -60,6 +60,51 @@ validate:
     pattern: (useState|useEffect)
     message: 'React hooks require "use client" directive — add it at the top of client components'
     severity: warn
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: from\s+['"]next/head['"]
+    message: 'next/head is Pages Router — use export const metadata or generateMetadata() in App Router'
+    severity: error
+  -
+    pattern: export\s+(default\s+)?function\s+middleware
+    message: 'middleware() is renamed to proxy() in Next.js 16 — rename the function and the file to proxy.ts'
+    severity: warn
+  -
+    pattern: revalidateTag\(\s*['"][^'"]+['"]\s*\)
+    message: 'Single-arg revalidateTag(tag) is deprecated in Next.js 16 — pass a cacheLife profile: revalidateTag(tag, "max")'
+    severity: warn
+  -
+    pattern: \bcacheHandler\s*:
+    message: 'Singular cacheHandler is deprecated in Next.js 16 — use cacheHandlers (plural) with per-type handlers'
+    severity: warn
+  -
+    pattern: useRef\(\s*\)
+    message: 'useRef() requires an initial value in React 19 — use useRef(null) or useRef(0)'
+    severity: error
+  -
+    pattern: next\s+export
+    message: 'next export was removed — use output: "export" in next.config.js for static export'
+    severity: error
+  -
+    pattern: (?<!await )\bcookies\(\s*\)
+    message: 'cookies() is async in Next.js 16 — add await: const cookieStore = await cookies()'
+    severity: error
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: (?<!await )\bheaders\(\s*\)
+    message: 'headers() is async in Next.js 16 — add await: const headersList = await headers()'
+    severity: error
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: =\s*(?!await\b)params\b
+    message: 'params is async in Next.js 16 — add await: const { slug } = await params'
+    severity: warn
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: =\s*(?!await\b)searchParams\b
+    message: 'searchParams is async in Next.js 16 — add await: const { query } = await searchParams'
+    severity: warn
+    skipIfFileContains: "^['\"]use client['\"]"
 ---
 
 # Next.js (v16+) — App Router

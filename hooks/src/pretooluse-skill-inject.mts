@@ -922,12 +922,37 @@ export interface FormatOutputParams {
   droppedByBudget?: string[];
   toolName: string;
   toolTarget: string;
+  matchReasons?: Record<string, { pattern: string; matchType: string }>;
 }
 
 /**
  * Build the final JSON output string from injection results.
  */
-export function formatOutput({ parts, matched, injectedSkills, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget }: FormatOutputParams): string {
+/**
+ * Build a human-readable banner describing why skills were auto-suggested.
+ */
+function buildBanner(
+  injectedSkills: string[],
+  toolName: string,
+  toolTarget: string,
+  matchReasons?: Record<string, { pattern: string; matchType: string }>,
+): string {
+  const lines: string[] = ["[vercel-plugin] Best practices auto-suggested based on detected patterns:"];
+
+  for (const skill of injectedSkills) {
+    const reason = matchReasons?.[skill];
+    if (reason) {
+      const target = toolName === "Bash" ? redactCommand(toolTarget) : toolTarget;
+      lines.push(`  - "${skill}" matched ${reason.matchType} pattern \`${reason.pattern}\` on ${toolName}${target ? `: ${target}` : ""}`);
+    } else {
+      lines.push(`  - "${skill}"`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function formatOutput({ parts, matched, injectedSkills, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget, matchReasons }: FormatOutputParams): string {
   if (parts.length === 0) {
     return "{}";
   }
@@ -948,10 +973,12 @@ export function formatOutput({ parts, matched, injectedSkills, summaryOnly, drop
   //  extra keys like "skillInjection" cause validation failure)
   const metaComment = `<!-- skillInjection: ${JSON.stringify(skillInjection)} -->`;
 
+  const banner = buildBanner(injectedSkills, toolName, toolTarget, matchReasons);
+
   const output: SyncHookJSONOutput = {
     hookSpecificOutput: {
       hookEventName: "PreToolUse" as const,
-      additionalContext: parts.join("\n\n") + "\n" + metaComment,
+      additionalContext: banner + "\n\n" + parts.join("\n\n") + "\n" + metaComment,
     },
   };
   return JSON.stringify(output);
@@ -1022,7 +1049,7 @@ function run(): string {
   if (!matchResult) return "{}";
   if (log.active) timing.match = Math.round(log.now() - tMatch);
 
-  const { matchedEntries, matched } = matchResult;
+  const { matchedEntries, matchReasons, matched } = matchResult;
 
   // Stage 3.5: TSX review trigger — check before dedup to inform synthetic injection
   const tsxReview = checkTsxReviewTrigger(toolName, toolInput, injectedSkills, dedupOff, log);
@@ -1252,7 +1279,7 @@ function run(): string {
   }, log.active ? timing : null);
 
   // Stage 6: formatOutput
-  const result = formatOutput({ parts, matched, injectedSkills: loaded, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget });
+  const result = formatOutput({ parts, matched, injectedSkills: loaded, summaryOnly, droppedByCap, droppedByBudget, toolName, toolTarget, matchReasons });
 
   if (loaded.length > 0) {
     appendAuditLog({

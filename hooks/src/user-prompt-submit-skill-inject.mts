@@ -311,6 +311,7 @@ export function formatOutput(
   summaryOnly: string[],
   droppedByCap: string[],
   droppedByBudget: string[],
+  promptMatchReasons?: Record<string, string>,
 ): string {
   if (parts.length === 0) {
     return "{}";
@@ -328,10 +329,22 @@ export function formatOutput(
 
   const metaComment = `<!-- skillInjection: ${JSON.stringify(skillInjection)} -->`;
 
+  // Build banner describing why skills were auto-suggested
+  const bannerLines: string[] = ["[vercel-plugin] Best practices auto-suggested based on prompt analysis:"];
+  for (const skill of injectedSkills) {
+    const reason = promptMatchReasons?.[skill];
+    if (reason) {
+      bannerLines.push(`  - "${skill}" matched: ${reason}`);
+    } else {
+      bannerLines.push(`  - "${skill}"`);
+    }
+  }
+  const banner = bannerLines.join("\n");
+
   const output: SyncHookJSONOutput = {
     hookSpecificOutput: {
       hookEventName: "UserPromptSubmit" as const,
-      additionalContext: parts.join("\n\n") + "\n" + metaComment,
+      additionalContext: banner + "\n\n" + parts.join("\n\n") + "\n" + metaComment,
     },
   };
   return JSON.stringify(output);
@@ -501,7 +514,15 @@ export function run(): string {
   }
 
   // Stage 5: formatOutput
-  return formatOutput(parts, matchedSkills, loaded, summaryOnly, droppedByCap, droppedByBudget);
+  // Build prompt match reasons for the banner
+  const promptMatchReasons: Record<string, string> = {};
+  for (const skill of loaded) {
+    const r = report.perSkillResults[skill];
+    if (r?.reason) {
+      promptMatchReasons[skill] = r.reason;
+    }
+  }
+  return formatOutput(parts, matchedSkills, loaded, summaryOnly, droppedByCap, droppedByBudget, promptMatchReasons);
 }
 
 // ---------------------------------------------------------------------------

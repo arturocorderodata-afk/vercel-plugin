@@ -260,11 +260,15 @@ function parseValidateRules(raw) {
     if (typeof obj.message !== "string" || obj.message === "") continue;
     const severity = obj.severity;
     if (severity !== "error" && severity !== "warn") continue;
-    rules.push({
+    const rule = {
       pattern: obj.pattern,
       message: obj.message,
       severity
-    });
+    };
+    if (typeof obj.skipIfFileContains === "string" && obj.skipIfFileContains !== "") {
+      rule.skipIfFileContains = obj.skipIfFileContains;
+    }
+    rules.push(rule);
   }
   return rules;
 }

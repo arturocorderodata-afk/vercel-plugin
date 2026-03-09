@@ -10,6 +10,11 @@ metadata:
     - '\bturbo\s+(run|build|test|lint|dev)\b'
     - '\bnpx\s+turbo\b'
     - '\bbunx\s+turbo\b'
+validate:
+  -
+    pattern: '"pipeline"\s*:'
+    message: 'turbo.json "pipeline" was renamed to "tasks" in Turborepo v2 — update to "tasks" key'
+    severity: error
 ---
 
 # Turborepo

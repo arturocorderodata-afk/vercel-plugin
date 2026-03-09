@@ -161,7 +161,7 @@ function deduplicateAndInject(matches, skills, logger) {
     matchedSkills: allMatched
   };
 }
-function formatOutput(parts, matchedSkills, injectedSkills, summaryOnly, droppedByCap, droppedByBudget) {
+function formatOutput(parts, matchedSkills, injectedSkills, summaryOnly, droppedByCap, droppedByBudget, promptMatchReasons) {
   if (parts.length === 0) {
     return "{}";
   }
@@ -175,10 +175,20 @@ function formatOutput(parts, matchedSkills, injectedSkills, summaryOnly, dropped
     droppedByBudget
   };
   const metaComment = `<!-- skillInjection: ${JSON.stringify(skillInjection)} -->`;
+  const bannerLines = ["[vercel-plugin] Best practices auto-suggested based on prompt analysis:"];
+  for (const skill of injectedSkills) {
+    const reason = promptMatchReasons?.[skill];
+    if (reason) {
+      bannerLines.push(`  - "${skill}" matched: ${reason}`);
+    } else {
+      bannerLines.push(`  - "${skill}"`);
+    }
+  }
+  const banner = bannerLines.join("\n");
   const output = {
     hookSpecificOutput: {
       hookEventName: "UserPromptSubmit",
-      additionalContext: parts.join("\n\n") + "\n" + metaComment
+      additionalContext: banner + "\n\n" + parts.join("\n\n") + "\n" + metaComment
     }
   };
   return JSON.stringify(output);
@@ -309,7 +319,14 @@ function run() {
       droppedByBudget
     }, cwd);
   }
-  return formatOutput(parts, matchedSkills, loaded, summaryOnly, droppedByCap, droppedByBudget);
+  const promptMatchReasons = {};
+  for (const skill of loaded) {
+    const r = report.perSkillResults[skill];
+    if (r?.reason) {
+      promptMatchReasons[skill] = r.reason;
+    }
+  }
+  return formatOutput(parts, matchedSkills, loaded, summaryOnly, droppedByCap, droppedByBudget, promptMatchReasons);
 }
 function isMainModule() {
   try {

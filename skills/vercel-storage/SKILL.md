@@ -68,6 +68,24 @@ metadata:
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@libsql/client\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@libsql/client\b'
     - '\byarn\s+add\s+[^\n]*@libsql/client\b'
+  importPatterns:
+    - "@vercel/blob"
+    - "@vercel/edge-config"
+    - "@neondatabase/serverless"
+    - "@upstash/redis"
+    - "@vercel/kv"
+    - "@vercel/postgres"
+    - "@supabase/supabase-js"
+    - "@prisma/client"
+validate:
+  -
+    pattern: from\s+['"]@vercel/kv['"]
+    message: '@vercel/kv is deprecated — migrate to @upstash/redis (Redis.fromEnv()) instead'
+    severity: error
+  -
+    pattern: from\s+['"]@vercel/postgres['"]
+    message: '@vercel/postgres is deprecated — use @neondatabase/serverless with drizzle-orm instead'
+    severity: error
 ---
 
 # Vercel Storage

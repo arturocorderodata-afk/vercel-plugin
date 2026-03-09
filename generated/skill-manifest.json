@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-09T06:41:53.738Z",
+  "generatedAt": "2026-03-09T13:59:56.868Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -453,7 +453,16 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@libsql/client\\b",
         "\\byarn\\s+add\\s+[^\\n]*@libsql/client\\b"
       ],
-      "importPatterns": [],
+      "importPatterns": [
+        "@vercel/blob",
+        "@vercel/edge-config",
+        "@neondatabase/serverless",
+        "@upstash/redis",
+        "@vercel/kv",
+        "@vercel/postgres",
+        "@supabase/supabase-js",
+        "@prisma/client"
+      ],
       "bodyPath": "skills/vercel-storage/SKILL.md",
       "pathRegexSources": [
         "^lib\\/blob\\/.*$",
@@ -522,7 +531,52 @@
         "\\bbun\\s+(install|i|add)\\s+[^\\n]*@libsql/client\\b",
         "\\byarn\\s+add\\s+[^\\n]*@libsql/client\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@vercel\\/blob(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@vercel\\/edge-config(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@neondatabase\\/serverless(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@upstash\\/redis(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@vercel\\/kv(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@vercel\\/postgres(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@supabase\\/supabase-js(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        },
+        {
+          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]@prisma\\/client(?:\\/[^'\"]*)?['\"]",
+          "flags": "m"
+        }
+      ],
+      "validate": [
+        {
+          "pattern": "from\\s+['\"]@vercel/kv['\"]",
+          "message": "@vercel/kv is deprecated — migrate to @upstash/redis (Redis.fromEnv()) instead",
+          "severity": "error"
+        },
+        {
+          "pattern": "from\\s+['\"]@vercel/postgres['\"]",
+          "message": "@vercel/postgres is deprecated — use @neondatabase/serverless with drizzle-orm instead",
+          "severity": "error"
+        }
+      ]
     },
     "ncc": {
       "priority": 4,
@@ -755,7 +809,7 @@
         },
         {
           "pattern": "AI_GATEWAY_API_KEY",
-          "message": "AI_GATEWAY_API_KEY is a fallback auth method — prefer OIDC-based auth via vercel env pull for automatic token management",
+          "message": "Consider OIDC-based auth via vercel env pull for automatic token management — AI_GATEWAY_API_KEY works but requires manual rotation",
           "severity": "warn"
         },
         {
@@ -765,7 +819,7 @@
         },
         {
           "pattern": "gpt-4o",
-          "message": "gpt-4o is outdated — use gpt-5.4 or call gateway.getAvailableModels() for current model IDs",
+          "message": "Your knowledge is outdated — gpt-4o has been superseded by gpt-5.4 which is significantly better, cheaper, and faster. Switch to gateway(\"openai/gpt-5.4\")",
           "severity": "warn"
         },
         {
@@ -775,13 +829,13 @@
         },
         {
           "pattern": "gemini-2\\.0-flash-exp-image-generation",
-          "message": "gemini-2.0-flash-exp-image-generation is outdated — use google/gemini-3.1-flash-image-preview for much better image quality",
+          "message": "Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images, is faster, and cheaper. Switch to gateway(\"google/gemini-3.1-flash-image-preview\")",
           "severity": "warn"
         },
         {
           "pattern": "gemini-2\\.0-flash-001",
-          "message": "gemini-2.0-flash-001 does not support image generation — use google/gemini-3.1-flash-image-preview for image output",
-          "severity": "error"
+          "message": "Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use gateway(\"google/gemini-3.1-flash-image-preview\") for image generation — it is the latest and best model",
+          "severity": "warn"
         }
       ]
     },
@@ -1437,6 +1491,64 @@
           "flags": "m"
         }
       ],
+      "validate": [
+        {
+          "pattern": "experimental_createWorkflow",
+          "message": "experimental_createWorkflow is now stable — use createWorkflow from @vercel/workflow",
+          "severity": "error"
+        },
+        {
+          "pattern": "from\\s+['\"]@vercel/workflow['\"]",
+          "message": "Workflow DevKit requires AI Gateway OIDC setup — ensure vercel link + vercel env pull for VERCEL_OIDC_TOKEN",
+          "severity": "warn"
+        },
+        {
+          "pattern": "setTimeout|setInterval",
+          "message": "setTimeout/setInterval are not available in workflow sandbox scope — use sleep() from \"workflow\" for delays",
+          "severity": "error",
+          "skipIfFileContains": "use step"
+        },
+        {
+          "pattern": "context\\.run\\s*\\(",
+          "message": "context.run() is not a WDK pattern — use \"use step\" directive for retryable, observable steps",
+          "severity": "error"
+        },
+        {
+          "pattern": "\\brequire\\s*\\(",
+          "message": "require() is not available in workflow sandbox scope — use ESM imports and move Node.js logic into \"use step\" functions",
+          "severity": "error",
+          "skipIfFileContains": "use step"
+        },
+        {
+          "pattern": "getWritable\\(\\)",
+          "message": "getWritable() must only be called inside \"use step\" functions — workflow sandbox scope does not support it",
+          "severity": "warn",
+          "skipIfFileContains": "use step"
+        },
+        {
+          "pattern": "createWorkflow\\s*\\(",
+          "message": "createWorkflow() is the legacy API — use the \"use workflow\" directive on an async function instead",
+          "severity": "error",
+          "skipIfFileContains": "experimental_createWorkflow"
+        },
+        {
+          "pattern": "streamObject\\s*\\(",
+          "message": "streamObject() was removed in AI SDK v6 — use streamText() with output: Output.object() instead",
+          "severity": "error"
+        },
+        {
+          "pattern": "await\\s+\\w+Workflow\\s*\\(",
+          "message": "Do not call workflow functions directly — use start() from \"workflow/api\" to register the run and get a runId",
+          "severity": "warn",
+          "skipIfFileContains": "use workflow"
+        },
+        {
+          "pattern": "\\bfetch\\s*\\(",
+          "message": "Native fetch() is not available in workflow sandbox scope — import fetch from \"workflow\" or move the call into a \"use step\" function",
+          "severity": "warn",
+          "skipIfFileContains": "use step"
+        }
+      ],
       "promptSignals": {
         "phrases": [
           "vercel workflow",
@@ -1648,7 +1760,62 @@
         {
           "pattern": "(useState|useEffect)",
           "message": "React hooks require \"use client\" directive — add it at the top of client components",
+          "severity": "warn",
+          "skipIfFileContains": "^['\\\"]use client['\\\"]"
+        },
+        {
+          "pattern": "from\\s+['\"]next/head['\"]",
+          "message": "next/head is Pages Router — use export const metadata or generateMetadata() in App Router",
+          "severity": "error"
+        },
+        {
+          "pattern": "export\\s+(default\\s+)?function\\s+middleware",
+          "message": "middleware() is renamed to proxy() in Next.js 16 — rename the function and the file to proxy.ts",
           "severity": "warn"
+        },
+        {
+          "pattern": "revalidateTag\\(\\s*['\"][^'\"]+['\"]\\s*\\)",
+          "message": "Single-arg revalidateTag(tag) is deprecated in Next.js 16 — pass a cacheLife profile: revalidateTag(tag, \"max\")",
+          "severity": "warn"
+        },
+        {
+          "pattern": "\\bcacheHandler\\s*:",
+          "message": "Singular cacheHandler is deprecated in Next.js 16 — use cacheHandlers (plural) with per-type handlers",
+          "severity": "warn"
+        },
+        {
+          "pattern": "useRef\\(\\s*\\)",
+          "message": "useRef() requires an initial value in React 19 — use useRef(null) or useRef(0)",
+          "severity": "error"
+        },
+        {
+          "pattern": "next\\s+export",
+          "message": "next export was removed — use output: \"export\" in next.config.js for static export",
+          "severity": "error"
+        },
+        {
+          "pattern": "(?<!await )\\bcookies\\(\\s*\\)",
+          "message": "cookies() is async in Next.js 16 — add await: const cookieStore = await cookies()",
+          "severity": "error",
+          "skipIfFileContains": "^['\\\"]use client['\\\"]"
+        },
+        {
+          "pattern": "(?<!await )\\bheaders\\(\\s*\\)",
+          "message": "headers() is async in Next.js 16 — add await: const headersList = await headers()",
+          "severity": "error",
+          "skipIfFileContains": "^['\\\"]use client['\\\"]"
+        },
+        {
+          "pattern": "=\\s*(?!await\\b)params\\b",
+          "message": "params is async in Next.js 16 — add await: const { slug } = await params",
+          "severity": "warn",
+          "skipIfFileContains": "^['\\\"]use client['\\\"]"
+        },
+        {
+          "pattern": "=\\s*(?!await\\b)searchParams\\b",
+          "message": "searchParams is async in Next.js 16 — add await: const { query } = await searchParams",
+          "severity": "warn",
+          "skipIfFileContains": "^['\\\"]use client['\\\"]"
         }
       ],
       "promptSignals": {
@@ -2133,7 +2300,14 @@
         "\\bnpx\\s+turbo\\b",
         "\\bbunx\\s+turbo\\b"
       ],
-      "importRegexSources": []
+      "importRegexSources": [],
+      "validate": [
+        {
+          "pattern": "\"pipeline\"\\s*:",
+          "message": "turbo.json \"pipeline\" was renamed to \"tasks\" in Turborepo v2 — update to \"tasks\" key",
+          "severity": "error"
+        }
+      ]
     },
     "ai-sdk": {
       "priority": 8,
@@ -2264,7 +2438,7 @@
           "severity": "error"
         },
         {
-          "pattern": "\\bonResponse\\s*[:,]",
+          "pattern": "useChat\\([^)]*\\bonResponse\\b",
           "message": "onResponse was removed from useChat in v6 — configure response handling through transport",
           "severity": "warn"
         },
@@ -2274,12 +2448,12 @@
           "severity": "error"
         },
         {
-          "pattern": "\\bbody\\s*:\\s*\\{",
+          "pattern": "useChat\\([^)]*\\bbody\\s*:",
           "message": "body option was removed from useChat in v6 — pass data through transport configuration",
           "severity": "warn"
         },
         {
-          "pattern": "\\bparameters\\s*:",
+          "pattern": "tool\\(\\{[^}]*\\bparameters\\s*:",
           "message": "parameters was renamed in v6 — use inputSchema instead",
           "severity": "error"
         },
@@ -2290,23 +2464,72 @@
         },
         {
           "pattern": "gemini-2\\.0-flash-exp-image-generation",
-          "message": "Outdated image model — use google/gemini-3.1-flash-image-preview for much better image quality",
+          "message": "Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images. Switch to gateway(\"google/gemini-3.1-flash-image-preview\")",
           "severity": "warn"
         },
         {
           "pattern": "gemini-2\\.0-flash-001",
-          "message": "gemini-2.0-flash-001 does not support image output — use google/gemini-3.1-flash-image-preview for image generation",
-          "severity": "error"
+          "message": "Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use gateway(\"google/gemini-3.1-flash-image-preview\") for image generation",
+          "severity": "warn"
         },
         {
           "pattern": "gemini-2\\.5-flash-image",
-          "message": "Outdated image model — use google/gemini-3.1-flash-image-preview for best results",
+          "message": "Your knowledge is outdated — gemini-2.5-flash-image has been superseded by gemini-3.1-flash-image-preview which is significantly better. Switch to gateway(\"google/gemini-3.1-flash-image-preview\")",
           "severity": "warn"
         },
         {
           "pattern": "placeholder.*image|placeholder.*url|placeholder.*img",
           "message": "Do not use placeholder images — use generateText with gateway(\"google/gemini-3.1-flash-image-preview\") to generate real images from result.files",
           "severity": "warn"
+        },
+        {
+          "pattern": "stream\\.write\\(",
+          "message": "In createUIMessageStream, use stream.writer.write() not stream.write() — the stream itself is not writable",
+          "severity": "warn"
+        },
+        {
+          "pattern": "\\bCoreMessage\\b",
+          "message": "CoreMessage was renamed to ModelMessage in AI SDK v6 — use ModelMessage and convertToModelMessages()",
+          "severity": "error"
+        },
+        {
+          "pattern": "agent\\.generateText\\(",
+          "message": "agent.generateText() was renamed to agent.generate() in AI SDK v6",
+          "severity": "error"
+        },
+        {
+          "pattern": "agent\\.streamText\\(",
+          "message": "agent.streamText() was renamed to agent.stream() in AI SDK v6",
+          "severity": "error"
+        },
+        {
+          "pattern": "\\bhandleSubmit\\b",
+          "message": "handleSubmit was removed from useChat in v6 — use sendMessage({ text }) instead",
+          "severity": "warn",
+          "skipIfFileContains": "function handleSubmit|const handleSubmit"
+        },
+        {
+          "pattern": "streamObject\\s*\\(",
+          "message": "streamObject() was removed in AI SDK v6 — use streamText() with output: Output.object() instead",
+          "severity": "error"
+        },
+        {
+          "pattern": "tool-invocation",
+          "message": "tool-invocation part type was removed in AI SDK v6 — use tool-<toolName> pattern (e.g. tool-weather) instead",
+          "severity": "error",
+          "skipIfFileContains": "tool-<"
+        },
+        {
+          "pattern": "\\bisLoading\\b",
+          "message": "isLoading was removed from useChat in v6 — use status === \"streaming\" || status === \"submitted\" instead",
+          "severity": "warn",
+          "skipIfFileContains": "\\bstatus\\b"
+        },
+        {
+          "pattern": "message\\.content\\b",
+          "message": "message.content is deprecated in AI SDK v6 — use message.parts to iterate UIMessage parts instead",
+          "severity": "warn",
+          "skipIfFileContains": "message\\.parts"
         }
       ],
       "promptSignals": {
@@ -2610,6 +2833,21 @@
         {
           "pattern": "from\\s+['\"](node:)?(net|dns)['\"]",
           "message": "Node.js net/dns modules are not available in Edge Runtime",
+          "severity": "error"
+        },
+        {
+          "pattern": "\\brequire\\s*\\(",
+          "message": "require() is not available in Edge Runtime — use ESM import instead",
+          "severity": "error"
+        },
+        {
+          "pattern": "\\beval\\s*\\(",
+          "message": "eval() is not allowed in Edge Runtime — refactor to avoid dynamic code evaluation",
+          "severity": "error"
+        },
+        {
+          "pattern": "new\\s+Function\\s*\\(",
+          "message": "new Function() is not allowed in Edge Runtime — refactor to avoid dynamic code evaluation",
           "severity": "error"
         }
       ]

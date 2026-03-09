@@ -20,6 +20,8 @@ export interface ValidationRule {
   pattern: string;
   message: string;
   severity: "error" | "warn";
+  /** If set, skip this rule when the file content matches this regex. */
+  skipIfFileContains?: string;
 }
 
 export interface SkillFrontmatter {
@@ -463,11 +465,15 @@ function parseValidateRules(raw: unknown): ValidationRule[] {
     if (typeof obj.message !== "string" || obj.message === "") continue;
     const severity = obj.severity;
     if (severity !== "error" && severity !== "warn") continue;
-    rules.push({
+    const rule: ValidationRule = {
       pattern: obj.pattern,
       message: obj.message,
       severity,
-    });
+    };
+    if (typeof obj.skipIfFileContains === "string" && obj.skipIfFileContains !== "") {
+      rule.skipIfFileContains = obj.skipIfFileContains;
+    }
+    rules.push(rule);
   }
   return rules;
 }

@@ -30,6 +30,18 @@ validate:
     pattern: from\s+['"](node:)?(net|dns)['"]
     message: 'Node.js net/dns modules are not available in Edge Runtime'
     severity: error
+  -
+    pattern: \brequire\s*\(
+    message: 'require() is not available in Edge Runtime — use ESM import instead'
+    severity: error
+  -
+    pattern: \beval\s*\(
+    message: 'eval() is not allowed in Edge Runtime — refactor to avoid dynamic code evaluation'
+    severity: error
+  -
+    pattern: new\s+Function\s*\(
+    message: 'new Function() is not allowed in Edge Runtime — refactor to avoid dynamic code evaluation'
+    severity: error
 ---
 
 # Edge Runtime — Vercel's Edge JavaScript Runtime

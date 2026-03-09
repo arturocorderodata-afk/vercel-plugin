@@ -83,6 +83,53 @@ metadata:
       - "ci workflow"
       - "aws step functions"
     minScore: 4
+validate:
+  -
+    pattern: experimental_createWorkflow
+    message: 'experimental_createWorkflow is now stable — use createWorkflow from @vercel/workflow'
+    severity: error
+  -
+    pattern: from\s+['"]@vercel/workflow['"]
+    message: 'Workflow DevKit requires AI Gateway OIDC setup — ensure vercel link + vercel env pull for VERCEL_OIDC_TOKEN'
+    severity: warn
+  -
+    pattern: setTimeout|setInterval
+    message: 'setTimeout/setInterval are not available in workflow sandbox scope — use sleep() from "workflow" for delays'
+    severity: error
+    skipIfFileContains: "use step"
+  -
+    pattern: context\.run\s*\(
+    message: 'context.run() is not a WDK pattern — use "use step" directive for retryable, observable steps'
+    severity: error
+  -
+    pattern: \brequire\s*\(
+    message: 'require() is not available in workflow sandbox scope — use ESM imports and move Node.js logic into "use step" functions'
+    severity: error
+    skipIfFileContains: "use step"
+  -
+    pattern: getWritable\(\)
+    message: 'getWritable() must only be called inside "use step" functions — workflow sandbox scope does not support it'
+    severity: warn
+    skipIfFileContains: "use step"
+  -
+    pattern: createWorkflow\s*\(
+    message: 'createWorkflow() is the legacy API — use the "use workflow" directive on an async function instead'
+    severity: error
+    skipIfFileContains: experimental_createWorkflow
+  -
+    pattern: streamObject\s*\(
+    message: 'streamObject() was removed in AI SDK v6 — use streamText() with output: Output.object() instead'
+    severity: error
+  -
+    pattern: await\s+\w+Workflow\s*\(
+    message: 'Do not call workflow functions directly — use start() from "workflow/api" to register the run and get a runId'
+    severity: warn
+    skipIfFileContains: "use workflow"
+  -
+    pattern: \bfetch\s*\(
+    message: 'Native fetch() is not available in workflow sandbox scope — import fetch from "workflow" or move the call into a "use step" function'
+    severity: warn
+    skipIfFileContains: "use step"
 ---
 
 # Vercel Workflow DevKit (WDK)

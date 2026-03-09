@@ -232,6 +232,22 @@ export function runValidation(
     if (!rules) continue;
 
     for (const rule of rules) {
+      // Skip rule if file matches the skip condition
+      if (rule.skipIfFileContains) {
+        try {
+          if (new RegExp(rule.skipIfFileContains, "m").test(fileContent)) {
+            l.trace("posttooluse-validate-rule-skip", {
+              skill,
+              pattern: rule.pattern,
+              reason: "skipIfFileContains matched",
+            });
+            continue;
+          }
+        } catch {
+          // Invalid skip regex — proceed with rule anyway
+        }
+      }
+
       let regex: RegExp;
       try {
         regex = new RegExp(rule.pattern, "g");
