@@ -31,6 +31,30 @@ metadata:
     - '\bpnpm\s+(install|i|add)\s+[^\n]*@auth0/nextjs-auth0\b'
     - '\bbun\s+(install|i|add)\s+[^\n]*@auth0/nextjs-auth0\b'
     - '\byarn\s+add\s+[^\n]*@auth0/nextjs-auth0\b'
+retrieval:
+  aliases:
+    - authentication
+    - login system
+    - sign in
+    - auth flow
+  intents:
+    - add auth
+    - protect routes
+    - manage sessions
+    - implement login
+    - secure api endpoints
+  entities:
+    - NextAuth
+    - Auth.js
+    - JWT
+    - OAuth
+    - session
+    - middleware
+    - getServerSession
+  examples:
+    - add login to my app
+    - protect this route with auth
+    - set up NextAuth
 ---
 
 # Authentication Integrations

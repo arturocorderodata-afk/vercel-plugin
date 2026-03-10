@@ -63,6 +63,29 @@ metadata:
     noneOf:
       - "openai api directly"
     minScore: 6
+retrieval:
+  aliases:
+    - vercel ai
+    - ai sdk
+    - ai library
+    - ai module
+  intents:
+    - add ai to app
+    - integrate language model
+    - stream ai response
+    - generate text with ai
+    - build ai feature
+  entities:
+    - useChat
+    - useCompletion
+    - streamText
+    - generateText
+    - CoreMessage
+    - AI SDK
+  examples:
+    - I want to add AI chat to my app
+    - how do I stream responses from a language model
+    - integrate vercel ai sdk
 validate:
   -
     pattern: from\s+['"]openai['"]

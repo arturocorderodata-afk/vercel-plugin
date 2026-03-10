@@ -86,6 +86,27 @@ metadata:
     noneOf:
       - "useChat"
     minScore: 6
+retrieval:
+  aliases:
+    - chat ui
+    - chatbot
+    - conversation interface
+    - messaging component
+  intents:
+    - build chatbot
+    - add chat interface
+    - create messaging ui
+    - implement chat feature
+  entities:
+    - useChat
+    - Message
+    - ChatUI
+    - StreamingMessage
+    - chat-sdk
+  examples:
+    - build a chatbot interface
+    - add chat to my app
+    - create a messaging component
 ---
 
 # Vercel Chat SDK
