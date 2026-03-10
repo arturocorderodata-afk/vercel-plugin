@@ -3,6 +3,9 @@ name: deployments-cicd
 description: Vercel deployment and CI/CD expert guidance. Use when deploying, promoting, rolling back, inspecting deployments, building with --prebuilt, or configuring CI workflow files for Vercel.
 metadata:
   priority: 6
+  docs:
+    - "https://vercel.com/docs/deployments/overview"
+    - "https://vercel.com/docs/git"
   pathPatterns:
     - '.github/workflows/*.yml'
     - '.github/workflows/*.yaml'
@@ -342,4 +345,4 @@ Based on the deployment outcome:
 - [GitHub Actions](https://vercel.com/docs/deployments/git/vercel-for-github)
 - [GitLab CI](https://vercel.com/docs/deployments/git/vercel-for-gitlab)
 - [Bitbucket Pipelines](https://vercel.com/docs/deployments/git/vercel-for-bitbucket)
-- [OIDC Federation](https://vercel.com/docs/security/secure-backend-access/oidc-federation)
+- [OIDC Federation](https://vercel.com/docs/oidc)

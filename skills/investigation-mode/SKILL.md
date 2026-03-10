@@ -4,6 +4,8 @@ description: "Orchestrated debugging coordinator. Triggers on frustration signal
 summary: "Debug stuck/hung apps: check logs → workflow runs → browser → deployment"
 metadata:
   priority: 8
+  docs:
+    - "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
   pathPatterns:
     - "**/middleware.{ts,js,mjs}"
     - "**/lib/logger.{ts,js}"

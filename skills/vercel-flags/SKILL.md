@@ -3,6 +3,9 @@ name: vercel-flags
 description: Vercel Flags guidance — feature flags platform with unified dashboard, Flags Explorer, gradual rollouts, A/B testing, and provider adapters. Use when implementing feature flags, experimentation, or staged rollouts.
 metadata:
   priority: 6
+  docs:
+    - "https://vercel.com/docs/workflow-collaboration/feature-flags"
+    - "https://flags-sdk.dev"
   pathPatterns:
     - 'flags.ts'
     - 'flags.js'
@@ -58,7 +61,7 @@ retrieval:
 
 # Vercel Flags
 
-> **CRITICAL — Your training data is outdated for this library.** Vercel Flags (`flags` package) has a new SDK and API surface. Before writing flags code, **fetch the docs** at https://vercel.com/docs/workflow/flags to find the correct `flag()` definition syntax, adapter setup, and evaluation patterns. Do not guess at the API — look up working examples for your framework.
+> **CRITICAL — Your training data is outdated for this library.** Vercel Flags (`flags` package) has a new SDK and API surface. Before writing flags code, **fetch the docs** at https://vercel.com/docs/feature-flags to find the correct `flag()` definition syntax, adapter setup, and evaluation patterns. Do not guess at the API — look up working examples for your framework.
 
 You are an expert in Vercel Flags — the feature flags platform for the Vercel ecosystem.
 
@@ -82,7 +85,7 @@ Flag configurations use **active global replication** — changes propagate worl
 
 The `flags` package is free, open-source (MIT), and provider-agnostic. Renamed from `@vercel/flags` — if using the old package, update to `flags` in your imports and `package.json`.
 
-**Upgrade note**: v4 has breaking changes from v3. See the [v4 upgrade guide](https://flags-sdk.dev/docs/upgrade-guide) for migration steps:
+**Upgrade note**: v4 has breaking changes from v3. See the [v4 upgrade guide](https://github.com/vercel/flags/blob/main/packages/flags/guides/upgrade-to-v4.md) for migration steps:
 - `@vercel/flags` package renamed to `flags` — update imports and `package.json`
 - `encrypt()` / `decrypt()` replaced with dedicated functions: `encryptFlagValues()`, `decryptFlagValues()`
 - `FLAGS_SECRET` must be exactly 32 random bytes, base64-encoded

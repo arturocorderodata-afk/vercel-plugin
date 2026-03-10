@@ -3,6 +3,8 @@ name: ncc
 description: Expert guidance for @vercel/ncc — a simple CLI for compiling Node.js modules into a single file with all dependencies included. Use when bundling serverless functions, CLI tools, or any Node.js project into a self-contained file.
 metadata:
   priority: 4
+  docs:
+    - "https://github.com/vercel/ncc"
   pathPatterns: []
   importPatterns:
     - '@vercel/ncc'
@@ -169,4 +171,4 @@ GitHub Actions require all dependencies bundled — ncc is the recommended bundl
 ## Official Resources
 
 - [ncc GitHub](https://github.com/vercel/ncc)
-- [Vercel Blog — ncc Introduction](https://vercel.com/blog/ncc)
+- [Vercel Blog — ncc Introduction](https://github.com/vercel/ncc)

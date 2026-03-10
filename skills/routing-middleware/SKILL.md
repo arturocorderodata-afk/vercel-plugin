@@ -3,6 +3,9 @@ name: routing-middleware
 description: Vercel Routing Middleware guidance — request interception before cache, rewrites, redirects, personalization. Works with any framework. Supports Edge, Node.js, and Bun runtimes. Use when intercepting requests at the platform level.
 metadata:
   priority: 6
+  docs:
+    - "https://nextjs.org/docs/app/building-your-application/routing/middleware"
+    - "https://vercel.com/docs/routing-middleware"
   pathPatterns: 
     - 'middleware.ts'
     - 'middleware.js'

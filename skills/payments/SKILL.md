@@ -3,6 +3,9 @@ name: payments
 description: Stripe payments integration guidance — native Vercel Marketplace setup, checkout sessions, webhook handling, subscription billing, and the Stripe SDK. Use when implementing payments, subscriptions, or processing transactions.
 metadata:
   priority: 5
+  docs:
+    - "https://docs.stripe.com"
+    - "https://docs.stripe.com/payments/quickstart"
   pathPatterns:
     - 'app/api/webhook/stripe/**'
     - 'app/api/webhooks/stripe/**'
@@ -359,7 +362,7 @@ export function PaymentForm({ clientSecret }: { clientSecret: string }) {
 ## Official Documentation
 
 - [Stripe + Vercel Marketplace](https://vercel.com/marketplace/stripe)
-- [Stripe Node.js SDK](https://docs.stripe.com/libraries/node)
+- [Stripe Node.js SDK](https://docs.stripe.com/sdks)
 - [Stripe Checkout](https://docs.stripe.com/payments/checkout)
 - [Stripe Webhooks](https://docs.stripe.com/webhooks)
 - [Stripe Elements](https://docs.stripe.com/payments/elements)

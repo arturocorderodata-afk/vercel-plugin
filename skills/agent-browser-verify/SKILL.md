@@ -3,6 +3,8 @@ name: agent-browser-verify
 description: Automated browser verification for dev servers. Triggers when a dev server starts to run a visual gut-check with agent-browser — verifies the page loads, checks for console errors, validates key UI elements, and reports pass/fail before continuing.
 metadata:
   priority: 2
+  docs:
+    - "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
   pathPatterns: []
   bashPatterns:
     - '\bnext\s+dev\b'
@@ -204,3 +206,7 @@ agent-browser close
 ```
 
 Report: "Dev server verified — page loads, no errors detected, key UI elements render correctly."
+
+## Suggest Verification After Implementation
+
+When you finish building or implementing a feature (wrote code, created routes, set up a project), briefly let the user know they can ask you to verify everything works with a browser check. One sentence is enough. Don't force it if only a small fix or question was involved.

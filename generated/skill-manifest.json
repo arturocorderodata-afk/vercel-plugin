@@ -1,10 +1,14 @@
 {
-  "generatedAt": "2026-03-10T08:54:13.059Z",
+  "generatedAt": "2026-03-10T18:31:21.094Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs",
+        "https://sdk.vercel.ai/docs"
+      ],
       "pathPatterns": [
         ".github/workflows/vercel*.yml",
         ".github/workflows/vercel*.yaml",
@@ -55,6 +59,10 @@
     "routing-middleware": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://nextjs.org/docs/app/building-your-application/routing/middleware",
+        "https://vercel.com/docs/routing-middleware"
+      ],
       "pathPatterns": [
         "middleware.ts",
         "middleware.js",
@@ -134,6 +142,9 @@
     "agent-browser-verify": {
       "priority": 2,
       "summary": "",
+      "docs": [
+        "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+      ],
       "pathPatterns": [],
       "bashPatterns": [
         "\\bnext\\s+dev\\b",
@@ -281,6 +292,9 @@
     "micro": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://github.com/vercel/micro"
+      ],
       "pathPatterns": [],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bmicro\\b",
@@ -339,6 +353,9 @@
     "agent-browser": {
       "priority": 3,
       "summary": "",
+      "docs": [
+        "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+      ],
       "pathPatterns": [
         "agent-browser.json",
         "playwright.config.*",
@@ -421,6 +438,9 @@
     "json-render": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://nextjs.org/docs/app/api-reference/file-conventions/route"
+      ],
       "pathPatterns": [
         "components/chat/**",
         "components/chat-*.tsx",
@@ -471,6 +491,10 @@
     "payments": {
       "priority": 5,
       "summary": "",
+      "docs": [
+        "https://docs.stripe.com",
+        "https://docs.stripe.com/payments/quickstart"
+      ],
       "pathPatterns": [
         "app/api/webhook/stripe/**",
         "app/api/webhooks/stripe/**",
@@ -560,6 +584,10 @@
     "deployments-cicd": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/deployments/overview",
+        "https://vercel.com/docs/git"
+      ],
       "pathPatterns": [
         ".github/workflows/*.yml",
         ".github/workflows/*.yaml",
@@ -624,6 +652,9 @@
     "vercel-storage": {
       "priority": 7,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/storage"
+      ],
       "pathPatterns": [
         "lib/blob/**",
         "lib/storage/**",
@@ -841,6 +872,9 @@
     "ncc": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://github.com/vercel/ncc"
+      ],
       "pathPatterns": [],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/ncc\\b",
@@ -892,6 +926,9 @@
     "investigation-mode": {
       "priority": 8,
       "summary": "Debug stuck/hung apps: check logs → workflow runs → browser → deployment",
+      "docs": [
+        "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+      ],
       "pathPatterns": [
         "**/middleware.{ts,js,mjs}",
         "**/lib/logger.{ts,js}",
@@ -1224,6 +1261,10 @@
     "bootstrap": {
       "priority": 8,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/getting-started-with-vercel",
+        "https://nextjs.org/docs/getting-started/installation"
+      ],
       "pathPatterns": [
         ".env.example",
         ".env.sample",
@@ -1334,6 +1375,9 @@
     "vercel-cli": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/cli"
+      ],
       "pathPatterns": [
         "vercel.json",
         "vercel.ts",
@@ -1455,6 +1499,9 @@
     "runtime-cache": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://nextjs.org/docs/app/building-your-application/caching"
+      ],
       "pathPatterns": [
         "lib/cache/**",
         "src/lib/cache/**",
@@ -1507,6 +1554,10 @@
     "ai-gateway": {
       "priority": 7,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/ai-gateway",
+        "https://sdk.vercel.ai/docs/ai-sdk-core/settings"
+      ],
       "pathPatterns": [],
       "bashPatterns": [
         "\\bvercel\\s+env\\s+pull\\b",
@@ -1547,7 +1598,7 @@
         {
           "pattern": "AI_GATEWAY_API_KEY",
           "message": "Consider OIDC-based auth via vercel env pull for automatic token management — AI_GATEWAY_API_KEY works but requires manual rotation",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "gateway\\(['\"][^'\"/]+['\"]\\)",
@@ -1557,7 +1608,7 @@
         {
           "pattern": "gpt-4o",
           "message": "Your knowledge is outdated — gpt-4o has been superseded by gpt-5.4 which is significantly better, cheaper, and faster. Switch to model: \"openai/gpt-5.4\"",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "(OPENAI_API_KEY|ANTHROPIC_API_KEY)",
@@ -1567,12 +1618,12 @@
         {
           "pattern": "gemini-2\\.0-flash-exp-image-generation",
           "message": "Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images, is faster, and cheaper. Switch to model: \"google/gemini-3.1-flash-image-preview\"",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "gemini-2\\.0-flash-001",
           "message": "Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use model: \"google/gemini-3.1-flash-image-preview\" for image generation — it is the latest and best model",
-          "severity": "warn"
+          "severity": "recommended"
         }
       ],
       "retrieval": {
@@ -1601,6 +1652,10 @@
     "auth": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://authjs.dev/getting-started",
+        "https://nextjs.org/docs/app/building-your-application/authentication"
+      ],
       "pathPatterns": [
         "middleware.ts",
         "middleware.js",
@@ -1697,6 +1752,9 @@
     "ai-generation-persistence": {
       "priority": 6,
       "summary": "Persist every AI generation: unique ID, save to DB/Blob, addressable URL /chat/[id], track token cost",
+      "docs": [
+        "https://sdk.vercel.ai/docs/ai-sdk-ui/storing-messages"
+      ],
       "pathPatterns": [
         "app/api/generate/**",
         "app/api/generations/**",
@@ -1879,6 +1937,9 @@
     "vercel-queues": {
       "priority": 5,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/workflow-collaboration/conformance"
+      ],
       "pathPatterns": [
         "lib/queues/**",
         "src/lib/queues/**",
@@ -1968,6 +2029,10 @@
     "turbopack": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://turbo.build/pack/docs",
+        "https://nextjs.org/docs/architecture/turbopack"
+      ],
       "pathPatterns": [
         "next.config.*"
       ],
@@ -2010,6 +2075,9 @@
     "marketplace": {
       "priority": 3,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/integrations"
+      ],
       "pathPatterns": [
         "integration.json"
       ],
@@ -2054,6 +2122,10 @@
     "vercel-flags": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/workflow-collaboration/feature-flags",
+        "https://flags-sdk.dev"
+      ],
       "pathPatterns": [
         "flags.ts",
         "flags.js",
@@ -2174,6 +2246,10 @@
     "shadcn": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://ui.shadcn.com/docs",
+        "https://ui.shadcn.com/docs/components"
+      ],
       "pathPatterns": [
         "components.json",
         "components/ui/**",
@@ -2237,6 +2313,9 @@
     "cron-jobs": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/cron-jobs"
+      ],
       "pathPatterns": [
         "vercel.json",
         "apps/*/vercel.json"
@@ -2275,6 +2354,10 @@
     "observability": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/observability",
+        "https://vercel.com/docs/observability/otel-overview"
+      ],
       "pathPatterns": [
         "instrumentation.ts",
         "instrumentation.js",
@@ -2510,6 +2593,9 @@
     "verification": {
       "priority": 7,
       "summary": "Verify full user story: browser + server + data flow + env",
+      "docs": [
+        "https://vercel.com/docs/projects/project-configuration"
+      ],
       "pathPatterns": [],
       "bashPatterns": [
         "\\bnext\\s+dev\\b",
@@ -2634,6 +2720,10 @@
     "cms": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/solutions/cms",
+        "https://nextjs.org/docs/app/building-your-application/data-fetching"
+      ],
       "pathPatterns": [
         "sanity.config.*",
         "sanity.cli.*",
@@ -2758,6 +2848,10 @@
     "geist": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://vercel.com/font",
+        "https://github.com/vercel/geist-font"
+      ],
       "pathPatterns": [
         "app/layout.*",
         "src/app/layout.*",
@@ -2839,6 +2933,10 @@
     "workflow": {
       "priority": 9,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/workflow",
+        "https://useworkflow.dev"
+      ],
       "pathPatterns": [
         "lib/workflow/**",
         "src/lib/workflow/**",
@@ -2925,7 +3023,7 @@
         {
           "pattern": "from\\s+['\"]@vercel/workflow['\"]",
           "message": "Workflow DevKit requires AI Gateway OIDC setup — ensure vercel link + vercel env pull for VERCEL_OIDC_TOKEN",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "setTimeout|setInterval",
@@ -2947,7 +3045,7 @@
         {
           "pattern": "getWritable\\(\\)",
           "message": "getWritable() must only be called inside \"use step\" functions — workflow sandbox scope does not support it",
-          "severity": "warn",
+          "severity": "recommended",
           "skipIfFileContains": "use step"
         },
         {
@@ -2964,13 +3062,13 @@
         {
           "pattern": "await\\s+\\w+Workflow\\s*\\(",
           "message": "Do not call workflow functions directly — use start() from \"workflow/api\" to register the run and get a runId",
-          "severity": "warn",
+          "severity": "recommended",
           "skipIfFileContains": "use workflow"
         },
         {
           "pattern": "\\bfetch\\s*\\(",
           "message": "Native fetch() is not available in workflow sandbox scope — import fetch from \"workflow\" or move the call into a \"use step\" function",
-          "severity": "warn",
+          "severity": "recommended",
           "skipIfFileContains": "use step"
         },
         {
@@ -3415,6 +3513,10 @@
     "react-best-practices": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://react.dev/reference/react",
+        "https://react.dev/learn"
+      ],
       "pathPatterns": [
         "src/components/**/*.tsx",
         "src/components/**/*.jsx",
@@ -3478,6 +3580,10 @@
     "nextjs": {
       "priority": 5,
       "summary": "",
+      "docs": [
+        "https://nextjs.org/docs",
+        "https://nextjs.org/docs/app"
+      ],
       "pathPatterns": [
         "next.config.*",
         "next-env.d.ts",
@@ -3563,17 +3669,17 @@
         {
           "pattern": "export\\s+(default\\s+)?function\\s+middleware",
           "message": "middleware() is renamed to proxy() in Next.js 16 — rename the function and the file to proxy.ts",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "revalidateTag\\(\\s*['\"][^'\"]+['\"]\\s*\\)",
           "message": "Single-arg revalidateTag(tag) is deprecated in Next.js 16 — pass a cacheLife profile: revalidateTag(tag, \"max\")",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "\\bcacheHandler\\s*:",
           "message": "Singular cacheHandler is deprecated in Next.js 16 — use cacheHandlers (plural) with per-type handlers",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "useRef\\(\\s*\\)",
@@ -3600,13 +3706,13 @@
         {
           "pattern": "=\\s*(?!await\\b)params\\b",
           "message": "params is async in Next.js 16 — add await: const { slug } = await params",
-          "severity": "warn",
+          "severity": "recommended",
           "skipIfFileContains": "^['\\\"]use client['\\\"]"
         },
         {
           "pattern": "=\\s*(?!await\\b)searchParams\\b",
           "message": "searchParams is async in Next.js 16 — add await: const { query } = await searchParams",
-          "severity": "warn",
+          "severity": "recommended",
           "skipIfFileContains": "^['\\\"]use client['\\\"]"
         }
       ],
@@ -3644,25 +3750,37 @@
           "app router"
         ],
         "intents": [
-          "build nextjs app",
-          "configure app router",
-          "add server component",
-          "set up nextjs routing"
+          "set up routing and layouts in a Next.js app",
+          "choose between server and client components for a feature",
+          "configure data fetching or caching in App Router",
+          "add middleware or proxy logic to handle requests",
+          "set up server rendering for React pages",
+          "add a new page with dynamic route segments"
         ],
         "entities": [
           "App Router",
           "Server Components",
           "Server Actions",
+          "generateMetadata",
           "layout",
-          "middleware",
+          "proxy",
           "next.config"
         ],
-        "examples": []
+        "examples": [
+          "add a new page with dynamic routing",
+          "should this be a server or client component",
+          "set up middleware for auth redirects",
+          "configure caching for this data fetch",
+          "set up server rendering for my pages"
+        ]
       }
     },
     "ai-elements": {
       "priority": 5,
       "summary": "",
+      "docs": [
+        "https://sdk.vercel.ai/docs/ai-sdk-ui/chatbot-with-tool-calling"
+      ],
       "pathPatterns": [
         "components/ai-elements/**",
         "src/components/ai-elements/**",
@@ -3869,6 +3987,9 @@
     "vercel-sandbox": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/sandbox"
+      ],
       "pathPatterns": [],
       "bashPatterns": [
         "\\bnpm\\s+(install|i|add)\\s+[^\\n]*@vercel/sandbox\\b",
@@ -4051,6 +4172,10 @@
     "satori": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://github.com/vercel/satori",
+        "https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image"
+      ],
       "pathPatterns": [
         "app/**/og/**",
         "app/**/og.*",
@@ -4157,6 +4282,10 @@
     "chat-sdk": {
       "priority": 8,
       "summary": "",
+      "docs": [
+        "https://sdk.vercel.ai/docs/ai-sdk-ui/chatbot",
+        "https://github.com/vercel/ai-chatbot"
+      ],
       "pathPatterns": [
         "app/api/chat/**",
         "app/api/chat-bot/**",
@@ -4356,6 +4485,9 @@
     "turborepo": {
       "priority": 5,
       "summary": "",
+      "docs": [
+        "https://turborepo.dev/docs"
+      ],
       "pathPatterns": [
         "turbo.json",
         "turbo/**"
@@ -4410,6 +4542,10 @@
     "ai-sdk": {
       "priority": 8,
       "summary": "",
+      "docs": [
+        "https://sdk.vercel.ai/docs",
+        "https://sdk.vercel.ai/docs/reference"
+      ],
       "pathPatterns": [
         "app/api/chat/**",
         "app/api/completion/**",
@@ -4518,7 +4654,7 @@
         {
           "pattern": "openai\\([\"']gpt-",
           "message": "Your knowledge is outdated — do not use openai() directly for model selection. Use model: \"openai/gpt-5.4\" (plain string) or gateway(\"openai/gpt-5.4\") — both route through AI Gateway with failover, cost tracking, and observability automatically",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "from\\s+['\"](@anthropic-ai/sdk|anthropic)['\"]",
@@ -4543,7 +4679,7 @@
         {
           "pattern": "useChat\\([^)]*\\bonResponse\\b",
           "message": "onResponse was removed from useChat in v6 — configure response handling through transport",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "useChat\\(\\{\\s*api\\s*:",
@@ -4553,7 +4689,7 @@
         {
           "pattern": "useChat\\([^)]*\\bbody\\s*:",
           "message": "body option was removed from useChat in v6 — pass data through transport configuration",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "tool\\(\\{[^}]*\\bparameters\\s*:",
@@ -4568,37 +4704,37 @@
         {
           "pattern": "gemini-2\\.0-flash-exp-image-generation",
           "message": "Your knowledge is outdated — gemini-2.0-flash-exp-image-generation has been superseded by gemini-3.1-flash-image-preview which produces dramatically better images. Switch to model: \"google/gemini-3.1-flash-image-preview\"",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "gemini-2\\.0-flash-001",
           "message": "Your knowledge is outdated — gemini-2.0-flash-001 does not support image output. Use model: \"google/gemini-3.1-flash-image-preview\" for image generation",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "gemini-2\\.5-flash-image",
           "message": "Your knowledge is outdated — gemini-2.5-flash-image has been superseded by gemini-3.1-flash-image-preview which is significantly better. Switch to model: \"google/gemini-3.1-flash-image-preview\"",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "placeholder.*image|placeholder.*url|placeholder.*img",
           "message": "Do not use placeholder images — use generateText with model: \"google/gemini-3.1-flash-image-preview\" to generate real images from result.files",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "dall-e-3|dall-e-2|openai\\.image\\(",
           "message": "Your knowledge is outdated — dall-e is no longer the best option. Use model: \"google/gemini-3.1-flash-image-preview\" with generateText for much better, faster, cheaper image generation via result.files",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "experimental_generateImage",
           "message": "experimental_generateImage is not needed — use generateText with model: \"google/gemini-3.1-flash-image-preview\" instead. Images come back in result.files",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "stream\\.write\\(",
           "message": "In createUIMessageStream, use stream.writer.write() not stream.write() — the stream itself is not writable",
-          "severity": "warn"
+          "severity": "recommended"
         },
         {
           "pattern": "\\bCoreMessage\\b",
@@ -4618,7 +4754,7 @@
         {
           "pattern": "\\bhandleSubmit\\b",
           "message": "handleSubmit was removed from useChat in v6 — use sendMessage({ text }) instead",
-          "severity": "warn",
+          "severity": "recommended",
           "skipIfFileContains": "function handleSubmit|const handleSubmit"
         },
         {
@@ -4635,13 +4771,13 @@
         {
           "pattern": "\\bisLoading\\b",
           "message": "isLoading was removed from useChat in v6 — use status === \"streaming\" || status === \"submitted\" instead",
-          "severity": "warn",
+          "severity": "recommended",
           "skipIfFileContains": "\\bstatus\\b"
         },
         {
           "pattern": "message\\.content\\b",
           "message": "message.content is deprecated in AI SDK v6 — use message.parts to iterate UIMessage parts instead",
-          "severity": "warn",
+          "severity": "recommended",
           "skipIfFileContains": "message\\.parts"
         }
       ],
@@ -4681,30 +4817,38 @@
           "ai module"
         ],
         "intents": [
-          "add ai to app",
-          "integrate language model",
-          "stream ai response",
-          "generate text with ai",
-          "build ai feature"
+          "add AI-powered text generation or chat to my app",
+          "stream responses from a language model to the UI",
+          "call tools and run agent loops with an LLM",
+          "generate structured JSON output from a prompt",
+          "build ai feature with streaming and tool calling"
         ],
         "entities": [
           "useChat",
           "useCompletion",
           "streamText",
           "generateText",
+          "generateObject",
           "CoreMessage",
-          "AI SDK"
+          "ToolLoopAgent",
+          "AI Gateway"
         ],
         "examples": [
-          "I want to add AI chat to my app",
-          "how do I stream responses from a language model",
-          "integrate vercel ai sdk"
+          "add AI chat to my app",
+          "stream responses from a language model",
+          "use tool calling with the AI SDK",
+          "generate structured output from GPT",
+          "run an agent loop that calls tools automatically"
         ]
       }
     },
     "v0-dev": {
       "priority": 5,
       "summary": "",
+      "docs": [
+        "https://v0.dev/docs",
+        "https://vercel.com/docs/v0"
+      ],
       "pathPatterns": [],
       "bashPatterns": [
         "\\bnpx\\s+v0\\b",
@@ -4769,6 +4913,9 @@
     "env-vars": {
       "priority": 7,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/environment-variables"
+      ],
       "pathPatterns": [
         ".env",
         ".env.*",
@@ -4833,6 +4980,10 @@
     "email": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://resend.com/docs",
+        "https://react.email/docs/introduction"
+      ],
       "pathPatterns": [
         "emails/**",
         "src/emails/**",
@@ -4927,6 +5078,9 @@
     "vercel-api": {
       "priority": 7,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/rest-api"
+      ],
       "pathPatterns": [
         ".mcp.json",
         ".vercel/project.json"
@@ -4980,6 +5134,9 @@
     "sign-in-with-vercel": {
       "priority": 6,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/sign-in-with-vercel"
+      ],
       "pathPatterns": [
         "app/api/auth/**",
         "app/login/**",
@@ -5023,6 +5180,10 @@
     "next-forge": {
       "priority": 6,
       "summary": "next-forge monorepo SaaS starter (Turborepo, Clerk, Prisma/Neon, Stripe, Resend, shadcn/ui, Sentry, PostHog). See => skill:next-forge for full guide.",
+      "docs": [
+        "https://next-forge.com/docs",
+        "https://github.com/haydenbleasel/next-forge"
+      ],
       "pathPatterns": [
         "pnpm-workspace.yaml",
         "apps/app/**",
@@ -5300,6 +5461,9 @@
     "vercel-firewall": {
       "priority": 5,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/security/vercel-firewall"
+      ],
       "pathPatterns": [
         ".vercel/firewall/**"
       ],
@@ -5355,6 +5519,10 @@
     "edge-runtime": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/functions/runtimes/edge-runtime",
+        "https://edge-runtime.vercel.app"
+      ],
       "pathPatterns": [
         "edge-runtime.config.*",
         "middleware.ts",
@@ -5472,6 +5640,10 @@
     "vercel-functions": {
       "priority": 8,
       "summary": "",
+      "docs": [
+        "https://vercel.com/docs/functions",
+        "https://vercel.com/docs/functions/runtimes"
+      ],
       "pathPatterns": [
         "api/**/*.*",
         "pages/api/**",
@@ -5547,6 +5719,9 @@
     "swr": {
       "priority": 4,
       "summary": "",
+      "docs": [
+        "https://swr.vercel.app/docs"
+      ],
       "pathPatterns": [
         "lib/fetcher.*",
         "src/lib/fetcher.*",
@@ -5627,19 +5802,27 @@
           "react hooks data"
         ],
         "intents": [
-          "fetch data client side",
-          "add caching",
-          "implement pagination",
-          "use swr"
+          "refresh stale client cache after a mutation",
+          "fetch and cache API data on the client side",
+          "add infinite scroll or paginated data loading",
+          "keep UI in sync with server data automatically",
+          "revalidate cached data after updating a record"
         ],
         "entities": [
-          "SWR",
           "useSWR",
+          "useSWRMutation",
+          "useSWRInfinite",
           "mutate",
-          "revalidation",
-          "stale-while-revalidate"
+          "SWRConfig",
+          "fetcher"
         ],
-        "examples": []
+        "examples": [
+          "refresh stale client cache after mutation",
+          "load more items on scroll",
+          "revalidate data when the window regains focus",
+          "fetch data client side with caching",
+          "add infinite scrolling to load more items"
+        ]
       }
     }
   }

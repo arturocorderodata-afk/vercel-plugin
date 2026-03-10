@@ -3,6 +3,9 @@ name: auth
 description: Authentication integration guidance — Clerk (native Vercel Marketplace), Descope, and Auth0 setup for Next.js applications. Covers middleware auth patterns, sign-in/sign-up flows, and Marketplace provisioning. Use when implementing user authentication.
 metadata:
   priority: 6
+  docs:
+    - "https://authjs.dev/getting-started"
+    - "https://nextjs.org/docs/app/building-your-application/authentication"
   pathPatterns:
     - 'middleware.ts'
     - 'middleware.js'
@@ -371,5 +374,5 @@ Clerk provides an upgrade CLI that scans your codebase and applies codemods: `np
 
 - [Clerk + Vercel Marketplace](https://clerk.com/docs/deployments/vercel)
 - [Clerk Next.js Quickstart](https://clerk.com/docs/quickstarts/nextjs)
-- [Descope Next.js SDK](https://docs.descope.com/sdks/nextjs)
+- [Descope Next.js SDK](https://docs.descope.com/getting-started/nextjs)
 - [Auth0 Next.js SDK](https://auth0.com/docs/quickstart/webapp/nextjs)

@@ -3,6 +3,8 @@ name: vercel-queues
 description: Vercel Queues guidance (public beta) — durable event streaming with topics, consumer groups, retries, and delayed delivery. $0.60/1M ops. Powers Workflow DevKit. Use when building async processing, fan-out patterns, or event-driven architectures.
 metadata:
   priority: 5
+  docs:
+    - "https://vercel.com/docs/workflow-collaboration/conformance"
   pathPatterns:
     - 'lib/queues/**'
     - 'src/lib/queues/**'
@@ -241,4 +243,4 @@ The SDK authenticates via **OIDC** (OpenID Connect) tokens automatically on Verc
 
 - 📖 docs: https://vercel.com/docs/queues
 - 📖 quickstart: https://vercel.com/docs/queues/quickstart
-- 📖 API reference: https://vercel.com/docs/queues/api-reference
+- 📖 API reference: https://vercel.com/docs/queues/api

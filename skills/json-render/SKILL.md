@@ -3,6 +3,8 @@ name: json-render
 description: AI chat response rendering guidance — handling UIMessage parts, tool call displays, streaming states, and structured data presentation. Use when building custom chat UIs, rendering tool results, or troubleshooting AI response display issues.
 metadata:
   priority: 4
+  docs:
+    - "https://nextjs.org/docs/app/api-reference/file-conventions/route"
   pathPatterns:
     - 'components/chat/**'
     - 'components/chat-*.tsx'
@@ -344,5 +346,5 @@ export async function POST(req: Request) {
 
 - [AI SDK UI](https://ai-sdk.dev/docs/ai-sdk-ui)
 - [useChat Reference](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot)
-- [UIMessage Types](https://ai-sdk.dev/docs/reference/types/ui-message)
+- [UIMessage Types](https://ai-sdk.dev/docs/reference/ai-sdk-core/ui-message)
 - [AI Elements](https://ai-sdk.dev/elements)

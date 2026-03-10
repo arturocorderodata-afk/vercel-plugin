@@ -3,6 +3,9 @@ name: cms
 description: Headless CMS integration guidance — Sanity (native Vercel Marketplace), Contentful, DatoCMS, Storyblok, and Builder.io. Covers studio setup, content modeling, preview mode, revalidation webhooks, and Visual Editing. Use when building content-driven sites with a headless CMS on Vercel.
 metadata:
   priority: 4
+  docs:
+    - "https://vercel.com/docs/solutions/cms"
+    - "https://nextjs.org/docs/app/building-your-application/data-fetching"
   pathPatterns:
     - 'sanity.config.*'
     - 'sanity.cli.*'

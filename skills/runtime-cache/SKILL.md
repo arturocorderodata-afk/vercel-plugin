@@ -3,6 +3,8 @@ name: runtime-cache
 description: Vercel Runtime Cache API guidance — ephemeral per-region key-value cache with tag-based invalidation. Shared across Functions, Routing Middleware, and Builds. Use when implementing caching strategies beyond framework-level caching.
 metadata:
   priority: 6
+  docs:
+    - "https://nextjs.org/docs/app/building-your-application/caching"
   pathPatterns: 
     - 'lib/cache/**'
     - 'src/lib/cache/**'
@@ -256,7 +258,7 @@ Monitor hit rates, invalidation patterns, and storage usage in the Vercel Dashbo
 
 ## References
 
-- 📖 docs: https://vercel.com/docs/infrastructure/runtime-cache
+- 📖 docs: https://vercel.com/docs/runtime-cache
 - 📖 changelog: https://vercel.com/changelog/introducing-the-runtime-cache-api
 - 📖 CLI cache: https://vercel.com/docs/cli/cache
 - 📖 CDN cache purging: https://vercel.com/docs/cdn-cache/purge
