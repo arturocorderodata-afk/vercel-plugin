@@ -2,12 +2,13 @@
   "description": "Consolidated golden snapshot fixtures for hook payload assertions",
   "fixtures": [
     {
-      "name": "vercel.json edit — cap 3 drops 2 lowest-priority",
+      "name": "vercel.json edit \u2014 cap 3 drops 2 lowest-priority",
       "input": {
         "tool_name": "Edit",
         "tool_input": {
           "file_path": "/Users/me/project/vercel.json"
-        }
+        },
+        "session_id": "regen-0-68041"
       },
       "expected": {
         "skillInjection": {
@@ -40,7 +41,8 @@
         "tool_name": "Read",
         "tool_input": {
           "file_path": "/Users/me/project/next.config.ts"
-        }
+        },
+        "session_id": "regen-1-68041"
       },
       "expected": {
         "skillInjection": {
@@ -66,7 +68,8 @@
         "tool_name": "Bash",
         "tool_input": {
           "command": "vercel deploy --prod"
-        }
+        },
+        "session_id": "regen-2-68041"
       },
       "expected": {
         "skillInjection": {
@@ -87,12 +90,13 @@
       }
     },
     {
-      "name": "AI SDK file edit — cap 3 drops nextjs",
+      "name": "AI SDK file edit \u2014 cap 3 drops nextjs",
       "input": {
         "tool_name": "Edit",
         "tool_input": {
           "file_path": "/Users/me/project/app/api/chat/route.ts"
-        }
+        },
+        "session_id": "regen-3-68041"
       },
       "expected": {
         "skillInjection": {
@@ -118,12 +122,13 @@
       }
     },
     {
-      "name": "Read app/api/chat/route.ts — AI SDK route — cap 3 drops nextjs",
+      "name": "Read app/api/chat/route.ts \u2014 AI SDK route \u2014 cap 3 drops nextjs",
       "input": {
         "tool_name": "Read",
         "tool_input": {
           "file_path": "/Users/me/project/app/api/chat/route.ts"
-        }
+        },
+        "session_id": "regen-4-68041"
       },
       "expected": {
         "skillInjection": {
@@ -149,12 +154,13 @@
       }
     },
     {
-      "name": "Write middleware.ts — cap 3 drops edge-runtime",
+      "name": "Write middleware.ts \u2014 cap 3 drops edge-runtime",
       "input": {
         "tool_name": "Write",
         "tool_input": {
           "file_path": "/Users/me/project/middleware.ts"
-        }
+        },
+        "session_id": "regen-5-68041"
       },
       "expected": {
         "skillInjection": {
@@ -180,12 +186,13 @@
       }
     },
     {
-      "name": "bash cap collision — npm install triggers 4 skills, cap 3 drops lowest",
+      "name": "bash cap collision \u2014 npm install triggers 4 skills, cap 3 drops lowest",
       "input": {
         "tool_name": "Bash",
         "tool_input": {
           "command": "npm install ai @vercel/analytics @vercel/flags @vercel/workflow"
-        }
+        },
+        "session_id": "regen-6-68041"
       },
       "expected": {
         "skillInjection": {

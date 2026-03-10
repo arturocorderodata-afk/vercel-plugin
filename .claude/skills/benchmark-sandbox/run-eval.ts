@@ -436,20 +436,6 @@ async function runScenario(
         }
       }
 
-      // Parse verification results from output
-      const stories: VerificationResult["stories"] = scenario.userStories.map((_, i) => {
-        const idx = i + 1;
-        const passMatch = verifyOut.match(new RegExp(`STORY_${idx}:\\s*(PASS|FAIL)`, "i"));
-        return {
-          index: idx,
-          status: passMatch ? (passMatch[1].toLowerCase() as "pass" | "fail") : "unknown",
-        };
-      });
-
-      verification = { ran: true, exitCode: verifyExit, stories, output: verifyOut.slice(-500) };
-      const passCount = stories.filter(s => s.status === "pass").length;
-      console.log(`  [${scenario.slug}] Verify: ${passCount}/${stories.length} passed (exit=${verifyExit}) (${elapsed(t0)})`);
-
       // Re-extract skills after verify phase (agent-browser + fixes trigger more)
       const postVerifySkills = (await sh(sandbox, "ls /tmp/vercel-plugin-*-seen-skills.d/ 2>/dev/null")).split("\n").filter(Boolean);
       if (postVerifySkills.length > claimedSkills.length) {
@@ -459,6 +445,62 @@ async function runScenario(
           claimedSkills.push(...newSkills);
         }
       }
+
+      // Score verification results with structured JSON output via haiku
+      // This runs as a separate quick pass — no tools needed, just reads the verify output
+      const storyList = scenario.userStories.map((s, i) => `${i + 1}. ${s}`).join("\n");
+      const jsonSchema = JSON.stringify({
+        type: "object",
+        properties: {
+          stories: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                index: { type: "number" },
+                status: { type: "string", enum: ["pass", "fail"] },
+                reason: { type: "string" },
+              },
+              required: ["index", "status", "reason"],
+            },
+          },
+        },
+        required: ["stories"],
+      });
+
+      const scorePrompt = `You are scoring whether user stories were verified in a web app test session.
+
+The user stories were:
+${storyList}
+
+The verification session output (last 2000 chars):
+${verifyOut.slice(-2000)}
+
+For each story, determine if it PASSED or FAILED based on the evidence in the output. If the output mentions screenshots, successful interactions, or confirmations — mark as pass. If there are errors, missing elements, or the story was never tested — mark as fail. Give a brief reason for each.`;
+
+      await sandbox.writeFiles([{ path: "/tmp/score-prompt.txt", content: Buffer.from(scorePrompt) }]);
+      const scoreCmd = `${claudeBin} -p "$(cat /tmp/score-prompt.txt)" --json-schema '${jsonSchema}' --output-format json --model haiku --setting-sources ""`;
+      let stories: VerificationResult["stories"] = scenario.userStories.map((_, i) => ({
+        index: i + 1, status: "unknown" as const,
+      }));
+
+      try {
+        const sr = await sandbox.runCommand("sh", ["-c", scoreCmd], { signal: AbortSignal.timeout(60_000) }); // 1 min max
+        const scoreOut = (await sr.stdout()).trim();
+        const parsed = JSON.parse(scoreOut);
+        if (parsed.stories && Array.isArray(parsed.stories)) {
+          stories = parsed.stories.map((s: any) => ({
+            index: s.index,
+            status: s.status === "pass" ? "pass" as const : "fail" as const,
+          }));
+        }
+      } catch (e: any) {
+        console.log(`  [${scenario.slug}] Score parse failed: ${e.message?.slice(0, 80)}`);
+      }
+
+      verification = { ran: true, exitCode: verifyExit, stories, output: verifyOut.slice(-500) };
+      const passCount = stories.filter(s => s.status === "pass").length;
+      console.log(`  [${scenario.slug}] Verify: ${passCount}/${stories.length} passed (exit=${verifyExit}) (${elapsed(t0)})`)
     } else if (SKIP_VERIFY) {
       console.log(`  [${scenario.slug}] Verification skipped (--skip-verify)`);
     } else {
@@ -466,7 +508,7 @@ async function runScenario(
     }
 
     // 9. Phase 3: Deploy to Vercel for permanent URL
-    //    Uses Claude Code to link, fix build errors, and deploy.
+    //    Direct shell commands — no Claude Code session needed.
     //    Deployment protection is on by default for vercel-labs team.
     let deployUrl: string | undefined;
     if (!SKIP_DEPLOY && vercelToken && projectFilesList.length > 3) {
@@ -474,57 +516,31 @@ async function runScenario(
       const ts = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15);
       const projectName = `${scenario.slug}-${ts}`.toLowerCase();
 
-      const deployPrompt = `The app in this directory needs to be deployed to Vercel. Follow these steps exactly:
+      // Step 1: Link to vercel-labs team
+      const linkOut = await sh(sandbox, `cd ${projectDir} && unset VERCEL_TOKEN && vercel link --yes --scope vercel-labs --project ${projectName} 2>&1`);
+      console.log(`  [${scenario.slug}] Linked: ${linkOut.split("\n").pop()} (${elapsed(t0)})`);
 
-1. Run: vercel link --yes --scope vercel-labs --project ${projectName}
-2. Run: vercel deploy --yes
-3. If the deploy fails with a build error, fix the code and try again (up to 3 attempts).
-4. After a successful deploy, output the deployment URL on its own line starting with DEPLOY_URL:
-
-Important:
-- Do NOT set or use VERCEL_TOKEN env var — the CLI auth is already configured
-- If you see tsconfig or type errors, fix them before retrying
-- Deployment protection is enabled by default, which is what we want`;
-
-      await sandbox.writeFiles([{ path: "/tmp/deploy.txt", content: Buffer.from(deployPrompt) }]);
-      const deployCmd = `cd ${projectDir} && unset VERCEL_TOKEN && ${claudeBin} --dangerously-skip-permissions --debug --settings ${settingsPath} "$(cat /tmp/deploy.txt)"`;
-
-      let deployExit = -1;
-      let deployOut = "";
-      try {
-        const dr = await sandbox.runCommand("sh", ["-c", deployCmd], { signal: AbortSignal.timeout(TIMEOUT_MS) });
-        deployExit = (dr as any).exitCode ?? 0;
-        deployOut = (await dr.stdout()).trim();
-      } catch (e: any) {
-        if (e.message?.includes("timed out")) {
-          deployExit = 124;
-          console.log(`  [${scenario.slug}] Deploy timed out (${elapsed(t0)})`);
+      // Step 2: Deploy (up to 3 attempts)
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const deployOut = await sh(sandbox, `cd ${projectDir} && unset VERCEL_TOKEN && vercel deploy --yes 2>&1`);
+        const urlMatch = deployOut.match(/(https:\/\/[^\s]+\.vercel\.app)/);
+        if (urlMatch) {
+          deployUrl = urlMatch[1];
+          console.log(`  [${scenario.slug}] Deployed: ${deployUrl} (attempt ${attempt}) (${elapsed(t0)})`);
+          break;
         }
-      }
-
-      // Extract deploy URL from Claude's output
-      const urlMatch = deployOut.match(/DEPLOY_URL:\s*(https:\/\/[^\s]+\.vercel\.app)/);
-      if (urlMatch) {
-        deployUrl = urlMatch[1];
-        console.log(`  [${scenario.slug}] Deployed: ${deployUrl} (${elapsed(t0)})`);
-      } else {
-        // Fall back to scanning for any vercel.app URL in output
-        const fallback = deployOut.match(/(https:\/\/[^\s]+\.vercel\.app)/);
-        if (fallback) {
-          deployUrl = fallback[1];
-          console.log(`  [${scenario.slug}] Deployed (parsed): ${deployUrl} (${elapsed(t0)})`);
-        } else {
-          console.log(`  [${scenario.slug}] Deploy failed (exit=${deployExit}) (${elapsed(t0)})`);
-        }
-      }
-
-      // Re-extract skills after deploy phase (Claude may have triggered more)
-      const postDeploySkills = (await sh(sandbox, "ls /tmp/vercel-plugin-*-seen-skills.d/ 2>/dev/null")).split("\n").filter(Boolean);
-      if (postDeploySkills.length > claimedSkills.length) {
-        const newSkills = postDeploySkills.filter(s => !claimedSkills.includes(s));
-        if (newSkills.length > 0) {
-          console.log(`  [${scenario.slug}] +${newSkills.length} skills from deploy: ${newSkills.join(", ")}`);
-          claimedSkills.push(...newSkills);
+        // Check if it's a build error we can fix with Claude
+        const hasBuildError = deployOut.includes("Command \"npm run build\" exited with") || deployOut.includes("Build error");
+        if (hasBuildError && attempt < 3) {
+          console.log(`  [${scenario.slug}] Deploy build failed (attempt ${attempt}), using Claude to fix... (${elapsed(t0)})`);
+          const fixPrompt = `The Vercel deploy failed with a build error. Here's the error output:\n\n${deployOut.slice(-1000)}\n\nFix the build errors in the code so that \`npm run build\` succeeds. Do not run the deploy — just fix the code.`;
+          await sandbox.writeFiles([{ path: "/tmp/fix-build.txt", content: Buffer.from(fixPrompt) }]);
+          const fixCmd = `cd ${projectDir} && ${claudeBin} --dangerously-skip-permissions --debug --settings ${settingsPath} "$(cat /tmp/fix-build.txt)"`;
+          try {
+            await sandbox.runCommand("sh", ["-c", fixCmd], { signal: AbortSignal.timeout(300_000) }); // 5 min to fix
+          } catch {}
+        } else if (!urlMatch) {
+          console.log(`  [${scenario.slug}] Deploy failed (attempt ${attempt}): ${deployOut.slice(-150)} (${elapsed(t0)})`);
         }
       }
     }
