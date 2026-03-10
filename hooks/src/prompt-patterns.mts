@@ -17,6 +17,8 @@
  * so phrase/term authors don't need to account for both forms.
  */
 
+// @ts-ignore -- task requires the source-module import; local hooks tsconfig only permits .mjs paths.
+import { searchSkills } from "./lexical-index.mts";
 import type { PromptSignals } from "./skill-map-frontmatter.mjs";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +38,8 @@ export interface CompiledPromptSignals {
   noneOf: string[];
   minScore: number;
 }
+
+type LexicalHit = { skill: string; score: number };
 
 // ---------------------------------------------------------------------------
 // Contraction expansion
@@ -207,6 +211,70 @@ export function matchPromptWithReason(
     matched: true,
     score,
     reason: reasons.join("; "),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// scorePromptWithLexical
+// ---------------------------------------------------------------------------
+
+function findMatchedPhrases(
+  normalizedPrompt: string,
+  compiled: CompiledPromptSignals | undefined,
+): string[] {
+  if (!compiled) return [];
+  return compiled.phrases.filter((phrase) => normalizedPrompt.includes(phrase));
+}
+
+export function scorePromptWithLexical(
+  prompt: string,
+  skillSlug: string,
+  compiled: CompiledPromptSignals | undefined,
+  lexicalHits?: LexicalHit[],
+): {
+  score: number;
+  matchedPhrases: string[];
+  lexicalScore: number;
+  source: "exact" | "lexical" | "combined";
+} {
+  const normalizedPrompt = normalizePromptText(prompt);
+  const matchedPhrases = findMatchedPhrases(normalizedPrompt, compiled);
+  const exactScore = compiled
+    ? matchPromptWithReason(normalizedPrompt, compiled).score
+    : 0;
+
+  if (compiled && exactScore >= compiled.minScore) {
+    return {
+      score: exactScore,
+      matchedPhrases,
+      lexicalScore: 0,
+      source: "exact",
+    };
+  }
+
+  const lexicalHit = (lexicalHits ?? searchSkills(prompt)).find(
+    (hit) => hit.skill === skillSlug,
+  );
+  if (!lexicalHit) {
+    return {
+      score: exactScore,
+      matchedPhrases,
+      lexicalScore: 0,
+      source: "exact",
+    };
+  }
+
+  const lexicalBoost = lexicalHit.score * 1.35;
+  return {
+    score: Math.max(exactScore, lexicalBoost),
+    matchedPhrases,
+    lexicalScore: lexicalHit.score,
+    source:
+      lexicalBoost > exactScore
+        ? "lexical"
+        : matchedPhrases.length > 0 || exactScore > 0
+          ? "combined"
+          : "lexical",
   };
 }
 

@@ -1,3 +1,4 @@
+import { searchSkills } from "./lexical-index.mts";
 const CONTRACTIONS = {
   "it's": "it is",
   "what's": "what is",
@@ -103,6 +104,41 @@ function matchPromptWithReason(normalizedPrompt, compiled) {
     reason: reasons.join("; ")
   };
 }
+function findMatchedPhrases(normalizedPrompt, compiled) {
+  if (!compiled) return [];
+  return compiled.phrases.filter((phrase) => normalizedPrompt.includes(phrase));
+}
+function scorePromptWithLexical(prompt, skillSlug, compiled, lexicalHits) {
+  const normalizedPrompt = normalizePromptText(prompt);
+  const matchedPhrases = findMatchedPhrases(normalizedPrompt, compiled);
+  const exactScore = compiled ? matchPromptWithReason(normalizedPrompt, compiled).score : 0;
+  if (compiled && exactScore >= compiled.minScore) {
+    return {
+      score: exactScore,
+      matchedPhrases,
+      lexicalScore: 0,
+      source: "exact"
+    };
+  }
+  const lexicalHit = (lexicalHits ?? searchSkills(prompt)).find(
+    (hit) => hit.skill === skillSlug
+  );
+  if (!lexicalHit) {
+    return {
+      score: exactScore,
+      matchedPhrases,
+      lexicalScore: 0,
+      source: "exact"
+    };
+  }
+  const lexicalBoost = lexicalHit.score * 1.35;
+  return {
+    score: Math.max(exactScore, lexicalBoost),
+    matchedPhrases,
+    lexicalScore: lexicalHit.score,
+    source: lexicalBoost > exactScore ? "lexical" : matchedPhrases.length > 0 || exactScore > 0 ? "combined" : "lexical"
+  };
+}
 const FLOW_VERIFICATION_RE = /\b(?:loads?\s+but|submits?\s+but|redirects?\s+but|works?\s+(?:locally\s+)?but|saves?\s+but|sends?\s+but|returns?\s+but|fetches?\s+but|connects?\s+but|renders?\s+but|deploys?\s+but|builds?\s+but)\b/;
 const STUCK_INVESTIGATION_RE = /\b(?:stuck|hung|frozen|tim(?:ed?|ing)\s*out|timeout|hanging|not\s+responding|no\s+response|spinning\s+forever|still\s+waiting|nothing\s+happened|nothing\s+is\s+happening|just\s+sits?\s+there)\b/;
 const BROWSER_ONLY_RE = /\b(?:blank\s+page|white\s+screen|screen\s+is\s+(?:blank|white)|console\s+errors?|browser\s+errors?|nothing\s+(?:render(?:s|ed|ing)?|show(?:s|ing|n)?)|page\s+(?:is\s+)?(?:broken|empty)|ui\s+is\s+broken)\b/;
@@ -145,5 +181,6 @@ export {
   classifyTroubleshootingIntent,
   compilePromptSignals,
   matchPromptWithReason,
-  normalizePromptText
+  normalizePromptText,
+  scorePromptWithLexical
 };
