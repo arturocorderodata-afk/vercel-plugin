@@ -1,6 +1,5 @@
 import {
   accessSync,
-  appendFileSync,
   constants as fsConstants,
   existsSync,
   readdirSync,
@@ -12,11 +11,10 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   formatOutput,
-  getEnvFilePath,
   normalizeInput,
   setSessionEnv
 } from "./compat.mjs";
-import { profileCachePath, safeReadJson } from "./hook-env.mjs";
+import { profileCachePath, safeReadJson, writeSessionFile } from "./hook-env.mjs";
 import { createLogger, logCaughtError } from "./logger.mjs";
 const FILE_MARKERS = [
   { file: "next.config.js", skills: ["nextjs", "turbopack"] },
@@ -93,19 +91,11 @@ const GREENFIELD_SETUP_SIGNALS = {
   resourceHints: [],
   setupMode: true
 };
+const SESSION_GREENFIELD_KIND = "greenfield";
+const SESSION_LIKELY_SKILLS_KIND = "likely-skills";
 const log = createLogger();
 function readPackageJson(projectRoot) {
   return safeReadJson(join(projectRoot, "package.json"));
-}
-function escapeShellEnvValue(value) {
-  return value.replace(/(["\\$`])/g, "\\$1");
-}
-function formatEnvExport(key, value) {
-  return `export ${key}="${escapeShellEnvValue(value)}"
-`;
-}
-function appendEnvExport(envFile, key, value) {
-  appendFileSync(envFile, formatEnvExport(key, value));
 }
 function profileProject(projectRoot) {
   const skills = /* @__PURE__ */ new Set();
@@ -402,10 +392,6 @@ function main() {
   const platform = detectSessionStartPlatform(hookInput);
   const sessionId = normalizeSessionStartSessionId(hookInput);
   const projectRoot = resolveSessionStartProjectRoot();
-  const envFile = platform === "claude-code" ? getEnvFilePath() : null;
-  if (platform === "claude-code" && !envFile) {
-    process.exit(0);
-  }
   const greenfield = checkGreenfield(projectRoot);
   const cliStatus = checkVercelCli();
   const userMessages = buildSessionStartProfilerUserMessages(greenfield, cliStatus);
@@ -415,6 +401,8 @@ function main() {
     likelySkills.sort();
   }
   const setupSignals = greenfield ? GREENFIELD_SETUP_SIGNALS : profileBootstrapSignals(projectRoot);
+  const greenfieldValue = greenfield ? "true" : "";
+  const likelySkillsValue = likelySkills.join(",");
   const agentBrowserAvailable = checkAgentBrowser();
   const envVars = buildSessionStartProfilerEnvVars({
     agentBrowserAvailable,
@@ -423,15 +411,21 @@ function main() {
     setupSignals
   });
   const cursorOutput = platform === "cursor" ? formatSessionStartProfilerCursorOutput(envVars, userMessages) : null;
+  if (sessionId) {
+    writeSessionFile(sessionId, SESSION_GREENFIELD_KIND, greenfieldValue);
+    writeSessionFile(sessionId, SESSION_LIKELY_SKILLS_KIND, likelySkillsValue);
+  }
   try {
     if (platform === "claude-code") {
       for (const [key, value] of Object.entries(envVars)) {
+        if (key === "VERCEL_PLUGIN_GREENFIELD" || key === "VERCEL_PLUGIN_LIKELY_SKILLS") {
+          continue;
+        }
         setSessionEnv(platform, key, value);
       }
     }
   } catch (error) {
     logCaughtError(log, "session-start-profiler:append-env-export-failed", error, {
-      envFile: envFile ?? null,
       platform,
       projectRoot,
       envVarCount: Object.keys(envVars).length
@@ -479,8 +473,6 @@ export {
   checkAgentBrowser,
   checkGreenfield,
   detectSessionStartPlatform,
-  escapeShellEnvValue,
-  formatEnvExport,
   formatSessionStartProfilerCursorOutput,
   normalizeSessionStartSessionId,
   parseSessionStartInput,

@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { readSessionFile } from "../hooks/src/hook-env.mts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const HOOK_SCRIPT = join(ROOT, "hooks", "posttooluse-validate.mjs");
@@ -254,6 +255,30 @@ describe("posttooluse-validate.mjs", () => {
       // Both should produce valid JSON
       JSON.parse(first.stdout);
       JSON.parse(second.stdout);
+    });
+
+    test("writes validated state to the session file without appending CLAUDE_ENV_FILE exports", async () => {
+      const envDir = mkdtempSync(join(tmpdir(), "posttooluse-validate-env-"));
+      const envFile = join(envDir, "claude.env");
+      writeFileSync(envFile, "export SEEDED=1\n");
+
+      try {
+        const result = await runHook(
+          {
+            tool_name: "Write",
+            tool_input: { file_path: testFile },
+          },
+          {
+            CLAUDE_ENV_FILE: envFile,
+          },
+        );
+
+        expect(result.code).toBe(0);
+        expect(readFileSync(envFile, "utf-8")).toBe("export SEEDED=1\n");
+        expect(readSessionFile(testSession, "validated-files")).toContain(`${testFile}:`);
+      } finally {
+        rmSync(envDir, { recursive: true, force: true });
+      }
     });
   });
 

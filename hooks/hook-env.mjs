@@ -18,13 +18,6 @@ function pluginRoot(metaUrl) {
   const base = metaUrl ?? import.meta.url;
   return resolve(dirname(fileURLToPath(base)), "..");
 }
-function requireEnvFile() {
-  const envFile = process.env.CLAUDE_ENV_FILE;
-  if (!envFile) {
-    process.exit(0);
-  }
-  return envFile;
-}
 function resolveAuditLogPath(hookInputCwd) {
   const cwdFromHookInput = typeof hookInputCwd === "string" && hookInputCwd.trim() !== "" ? hookInputCwd : null;
   const projectRoot = process.env.CLAUDE_PROJECT_ROOT || cwdFromHookInput || process.cwd();
@@ -170,7 +163,6 @@ export {
   profileCachePath,
   readSessionFile,
   removeSessionClaimDir,
-  requireEnvFile,
   safeReadFile,
   safeReadJson,
   syncSessionFileFromClaims,

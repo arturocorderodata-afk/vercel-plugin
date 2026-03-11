@@ -41,23 +41,6 @@ export function pluginRoot(metaUrl?: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// CLAUDE_ENV_FILE helper
-// ---------------------------------------------------------------------------
-
-/**
- * Return the value of `CLAUDE_ENV_FILE` or call `process.exit(0)`.
- * Every SessionStart hook that needs to append to the env file can
- * replace its own guard clause with a single call.
- */
-export function requireEnvFile(): string {
-  const envFile = process.env.CLAUDE_ENV_FILE;
-  if (!envFile) {
-    process.exit(0);
-  }
-  return envFile;
-}
-
-// ---------------------------------------------------------------------------
 // Audit log helpers
 // ---------------------------------------------------------------------------
 

@@ -10,10 +10,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { readSessionFile } from "../hooks/src/hook-env.mts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const PROFILER = join(ROOT, "hooks", "session-start-profiler.mjs");
 const NODE_BIN = Bun.which("node") || "node";
+let testSessionId: string;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,10 +39,14 @@ async function runProfiler(env: Record<string, string | undefined>): Promise<{
   }
 
   const proc = Bun.spawn([NODE_BIN, PROFILER], {
+    stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
     env: mergedEnv,
   });
+
+  proc.stdin.write(JSON.stringify({ session_id: testSessionId }));
+  proc.stdin.end();
 
   const code = await proc.exited;
   const stdout = await new Response(proc.stdout).text();
@@ -48,12 +54,8 @@ async function runProfiler(env: Record<string, string | undefined>): Promise<{
   return { code, stdout, stderr };
 }
 
-function parseLikelySkills(envFileContent: string): string[] {
-  const match = envFileContent.match(
-    /export VERCEL_PLUGIN_LIKELY_SKILLS="([^"]*)"/,
-  );
-  if (!match) return [];
-  return match[1].split(",").filter(Boolean);
+function parseLikelySkills(_envFileContent?: string): string[] {
+  return readSessionFile(testSessionId, "likely-skills").split(",").filter(Boolean);
 }
 
 function parseCsvEnvVar(envFileContent: string, key: string): string[] {
@@ -61,6 +63,10 @@ function parseCsvEnvVar(envFileContent: string, key: string): string[] {
   const match = envFileContent.match(new RegExp(`export ${escapedKey}="([^"]*)"`));
   if (!match) return [];
   return match[1].split(",").filter(Boolean);
+}
+
+function readGreenfieldState(): string {
+  return readSessionFile(testSessionId, "greenfield");
 }
 
 function makeMockCommand(binDir: string, commandName: string, body: string): void {
@@ -80,6 +86,7 @@ beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "profiler-"));
   envFile = join(tempDir, "claude.env");
   writeFileSync(envFile, "", "utf-8");
+  testSessionId = `session-start-profiler-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 });
 
 afterEach(() => {
@@ -110,10 +117,9 @@ describe("session-start-profiler", () => {
     });
 
     expect(result.code).toBe(0);
-    const content = readFileSync(envFile, "utf-8");
-    expect(content).toContain('VERCEL_PLUGIN_GREENFIELD="true"');
+    expect(readGreenfieldState()).toBe("true");
     // Greenfield projects get seeded with default skills but NOT observability
-    const skills = parseLikelySkills(content);
+    const skills = parseLikelySkills();
     expect(skills).toContain("nextjs");
     expect(skills).toContain("ai-sdk");
     expect(skills).toContain("vercel-cli");
@@ -550,33 +556,18 @@ describe("session-start-profiler", () => {
     expect(skills).toEqual([...skills].sort());
   });
 
-  test("formatEnvExport escapes shell metacharacters in env values", async () => {
-    const { formatEnvExport } = await import("../hooks/session-start-profiler.mjs");
-    const markerPath = join(tempDir, "profiler-should-not-exist");
-    const injectedValue = `safe,$(touch ${markerPath}),\`uname\`,"quoted"`;
+  test("persists likely skills and greenfield in session files without exporting them", async () => {
+    const projectDir = join(tempDir, "session-file-project");
+    mkdirSync(projectDir);
 
-    writeFileSync(
-      envFile,
-      formatEnvExport("VERCEL_PLUGIN_LIKELY_SKILLS", injectedValue),
-      "utf-8",
-    );
+    const result = await runProfiler({
+      CLAUDE_ENV_FILE: envFile,
+      CLAUDE_PROJECT_ROOT: projectDir,
+    });
 
-    const proc = Bun.spawn(
-      ["bash", "-lc", "source \"$1\"; printf '%s' \"$VERCEL_PLUGIN_LIKELY_SKILLS\"", "_", envFile],
-      {
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
-
-    const code = await proc.exited;
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-
-    expect(code).toBe(0);
-    expect(stderr).toBe("");
-    expect(stdout).toBe(injectedValue);
-    expect(existsSync(markerPath)).toBe(false);
+    expect(result.code).toBe(0);
+    expect(readSessionFile(testSessionId, "likely-skills")).toContain("nextjs");
+    expect(readGreenfieldState()).toBe("true");
   });
 
   test("hooks.json registers profiler after seen-skills init", () => {
@@ -709,10 +700,9 @@ describe("greenfield detection", () => {
     });
 
     expect(result.code).toBe(0);
-    const envContent = readFileSync(envFile, "utf-8");
-    expect(envContent).toContain('VERCEL_PLUGIN_GREENFIELD="true"');
+    expect(readGreenfieldState()).toBe("true");
     // Greenfield projects get default skills but NOT observability boost
-    const skills = parseLikelySkills(envContent);
+    const skills = parseLikelySkills();
     expect(skills).not.toContain("observability");
     expect(result.stdout).toContain("greenfield project");
     expect(result.stdout).toContain("Skip exploration");
@@ -728,8 +718,7 @@ describe("greenfield detection", () => {
     });
 
     expect(result.code).toBe(0);
-    const envContent = readFileSync(envFile, "utf-8");
-    expect(envContent).toContain('VERCEL_PLUGIN_GREENFIELD="true"');
+    expect(readGreenfieldState()).toBe("true");
     expect(result.stdout).toContain("greenfield project");
   });
 
@@ -745,8 +734,7 @@ describe("greenfield detection", () => {
     });
 
     expect(result.code).toBe(0);
-    const envContent = readFileSync(envFile, "utf-8");
-    expect(envContent).not.toContain("VERCEL_PLUGIN_GREENFIELD");
+    expect(readGreenfieldState()).toBe("");
     expect(result.stdout).not.toContain("greenfield");
   });
 
@@ -762,8 +750,7 @@ describe("greenfield detection", () => {
     });
 
     expect(result.code).toBe(0);
-    const envContent = readFileSync(envFile, "utf-8");
-    expect(envContent).not.toContain("VERCEL_PLUGIN_GREENFIELD");
+    expect(readGreenfieldState()).toBe("");
   });
 });
 

@@ -2,9 +2,9 @@
  * Session-start repo profiler hook.
  *
  * Scans the current working directory for common config files and package
- * dependencies, then writes likely skill slugs into VERCEL_PLUGIN_LIKELY_SKILLS
- * into the session environment. Claude Code writes shell exports into
- * CLAUDE_ENV_FILE, while Cursor emits JSON `{ env, additional_context }`.
+ * dependencies, then persists likely skill slugs and greenfield state for the
+ * active session. Claude Code keeps these session-scoped values in temp files,
+ * while Cursor also emits JSON `{ env, additional_context }`.
  *
  * This pre-primes the skill matcher so the first tool call can skip
  * cold-scanning for obvious frameworks.
@@ -12,7 +12,6 @@
 
 import {
   accessSync,
-  appendFileSync,
   constants as fsConstants,
   existsSync,
   readFileSync,
@@ -27,12 +26,11 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   formatOutput,
-  getEnvFilePath,
   normalizeInput,
   setSessionEnv,
   type HookPlatform,
 } from "./compat.mjs";
-import { profileCachePath, safeReadJson } from "./hook-env.mjs";
+import { profileCachePath, safeReadJson, writeSessionFile } from "./hook-env.mjs";
 import { createLogger, logCaughtError, type Logger } from "./logger.mjs";
 import { isTelemetryEnabled, trackEvents } from "./telemetry.mjs";
 
@@ -153,6 +151,8 @@ const GREENFIELD_SETUP_SIGNALS: BootstrapSignals = {
   resourceHints: [],
   setupMode: true,
 };
+const SESSION_GREENFIELD_KIND = "greenfield";
+const SESSION_LIKELY_SKILLS_KIND = "likely-skills";
 
 const log: Logger = createLogger();
 
@@ -165,18 +165,6 @@ const log: Logger = createLogger();
  */
 function readPackageJson(projectRoot: string): PackageJson | null {
   return safeReadJson<PackageJson>(join(projectRoot, "package.json"));
-}
-
-export function escapeShellEnvValue(value: string): string {
-  return value.replace(/(["\\$`])/g, "\\$1");
-}
-
-export function formatEnvExport(key: string, value: string): string {
-  return `export ${key}="${escapeShellEnvValue(value)}"\n`;
-}
-
-function appendEnvExport(envFile: string, key: string, value: string): void {
-  appendFileSync(envFile, formatEnvExport(key, value));
 }
 
 // ---------------------------------------------------------------------------
@@ -618,11 +606,6 @@ function main(): void {
   const platform = detectSessionStartPlatform(hookInput);
   const sessionId = normalizeSessionStartSessionId(hookInput);
   const projectRoot = resolveSessionStartProjectRoot();
-  const envFile = platform === "claude-code" ? getEnvFilePath() : null;
-
-  if (platform === "claude-code" && !envFile) {
-    process.exit(0);
-  }
 
   // Greenfield check — seed defaults and skip repository exploration.
   const greenfield: GreenfieldResult | null = checkGreenfield(projectRoot);
@@ -644,6 +627,8 @@ function main(): void {
   const setupSignals: BootstrapSignals = greenfield
     ? GREENFIELD_SETUP_SIGNALS
     : profileBootstrapSignals(projectRoot);
+  const greenfieldValue = greenfield ? "true" : "";
+  const likelySkillsValue = likelySkills.join(",");
 
   // Check agent-browser CLI availability
   const agentBrowserAvailable: boolean = checkAgentBrowser();
@@ -657,15 +642,22 @@ function main(): void {
     ? formatSessionStartProfilerCursorOutput(envVars, userMessages)
     : null;
 
+  if (sessionId) {
+    writeSessionFile(sessionId, SESSION_GREENFIELD_KIND, greenfieldValue);
+    writeSessionFile(sessionId, SESSION_LIKELY_SKILLS_KIND, likelySkillsValue);
+  }
+
   try {
     if (platform === "claude-code") {
       for (const [key, value] of Object.entries(envVars)) {
+        if (key === "VERCEL_PLUGIN_GREENFIELD" || key === "VERCEL_PLUGIN_LIKELY_SKILLS") {
+          continue;
+        }
         setSessionEnv(platform, key, value);
       }
     }
   } catch (error) {
     logCaughtError(log, "session-start-profiler:append-env-export-failed", error, {
-      envFile: envFile ?? null,
       platform,
       projectRoot,
       envVarCount: Object.keys(envVars).length,
