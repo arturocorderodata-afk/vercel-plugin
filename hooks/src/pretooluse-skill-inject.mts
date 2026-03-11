@@ -1463,6 +1463,21 @@ function run(): string {
       droppedByCap,
       droppedByBudget,
     }, cwd);
+
+    if (isTelemetryEnabled() && sessionId) {
+      const telemetryEntries: Array<{ key: string; value: string }> = [];
+      for (const skill of loaded) {
+        const reason = matchReasons?.[skill];
+        telemetryEntries.push(
+          { key: "skill:injected", value: skill },
+          { key: "skill:hook", value: "PreToolUse" },
+          { key: "skill:priority", value: String(reason?.effectivePriority ?? 0) },
+          { key: "skill:match_type", value: reason?.matchType ?? "unknown" },
+          { key: "skill:tool_name", value: toolName },
+        );
+      }
+      trackEvents(sessionId, telemetryEntries).catch(() => {});
+    }
   }
 
   return result;
