@@ -129,6 +129,34 @@ function removeSessionClaimDir(sessionId, kind, scopeId) {
     logCaughtError(log, "hook-env:remove-session-claim-dir-failed", error, { sessionId, kind, scopeId });
   }
 }
+function removeAllSessionDedupArtifacts(sessionId) {
+  const tempRoot = resolve(tmpdir());
+  const prefix = `vercel-plugin-${dedupSessionIdSegment(sessionId)}-`;
+  let entries;
+  try {
+    entries = readdirSync(tempRoot).filter(
+      (name) => name.startsWith(prefix) && (name.endsWith("-seen-skills.d") || name.endsWith("-seen-skills.txt"))
+    );
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const fullPath = join(tempRoot, entry);
+    if (entry.endsWith(".d")) {
+      try {
+        rmSync(fullPath, { recursive: true, force: true });
+      } catch (error) {
+        logCaughtError(log, "hook-env:remove-all-session-dedup-artifacts-dir", error, { fullPath });
+      }
+    } else {
+      try {
+        rmSync(fullPath);
+      } catch (error) {
+        logCaughtError(log, "hook-env:remove-all-session-dedup-artifacts-file", error, { fullPath });
+      }
+    }
+  }
+}
 function profileCachePath(sessionId) {
   return resolveDedupTempPath(sessionId, "profile.json");
 }
@@ -163,6 +191,7 @@ export {
   pluginRoot,
   profileCachePath,
   readSessionFile,
+  removeAllSessionDedupArtifacts,
   removeSessionClaimDir,
   safeReadFile,
   safeReadJson,

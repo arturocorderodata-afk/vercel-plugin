@@ -180,4 +180,4 @@ Snapshot updates: `bun run test:update-snapshots` (sets `UPDATE_SNAPSHOTS=1`).
 | `VERCEL_PLUGIN_REVIEW_THRESHOLD` | `3` | TSX edits before react-best-practices injection |
 | `VERCEL_PLUGIN_TSX_EDIT_COUNT` | `0` | Current .tsx edit count (PreToolUse tracks) |
 | `VERCEL_PLUGIN_AUDIT_LOG_FILE` | — | Audit log path or `off` |
-| `VERCEL_PLUGIN_LEXICAL_PROMPT` | `off` | `on` to enable lexical stemmer fallback in UserPromptSubmit scoring |
+| `VERCEL_PLUGIN_LEXICAL_PROMPT` | `on` | `0` to disable lexical stemmer fallback in UserPromptSubmit scoring |

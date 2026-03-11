@@ -8,10 +8,8 @@ import {
   formatOutput
 } from "./compat.mjs";
 import {
-  dedupFilePath,
-  removeSessionClaimDir
+  removeAllSessionDedupArtifacts
 } from "./hook-env.mjs";
-import { unlinkSync } from "fs";
 var CONTEXT_CLEARING_EVENTS = /* @__PURE__ */ new Set(["clear", "compact"]);
 function parseSessionStartSeenSkillsInput(raw) {
   try {
@@ -35,11 +33,7 @@ function formatSessionStartSeenSkillsCursorOutput() {
   }));
 }
 function resetDedupStateForSession(sessionId) {
-  removeSessionClaimDir(sessionId, "seen-skills");
-  try {
-    unlinkSync(dedupFilePath(sessionId, "seen-skills"));
-  } catch {
-  }
+  removeAllSessionDedupArtifacts(sessionId);
 }
 function main() {
   const input = parseSessionStartSeenSkillsInput(readFileSync(0, "utf8"));

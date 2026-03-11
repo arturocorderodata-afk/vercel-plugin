@@ -586,7 +586,7 @@ export function run(): string {
     writeSessionFile(sessionId as string, "seen-skills", seenState);
   }
   const budget = getInjectionBudget();
-  const lexicalEnabled = process.env.VERCEL_PLUGIN_LEXICAL_PROMPT === "1";
+  const lexicalEnabled = process.env.VERCEL_PLUGIN_LEXICAL_PROMPT !== "0";
   if (lexicalEnabled) {
     initializeLexicalIndex(new Map(Object.entries(skills.skillMap)));
   }
