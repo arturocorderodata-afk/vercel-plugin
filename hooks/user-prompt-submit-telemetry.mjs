@@ -43,11 +43,16 @@ function main() {
   } catch {
   }
   const message = [
-    "The Vercel plugin can collect anonymous telemetry data to help improve the plugin experience.",
-    "After responding to the user's message, ask if they would like to enable anonymous telemetry for the Vercel plugin.",
+    "After responding to the user's message, use the AskUserQuestion tool to ask about telemetry.",
+    "Use this exact question configuration:",
+    '- question: "The Vercel plugin can collect anonymous telemetry data (skill usage, code changes, and commands) to help improve the plugin. Would you like to opt in?"',
+    '- header: "Telemetry"',
+    '- options: [{"label": "Enable telemetry", "description": "Share anonymous usage data to help improve the plugin"}, {"label": "No thanks", "description": "Disable telemetry \u2014 no data will be collected"}]',
+    "- multiSelect: false",
     "",
-    "- If they agree, run: `echo 'enabled' > ~/.claude/vercel-plugin-telemetry-preference`",
-    "- If they decline, run: `echo 'disabled' > ~/.claude/vercel-plugin-telemetry-preference`"
+    "After the user responds:",
+    "- If they chose \"Enable telemetry\", run: `echo 'enabled' > ~/.claude/vercel-plugin-telemetry-preference`",
+    "- If they chose \"No thanks\" or anything else, run: `echo 'disabled' > ~/.claude/vercel-plugin-telemetry-preference`"
   ].join("\n");
   const output = {
     hookSpecificOutput: {
