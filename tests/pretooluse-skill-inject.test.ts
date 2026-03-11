@@ -7,6 +7,31 @@ import { readdir } from "node:fs/promises";
 const ROOT = resolve(import.meta.dirname, "..");
 const HOOK_SCRIPT = join(ROOT, "hooks", "pretooluse-skill-inject.mjs");
 const SKILLS_DIR = join(ROOT, "skills");
+const TEMP_HOOK_RUNTIME_MODULES = [
+  "pretooluse-skill-inject.mjs",
+  "skill-map-frontmatter.mjs",
+  "patterns.mjs",
+  "vercel-config.mjs",
+  "logger.mjs",
+  "hook-env.mjs",
+  "compat.mjs",
+  "telemetry.mjs",
+] as const;
+
+function copyTempHookRuntime(
+  tempRoot: string,
+  tempHooksDir: string,
+  overrides: Partial<Record<(typeof TEMP_HOOK_RUNTIME_MODULES)[number], string>> = {},
+): void {
+  mkdirSync(tempHooksDir, { recursive: true });
+  for (const mod of TEMP_HOOK_RUNTIME_MODULES) {
+    writeFileSync(
+      join(tempHooksDir, mod),
+      overrides[mod] ?? readFileSync(join(ROOT, "hooks", mod), "utf-8"),
+    );
+  }
+  symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
+}
 
 /** Derive expected skill count from disk so tests don't break on skill add/remove */
 function countSkillDirs(): number {
@@ -332,38 +357,9 @@ describe("pretooluse-skill-inject.mjs", () => {
     const tempRoot = join(tmpdir(), `vp-test-empty-skills-${Date.now()}`);
     const tempHooksDir = join(tempRoot, "hooks");
     const tempSkillsDir = join(tempRoot, "skills");
-    mkdirSync(tempHooksDir, { recursive: true });
     mkdirSync(tempSkillsDir, { recursive: true });
-
-    // Copy the hook script and the frontmatter parser
-    const hookSource = readFileSync(HOOK_SCRIPT, "utf-8");
+    copyTempHookRuntime(tempRoot, tempHooksDir);
     const tempHookPath = join(tempHooksDir, "pretooluse-skill-inject.mjs");
-    writeFileSync(tempHookPath, hookSource);
-    writeFileSync(
-      join(tempHooksDir, "skill-map-frontmatter.mjs"),
-      readFileSync(join(ROOT, "hooks", "skill-map-frontmatter.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "patterns.mjs"),
-      readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "vercel-config.mjs"),
-      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "logger.mjs"),
-      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "hook-env.mjs"),
-      readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "compat.mjs"),
-      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
-    );
-    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     // Run the hook from the temp location
     const payload = JSON.stringify({
@@ -677,36 +673,9 @@ describe("issue events in debug mode", () => {
     const tempRoot = join(tmpdir(), `vp-test-noskills-${Date.now()}`);
     const tempHooksDir = join(tempRoot, "hooks");
     const tempSkillsDir = join(tempRoot, "skills");
-    mkdirSync(tempHooksDir, { recursive: true });
     mkdirSync(tempSkillsDir, { recursive: true });
-    const hookSource = readFileSync(HOOK_SCRIPT, "utf-8");
+    copyTempHookRuntime(tempRoot, tempHooksDir);
     const tempHookPath = join(tempHooksDir, "pretooluse-skill-inject.mjs");
-    writeFileSync(tempHookPath, hookSource);
-    writeFileSync(
-      join(tempHooksDir, "skill-map-frontmatter.mjs"),
-      readFileSync(join(ROOT, "hooks", "skill-map-frontmatter.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "patterns.mjs"),
-      readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "vercel-config.mjs"),
-      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "logger.mjs"),
-      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "hook-env.mjs"),
-      readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "compat.mjs"),
-      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
-    );
-    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     const payload = JSON.stringify({
       tool_name: "Read",
@@ -797,36 +766,7 @@ describe("issue events in debug mode", () => {
     );
 
     // Copy hook files and symlink node_modules
-    mkdirSync(tempHooksDir, { recursive: true });
-    writeFileSync(
-      join(tempHooksDir, "pretooluse-skill-inject.mjs"),
-      readFileSync(HOOK_SCRIPT, "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "skill-map-frontmatter.mjs"),
-      readFileSync(join(ROOT, "hooks", "skill-map-frontmatter.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "patterns.mjs"),
-      readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "vercel-config.mjs"),
-      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "logger.mjs"),
-      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "hook-env.mjs"),
-      readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "compat.mjs"),
-      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
-    );
-    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
+    copyTempHookRuntime(tempRoot, tempHooksDir);
 
     const payload = JSON.stringify({
       tool_name: "Read",
@@ -879,36 +819,7 @@ describe("issue events in debug mode", () => {
       `---\nname: bad-skill\n\tmetadata: foo\n---\n# Bad Skill\n`,
     );
 
-    mkdirSync(tempHooksDir, { recursive: true });
-    writeFileSync(
-      join(tempHooksDir, "pretooluse-skill-inject.mjs"),
-      readFileSync(HOOK_SCRIPT, "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "skill-map-frontmatter.mjs"),
-      readFileSync(join(ROOT, "hooks", "skill-map-frontmatter.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "patterns.mjs"),
-      readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "vercel-config.mjs"),
-      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "logger.mjs"),
-      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "hook-env.mjs"),
-      readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "compat.mjs"),
-      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
-    );
-    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
+    copyTempHookRuntime(tempRoot, tempHooksDir);
 
     const payload = JSON.stringify({
       tool_name: "Read",
@@ -1749,21 +1660,8 @@ describe("sectional injection (summary fallback)", () => {
     const tempRoot = join(tmpdir(), `vp-test-sectional-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const tempHooksDir = join(tempRoot, "hooks");
     const tempSkillsDir = join(tempRoot, "skills");
-    mkdirSync(tempHooksDir, { recursive: true });
     mkdirSync(tempSkillsDir, { recursive: true });
-
-    // Copy hook modules
-    for (const mod of ["pretooluse-skill-inject.mjs", "skill-map-frontmatter.mjs", "patterns.mjs", "vercel-config.mjs", "logger.mjs", "hook-env.mjs"]) {
-      writeFileSync(
-        join(tempHooksDir, mod),
-        readFileSync(join(ROOT, "hooks", mod), "utf-8"),
-      );
-    }
-    writeFileSync(
-      join(tempHooksDir, "compat.mjs"),
-      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
-    );
-    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
+    copyTempHookRuntime(tempRoot, tempHooksDir);
 
     // Create skills
     for (const skill of skills) {
@@ -1979,36 +1877,8 @@ describe("invalid bash regex handling", () => {
     const tempRoot = join(tmpdir(), `vp-test-regex-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const tempHooksDir = join(tempRoot, "hooks");
     const tempSkillDir = join(tempRoot, "skills", "test-skill");
-    mkdirSync(tempHooksDir, { recursive: true });
     mkdirSync(tempSkillDir, { recursive: true });
-
-    // Copy hook + frontmatter parser
-    writeFileSync(join(tempHooksDir, "pretooluse-skill-inject.mjs"), readFileSync(HOOK_SCRIPT, "utf-8"));
-    writeFileSync(
-      join(tempHooksDir, "skill-map-frontmatter.mjs"),
-      readFileSync(join(ROOT, "hooks", "skill-map-frontmatter.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "patterns.mjs"),
-      readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "vercel-config.mjs"),
-      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "logger.mjs"),
-      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "hook-env.mjs"),
-      readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "compat.mjs"),
-      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
-    );
-    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
+    copyTempHookRuntime(tempRoot, tempHooksDir);
 
     // Write a SKILL.md with the given bashPatterns
     const bashYaml = bashPatterns.map(p => `    - '${p.replace(/'/g, "''")}'`).join("\n");
@@ -2103,15 +1973,8 @@ describe("invalid glob pattern handling", () => {
   function createTempSkillWithBadGlob(): { hookPath: string; root: string } {
     const tempRoot = join(tmpdir(), `vp-test-glob-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const tempHooksDir = join(tempRoot, "hooks");
-    mkdirSync(tempHooksDir, { recursive: true });
 
     // Copy hook + frontmatter parser
-    writeFileSync(join(tempHooksDir, "pretooluse-skill-inject.mjs"), readFileSync(HOOK_SCRIPT, "utf-8"));
-    writeFileSync(
-      join(tempHooksDir, "skill-map-frontmatter.mjs"),
-      readFileSync(join(ROOT, "hooks", "skill-map-frontmatter.mjs"), "utf-8"),
-    );
-
     // Patched patterns.mjs: throws on "__THROW__" sentinel, delegates otherwise
     const realPatterns = readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8");
     // Match both tsc output ("export function globToRegex(pattern)") and
@@ -2120,24 +1983,7 @@ describe("invalid glob pattern handling", () => {
       /^(\s*(?:export\s+)?function globToRegex\(pattern\)\s*\{)/m,
       '$1\n  if (pattern === "__THROW__") throw new Error("simulated glob compile failure");',
     );
-    writeFileSync(join(tempHooksDir, "patterns.mjs"), patchedPatterns);
-    writeFileSync(
-      join(tempHooksDir, "vercel-config.mjs"),
-      readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "logger.mjs"),
-      readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "hook-env.mjs"),
-      readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
-    );
-    writeFileSync(
-      join(tempHooksDir, "compat.mjs"),
-      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
-    );
-    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
+    copyTempHookRuntime(tempRoot, tempHooksDir, { "patterns.mjs": patchedPatterns });
 
     // Skill with a __THROW__ pathPattern that will trigger the patched globToRegex to throw
     const badSkillDir = join(tempRoot, "skills", "bad-glob-skill");
@@ -3890,17 +3736,8 @@ describe("decision logging — reason codes", () => {
     const tempRoot = join(tmpdir(), `vp-reason-empty-${Date.now()}`);
     const tempHooksDir = join(tempRoot, "hooks");
     const tempSkillsDir = join(tempRoot, "skills");
-    mkdirSync(tempHooksDir, { recursive: true });
     mkdirSync(tempSkillsDir, { recursive: true });
-
-    writeFileSync(join(tempHooksDir, "pretooluse-skill-inject.mjs"), readFileSync(HOOK_SCRIPT, "utf-8"));
-    writeFileSync(join(tempHooksDir, "skill-map-frontmatter.mjs"), readFileSync(join(ROOT, "hooks", "skill-map-frontmatter.mjs"), "utf-8"));
-    writeFileSync(join(tempHooksDir, "patterns.mjs"), readFileSync(join(ROOT, "hooks", "patterns.mjs"), "utf-8"));
-    writeFileSync(join(tempHooksDir, "vercel-config.mjs"), readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"));
-    writeFileSync(join(tempHooksDir, "logger.mjs"), readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"));
-    writeFileSync(join(tempHooksDir, "hook-env.mjs"), readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"));
-    writeFileSync(join(tempHooksDir, "compat.mjs"), readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"));
-    symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
+    copyTempHookRuntime(tempRoot, tempHooksDir);
 
     const payload = JSON.stringify({
       tool_name: "Read",
