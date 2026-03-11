@@ -85,21 +85,15 @@ function getInjectionBudget() {
 function resolvePromptSeenSkillState(sessionId) {
   const dedupOff = process.env.VERCEL_PLUGIN_HOOK_DEDUP === "off";
   const hasFileDedup = !dedupOff && !!sessionId;
-  const seenEnv = typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string" ? process.env.VERCEL_PLUGIN_SEEN_SKILLS : "";
   const seenClaims = hasFileDedup ? listSessionKeys(sessionId, "seen-skills").join(",") : "";
   const seenFile = hasFileDedup ? readSessionFile(sessionId, "seen-skills") : "";
-  const seenState = hasFileDedup ? mergeSeenSkillStates(seenEnv, seenFile, seenClaims) : seenEnv;
-  if (!dedupOff) {
-    process.env.VERCEL_PLUGIN_SEEN_SKILLS = seenState;
-  }
+  const seenState = hasFileDedup ? mergeSeenSkillStates(seenFile, seenClaims) : getSeenSkillsEnv();
   if (hasFileDedup) {
     writeSessionFile(sessionId, "seen-skills", seenState);
   }
   return {
     dedupOff,
     hasFileDedup,
-    hasEnvDedup: !dedupOff && typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string",
-    seenEnv,
     seenClaims,
     seenFile,
     seenState
@@ -109,12 +103,7 @@ function syncPromptSeenSkillClaims(sessionId, loadedSkills) {
   for (const skill of loadedSkills) {
     tryClaimSessionKey(sessionId, "seen-skills", skill);
   }
-  const synced = syncSessionFileFromClaims(sessionId, "seen-skills");
-  process.env.VERCEL_PLUGIN_SEEN_SKILLS = mergeSeenSkillStates(
-    process.env.VERCEL_PLUGIN_SEEN_SKILLS || "",
-    synced
-  );
-  return synced;
+  return syncSessionFileFromClaims(sessionId, "seen-skills");
 }
 function parsePromptInput(raw, logger, env = process.env) {
   const l = logger || log;
@@ -231,12 +220,11 @@ function selectInvestigationCompanion(selectedSkills, perSkillResults) {
     reason: `companion "${bestCompanion}" scored ${bestScore}`
   };
 }
-function deduplicateAndInject(matches, skills, logger) {
+function deduplicateAndInject(matches, skills, logger, platform) {
   const l = logger || log;
   const dedupOff = process.env.VERCEL_PLUGIN_HOOK_DEDUP === "off";
-  const seenEnv = getSeenSkillsEnv();
-  const hasEnvDedup = !dedupOff && typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string";
-  const injectedSkills = hasEnvDedup ? parseSeenSkills(seenEnv) : /* @__PURE__ */ new Set();
+  const seenState = getSeenSkillsEnv();
+  const injectedSkills = dedupOff ? /* @__PURE__ */ new Set() : parseSeenSkills(seenState);
   const budget = getInjectionBudget();
   const allMatched = matches.map((m) => m.skill);
   const newMatches = dedupOff ? matches : matches.filter((m) => !injectedSkills.has(m.skill));
@@ -253,12 +241,13 @@ function deduplicateAndInject(matches, skills, logger) {
   });
   const result = injectSkills(rankedSkills, {
     pluginRoot: PLUGIN_ROOT,
-    hasEnvDedup,
+    hasEnvDedup: !dedupOff,
     injectedSkills,
     budgetBytes: budget,
     maxSkills: MAX_SKILLS,
     skillMap: skills.skillMap,
-    logger: l
+    logger: l,
+    platform: platform ?? "claude-code"
   });
   return {
     ...result,
@@ -339,17 +328,12 @@ function run() {
   const tAnalyze = log.active ? log.now() : 0;
   const dedupOff = process.env.VERCEL_PLUGIN_HOOK_DEDUP === "off";
   const hasFileDedup = !dedupOff && !!sessionId;
-  const seenEnv = typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string" ? process.env.VERCEL_PLUGIN_SEEN_SKILLS : "";
   const seenClaims = hasFileDedup ? listSessionKeys(sessionId, "seen-skills").join(",") : "";
   const seenFile = hasFileDedup ? readSessionFile(sessionId, "seen-skills") : "";
-  const seenState = hasFileDedup ? mergeSeenSkillStates(seenEnv, seenFile, seenClaims) : seenEnv;
-  if (!dedupOff) {
-    process.env.VERCEL_PLUGIN_SEEN_SKILLS = seenState;
-  }
+  const seenState = hasFileDedup ? mergeSeenSkillStates(seenFile, seenClaims) : getSeenSkillsEnv();
   if (hasFileDedup) {
     writeSessionFile(sessionId, "seen-skills", seenState);
   }
-  const hasEnvDedup = !dedupOff && typeof process.env.VERCEL_PLUGIN_SEEN_SKILLS === "string";
   const budget = getInjectionBudget();
   const lexicalEnabled = process.env.VERCEL_PLUGIN_LEXICAL_PROMPT === "1";
   if (lexicalEnabled) {
@@ -471,21 +455,23 @@ function run() {
     return formatEmptyOutput(platform);
   }
   const tInject = log.active ? log.now() : 0;
-  const injectedSkills = hasEnvDedup ? parseSeenSkills(seenState) : /* @__PURE__ */ new Set();
+  const injectedSkills = dedupOff ? /* @__PURE__ */ new Set() : parseSeenSkills(seenState);
   const injectResult = injectSkills(report.selectedSkills, {
     pluginRoot: PLUGIN_ROOT,
-    hasEnvDedup,
+    hasEnvDedup: !dedupOff,
     sessionId,
     injectedSkills,
     budgetBytes: budget,
     maxSkills: MAX_SKILLS,
     skillMap: skills.skillMap,
-    logger: log
+    logger: log,
+    platform
   });
   if (log.active) timing.inject = Math.round(log.now() - tInject);
   const { parts, loaded, summaryOnly } = injectResult;
+  let syncedSeenSkills = seenState;
   if (hasFileDedup) {
-    syncPromptSeenSkillClaims(sessionId, loaded);
+    syncedSeenSkills = syncPromptSeenSkillClaims(sessionId, loaded);
   }
   const droppedByCap = [...injectResult.droppedByCap, ...report.droppedByCap];
   const droppedByBudget = [...injectResult.droppedByBudget, ...report.droppedByBudget];
@@ -517,7 +503,7 @@ function run() {
   }
   let outputEnv;
   const envFile = nonEmptyString(process.env.CLAUDE_ENV_FILE);
-  const seenSkills = getSeenSkillsEnv();
+  const seenSkills = hasFileDedup ? syncedSeenSkills : seenState;
   if (loaded.length > 0 && seenSkills !== "" && !envFile && platform === "cursor") {
     outputEnv = { [ENV_SEEN_SKILLS_KEY]: seenSkills };
   }

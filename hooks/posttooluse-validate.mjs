@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { appendFileSync, readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { detectPlatform } from "./compat.mjs";
-import { pluginRoot as resolvePluginRoot, readSessionFile, safeReadFile, writeSessionFile } from "./hook-env.mjs";
-import { buildSkillMap } from "./skill-map-frontmatter.mjs";
+import { pluginRoot as resolvePluginRoot, readSessionFile, safeReadFile, writeSessionFile, tryClaimSessionKey, syncSessionFileFromClaims } from "./hook-env.mjs";
+import { buildSkillMap, extractFrontmatter } from "./skill-map-frontmatter.mjs";
 import {
   compileSkillPatterns,
   matchPathWithReason,
   matchImportWithReason
 } from "./patterns.mjs";
-import { createLogger, logCaughtError } from "./logger.mjs";
+import { createLogger } from "./logger.mjs";
 const PLUGIN_ROOT = resolvePluginRoot();
 const SUPPORTED_TOOLS = ["Write", "Edit"];
 const VALIDATED_FILES_ENV_KEY = "VERCEL_PLUGIN_VALIDATED_FILES";
+const CHAIN_BUDGET_BYTES = 18e3;
+const DEFAULT_CHAIN_CAP = 2;
 function resolveSessionId(input) {
   const sessionId = input.session_id ?? input.conversation_id;
   return typeof sessionId === "string" && sessionId.trim() !== "" ? sessionId : null;
@@ -44,31 +46,6 @@ function formatPlatformOutput(platform, additionalContext, env) {
     }
   };
   return JSON.stringify(output);
-}
-function escapeShellEnvValue(value) {
-  return value.replace(/(["\\$`])/g, "\\$1");
-}
-function persistValidatedFilesEnv(value, logger) {
-  const l = logger || log;
-  const envFile = process.env.CLAUDE_ENV_FILE;
-  if (typeof envFile !== "string" || envFile.trim() === "") {
-    return;
-  }
-  try {
-    appendFileSync(
-      envFile,
-      `export ${VALIDATED_FILES_ENV_KEY}="${escapeShellEnvValue(value)}"
-`,
-      "utf-8"
-    );
-  } catch (error) {
-    logCaughtError(l, "posttooluse-validate-env-write-failed", error, {
-      attempted: "append_validated_files_export",
-      envFile,
-      envKey: VALIDATED_FILES_ENV_KEY,
-      state: "validation_completed"
-    });
-  }
 }
 const log = createLogger();
 function parseInput(raw, logger, env = process.env) {
@@ -113,27 +90,32 @@ function loadValidateRules(pluginRoot, logger) {
   const skillsDir = join(pluginRoot, "skills");
   const { skills: skillMap } = buildSkillMap(skillsDir);
   const rulesMap = /* @__PURE__ */ new Map();
+  const chainMap = /* @__PURE__ */ new Map();
   for (const [slug, config] of Object.entries(skillMap)) {
     if (config.validate && config.validate.length > 0) {
       rulesMap.set(slug, config.validate);
     }
+    if (config.chainTo && config.chainTo.length > 0) {
+      chainMap.set(slug, config.chainTo);
+    }
   }
-  if (rulesMap.size === 0) {
+  if (rulesMap.size === 0 && chainMap.size === 0) {
     l.debug("posttooluse-validate-skip", { reason: "no_validate_rules" });
     return null;
   }
   const compiledSkills = compileSkillPatterns(skillMap);
   l.debug("posttooluse-validate-loaded", {
     totalSkills: Object.keys(skillMap).length,
-    skillsWithRules: rulesMap.size
+    skillsWithRules: rulesMap.size,
+    skillsWithChainTo: chainMap.size
   });
-  return { skillMap, compiledSkills, rulesMap };
+  return { skillMap, compiledSkills, rulesMap, chainMap };
 }
-function matchFileToSkills(filePath, fileContent, compiledSkills, rulesMap, logger) {
+function matchFileToSkills(filePath, fileContent, compiledSkills, rulesMap, logger, chainMap) {
   const l = logger || log;
   const matched = [];
   for (const entry of compiledSkills) {
-    if (!rulesMap.has(entry.skill)) continue;
+    if (!rulesMap.has(entry.skill) && !chainMap?.has(entry.skill)) continue;
     const pathMatch = matchPathWithReason(filePath, entry.compiledPaths);
     if (pathMatch) {
       matched.push(entry.skill);
@@ -214,6 +196,125 @@ function runValidation(fileContent, matchedSkills, rulesMap, logger) {
   });
   return violations;
 }
+function runChainInjection(fileContent, matchedSkills, chainMap, sessionId, pluginRoot, logger, env = process.env) {
+  const l = logger || log;
+  const result = { injected: [], totalBytes: 0 };
+  const chainCap = Math.max(1, parseInt(env.VERCEL_PLUGIN_CHAIN_CAP || "", 10) || DEFAULT_CHAIN_CAP);
+  const candidates = [];
+  for (const skill of matchedSkills) {
+    const rules = chainMap.get(skill);
+    if (!rules) continue;
+    for (const rule of rules) {
+      if (rule.skipIfFileContains) {
+        try {
+          if (new RegExp(rule.skipIfFileContains, "m").test(fileContent)) {
+            l.debug("posttooluse-chain-skip-contains", {
+              skill,
+              targetSkill: rule.targetSkill,
+              reason: "skipIfFileContains matched"
+            });
+            continue;
+          }
+        } catch {
+        }
+      }
+      try {
+        const regex = new RegExp(rule.pattern, "m");
+        if (regex.test(fileContent)) {
+          candidates.push({ sourceSkill: skill, rule });
+        }
+      } catch {
+        l.debug("posttooluse-chain-regex-fail", {
+          skill,
+          pattern: rule.pattern
+        });
+      }
+    }
+  }
+  if (candidates.length === 0) return result;
+  const seenTargets = /* @__PURE__ */ new Set();
+  const uniqueCandidates = candidates.filter(({ rule }) => {
+    if (seenTargets.has(rule.targetSkill)) return false;
+    seenTargets.add(rule.targetSkill);
+    return true;
+  });
+  const fileSeen = sessionId ? readSessionFile(sessionId, "seen-skills") : "";
+  const seenSet = new Set(fileSeen.split(",").filter(Boolean));
+  for (const { sourceSkill, rule } of uniqueCandidates) {
+    if (result.injected.length >= chainCap) {
+      l.debug("posttooluse-chain-cap-reached", {
+        cap: chainCap,
+        remaining: uniqueCandidates.length - result.injected.length
+      });
+      break;
+    }
+    if (seenSet.has(rule.targetSkill)) {
+      l.debug("posttooluse-chain-skip-dedup", {
+        sourceSkill,
+        targetSkill: rule.targetSkill
+      });
+      continue;
+    }
+    const skillPath = join(pluginRoot, "skills", rule.targetSkill, "SKILL.md");
+    const skillContent = safeReadFile(skillPath);
+    if (!skillContent) {
+      l.debug("posttooluse-chain-skip-missing", {
+        sourceSkill,
+        targetSkill: rule.targetSkill,
+        path: skillPath
+      });
+      continue;
+    }
+    const { body } = extractFrontmatter(skillContent);
+    const trimmedBody = body.trim();
+    if (!trimmedBody) continue;
+    const bytes = Buffer.byteLength(trimmedBody, "utf-8");
+    if (result.totalBytes + bytes > CHAIN_BUDGET_BYTES) {
+      l.debug("posttooluse-chain-budget-exceeded", {
+        sourceSkill,
+        targetSkill: rule.targetSkill,
+        bytes,
+        totalBytes: result.totalBytes,
+        budget: CHAIN_BUDGET_BYTES
+      });
+      break;
+    }
+    if (sessionId) {
+      const claimed = tryClaimSessionKey(sessionId, "seen-skills", rule.targetSkill);
+      if (!claimed) {
+        l.debug("posttooluse-chain-skip-concurrent-claim", {
+          sourceSkill,
+          targetSkill: rule.targetSkill
+        });
+        seenSet.add(rule.targetSkill);
+        continue;
+      }
+      syncSessionFileFromClaims(sessionId, "seen-skills");
+    }
+    seenSet.add(rule.targetSkill);
+    result.injected.push({
+      sourceSkill,
+      targetSkill: rule.targetSkill,
+      message: rule.message,
+      content: trimmedBody
+    });
+    result.totalBytes += bytes;
+    l.debug("posttooluse-chain-injected", {
+      sourceSkill,
+      targetSkill: rule.targetSkill,
+      bytes,
+      totalBytes: result.totalBytes
+    });
+  }
+  if (result.injected.length > 0) {
+    l.summary("posttooluse-chain-result", {
+      injectedCount: result.injected.length,
+      totalBytes: result.totalBytes,
+      targets: result.injected.map((i) => i.targetSkill)
+    });
+  }
+  return result;
+}
 function contentHash(content) {
   return createHash("md5").update(content).digest("hex").slice(0, 12);
 }
@@ -244,7 +345,7 @@ function isAlreadyValidated(filePath, hash, sessionId) {
   const persisted = parseValidatedFiles(readSessionFile(sessionId, "validated-files"));
   return persisted.has(entry);
 }
-function markValidated(filePath, hash, sessionId, logger) {
+function markValidated(filePath, hash, sessionId) {
   const entry = `${filePath}:${hash}`;
   const persistedState = sessionId ? readSessionFile(sessionId, "validated-files") : "";
   const current = process.env[VALIDATED_FILES_ENV_KEY] || persistedState;
@@ -253,12 +354,12 @@ function markValidated(filePath, hash, sessionId, logger) {
   if (sessionId) {
     writeSessionFile(sessionId, "validated-files", next);
   }
-  persistValidatedFilesEnv(next, logger);
   return next;
 }
-function formatOutput(violations, matchedSkills, filePath, logger, platform = "claude-code", env) {
+function formatOutput(violations, matchedSkills, filePath, logger, platform = "claude-code", env, chainResult) {
   const l = logger || log;
-  if (violations.length === 0) {
+  const hasChains = chainResult && chainResult.injected.length > 0;
+  if (violations.length === 0 && !hasChains) {
     l.debug("posttooluse-validate-no-output", { reason: "no_actionable_violations" });
     return "{}";
   }
@@ -306,13 +407,30 @@ function formatOutput(violations, matchedSkills, filePath, logger, platform = "c
     hasWarns ? `${warns.length} suggestion${warns.length > 1 ? "s" : ""}` : ""
   ].filter(Boolean).join(", ");
   const callToAction = hasErrors ? `Please fix these issues before proceeding.` : hasRecommended ? `Apply these recommendations before continuing \u2014 they reflect current best practices.` : `Consider applying these suggestions to follow best practices.`;
-  const context = [
-    `<!-- posttooluse-validate: ${skillList} -->`,
-    `VALIDATION (${counts}) for \`${filePath}\`:`,
-    ...parts,
-    callToAction,
-    `<!-- /posttooluse-validate -->`
-  ].join("\n");
+  const contextParts = [];
+  if (violations.length > 0) {
+    contextParts.push(
+      `<!-- posttooluse-validate: ${skillList} -->`,
+      `VALIDATION (${counts}) for \`${filePath}\`:`,
+      ...parts,
+      callToAction,
+      `<!-- /posttooluse-validate -->`
+    );
+  }
+  if (hasChains) {
+    for (const chain of chainResult.injected) {
+      const reason = chain.message ? ` ${chain.message}` : "";
+      contextParts.push(
+        `<!-- posttooluse-chain: ${chain.sourceSkill} \u2192 ${chain.targetSkill} -->`,
+        `**Skill context auto-loaded** (${chain.targetSkill}):${reason}`,
+        "",
+        chain.content,
+        `<!-- /posttooluse-chain: ${chain.targetSkill} -->`
+      );
+    }
+  }
+  const context = contextParts.join("\n");
+  const chainedSkills = hasChains ? chainResult.injected.map((c) => c.targetSkill) : [];
   const metadata = {
     version: 1,
     hook: "posttooluse-validate",
@@ -320,7 +438,8 @@ function formatOutput(violations, matchedSkills, filePath, logger, platform = "c
     matchedSkills,
     errorCount: errors.length,
     recommendedCount: recommended.length,
-    warnCount: warns.length
+    warnCount: warns.length,
+    chainedSkills
   };
   const metaComment = `<!-- postValidation: ${JSON.stringify(metadata)} -->`;
   l.summary("posttooluse-validate-output", {
@@ -328,7 +447,8 @@ function formatOutput(violations, matchedSkills, filePath, logger, platform = "c
     matchedSkills,
     errorCount: errors.length,
     recommendedCount: recommended.length,
-    warnCount: warns.length
+    warnCount: warns.length,
+    chainedSkills
   });
   return formatPlatformOutput(platform, context + "\n" + metaComment, env);
 }
@@ -360,21 +480,32 @@ function run() {
   const data = loadValidateRules(PLUGIN_ROOT, log);
   if (!data) return "{}";
   if (log.active) timing.load = Math.round(log.now() - tLoad);
-  const { compiledSkills, rulesMap } = data;
+  const { compiledSkills, rulesMap, chainMap } = data;
   const tMatch = log.active ? log.now() : 0;
-  const matchedSkills = matchFileToSkills(filePath, fileContent, compiledSkills, rulesMap, log);
+  const matchedSkills = matchFileToSkills(filePath, fileContent, compiledSkills, rulesMap, log, chainMap);
   if (log.active) timing.match = Math.round(log.now() - tMatch);
   if (matchedSkills.length === 0) {
     log.debug("posttooluse-validate-skip", { reason: "no_skill_match", filePath });
-    markValidated(filePath, hash, sessionId, log);
+    markValidated(filePath, hash, sessionId);
     return "{}";
   }
   const tValidate = log.active ? log.now() : 0;
   const violations = runValidation(fileContent, matchedSkills, rulesMap, log);
   if (log.active) timing.validate = Math.round(log.now() - tValidate);
-  const validatedFiles = markValidated(filePath, hash, sessionId, log);
-  const cursorEnv = platform === "cursor" && violations.length > 0 ? { [VALIDATED_FILES_ENV_KEY]: validatedFiles } : void 0;
-  const result = formatOutput(violations, matchedSkills, filePath, log, platform, cursorEnv);
+  const tChain = log.active ? log.now() : 0;
+  const chainResult = runChainInjection(
+    fileContent,
+    matchedSkills,
+    chainMap,
+    sessionId,
+    PLUGIN_ROOT,
+    log
+  );
+  if (log.active) timing.chain = Math.round(log.now() - tChain);
+  const validatedFiles = markValidated(filePath, hash, sessionId);
+  const hasOutput = violations.length > 0 || chainResult.injected.length > 0;
+  const cursorEnv = platform === "cursor" && hasOutput ? { [VALIDATED_FILES_ENV_KEY]: validatedFiles } : void 0;
+  const result = formatOutput(violations, matchedSkills, filePath, log, platform, cursorEnv, chainResult);
   log.complete("posttooluse-validate-done", {
     matchedCount: matchedSkills.length,
     injectedCount: violations.filter((v) => v.severity === "error").length
@@ -417,5 +548,6 @@ export {
   parseInput,
   parseValidatedFiles,
   run,
+  runChainInjection,
   runValidation
 };
