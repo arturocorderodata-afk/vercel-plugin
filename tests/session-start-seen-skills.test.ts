@@ -47,24 +47,6 @@ async function runSessionStart(
   return { code, stdout, stderr };
 }
 
-async function resolveSeenSkillsValue(envFile: string): Promise<string | null> {
-  const proc = Bun.spawn(
-    ["bash", "-lc", 'source "$TARGET_ENV_FILE"; if [ -z "${VERCEL_PLUGIN_SEEN_SKILLS+x}" ]; then printf "UNSET"; else printf "%s" "$VERCEL_PLUGIN_SEEN_SKILLS"; fi'],
-    {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...(process.env as Record<string, string>),
-        TARGET_ENV_FILE: envFile,
-      },
-    },
-  );
-
-  await proc.exited;
-  const out = (await new Response(proc.stdout).text()).trim();
-  return out === "UNSET" ? null : out;
-}
-
 describe("session-start-seen-skills hook", () => {
   test("test_script_exists", () => {
     expect(existsSync(SCRIPT)).toBe(true);
@@ -89,7 +71,7 @@ describe("session-start-seen-skills hook", () => {
     );
   });
 
-  test("test_session_start_appends_seen_skills_export_when_env_file_seeded", async () => {
+  test("test_session_start_preserves_seeded_env_file_for_claude_code", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "session-start-seen-skills-"));
     const envFile = join(tempDir, "claude.env");
 
@@ -102,13 +84,7 @@ describe("session-start-seen-skills hook", () => {
       expect(result.stderr).toBe("");
 
       const content = readFileSync(envFile, "utf-8");
-      expect(content).toContain("export SEEDED=1\n");
-      // Env-var based dedup: exports an empty comma-delimited string
-      expect(content).toMatch(/export VERCEL_PLUGIN_SEEN_SKILLS=""/);
-
-      // Sourcing the env file should set VERCEL_PLUGIN_SEEN_SKILLS to empty string (not unset)
-      const seenValue = await resolveSeenSkillsValue(envFile);
-      expect(seenValue).toBe("");
+      expect(content).toBe("export SEEDED=1\n");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

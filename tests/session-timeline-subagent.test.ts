@@ -54,17 +54,6 @@ async function runHookEnv(
   return { code, stdout, stderr };
 }
 
-function readSeenSkillsExport(envFilePath: string): string {
-  const content = readFileSync(envFilePath, "utf-8");
-  const match = content.match(/^export VERCEL_PLUGIN_SEEN_SKILLS="([^"]*)"$/m);
-
-  if (!match) {
-    throw new Error(`Missing VERCEL_PLUGIN_SEEN_SKILLS export in ${envFilePath}: ${content}`);
-  }
-
-  return match[1];
-}
-
 function parseInjectedSkills(stdout: string): string[] {
   const parsed = JSON.parse(stdout);
   const ctx = parsed?.hookSpecificOutput?.additionalContext || "";
@@ -94,7 +83,7 @@ function parseDebugLines(stderr: string): Array<Record<string, unknown>> {
 }
 
 describe("session timeline subagent integration", () => {
-  test("session-start-seen-skills.mjs appends an empty-string seen-skills export to CLAUDE_ENV_FILE", async () => {
+  test("session-start-seen-skills.mjs preserves CLAUDE_ENV_FILE contents", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "session-timeline-lead-"));
     const leadEnvPath = join(tempDir, "lead.env");
 
@@ -107,8 +96,7 @@ describe("session timeline subagent integration", () => {
       expect(result.stderr).toBe("");
 
       const content = readFileSync(leadEnvPath, "utf-8");
-      expect(content).toContain('export VERCEL_PLUGIN_SEEN_SKILLS=""');
-      expect(readSeenSkillsExport(leadEnvPath)).toBe("");
+      expect(content).toBe("export SEEDED=1\n");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -125,7 +113,6 @@ describe("session timeline subagent integration", () => {
 
       const leadSessionStart = await runSessionStart(leadEnvPath);
       expect(leadSessionStart.code).toBe(0);
-      expect(readSeenSkillsExport(leadEnvPath)).toBe("");
 
       const leadScaffold = await runHookEnv(
         { tool_name: "Bash", tool_input: { command: "npx create-next-app@latest notion-clone --ts --app" } },
@@ -145,7 +132,6 @@ describe("session timeline subagent integration", () => {
 
       const subagentSessionStart = await runSessionStart(subagentEnvPath);
       expect(subagentSessionStart.code).toBe(0);
-      expect(readSeenSkillsExport(subagentEnvPath)).toBe("");
 
       const subagentSession = `timeline-subagent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const subagentRead = await runHookEnv(

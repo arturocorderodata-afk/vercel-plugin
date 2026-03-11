@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * SessionStart hook: initialize the seen-skills dedup env var.
- * Claude Code appends `export VERCEL_PLUGIN_SEEN_SKILLS=""` to CLAUDE_ENV_FILE.
+ * SessionStart hook: initialize the seen-skills dedup state.
+ * Claude Code now relies on the claim-dir/session-file dedup flow, so this hook
+ * is a no-op on that platform.
  * Cursor returns `{ env: { VERCEL_PLUGIN_SEEN_SKILLS: "" } }` on stdout.
  */
 
@@ -10,9 +11,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   formatOutput,
-  getEnvFilePath,
   type HookPlatform,
-  setSessionEnv,
 } from "./compat.mjs";
 
 interface SessionStartSeenSkillsInput {
@@ -33,14 +32,10 @@ export function parseSessionStartSeenSkillsInput(raw: string): SessionStartSeenS
 
 export function detectSessionStartSeenSkillsPlatform(
   input: SessionStartSeenSkillsInput | null,
-  env: NodeJS.ProcessEnv = process.env,
+  _env: NodeJS.ProcessEnv = process.env,
 ): HookPlatform {
   if (input && ("conversation_id" in input || "cursor_version" in input)) {
     return "cursor";
-  }
-
-  if (env.CLAUDE_ENV_FILE) {
-    return "claude-code";
   }
 
   return "claude-code";
@@ -57,18 +52,11 @@ export function formatSessionStartSeenSkillsCursorOutput(): string {
 function main(): void {
   const input = parseSessionStartSeenSkillsInput(readFileSync(0, "utf8"));
   const platform = detectSessionStartSeenSkillsPlatform(input);
-  const envFile = getEnvFilePath();
-
-  if (platform === "claude-code" && !envFile) {
-    process.exit(0);
-  }
 
   if (platform === "cursor") {
     process.stdout.write(formatSessionStartSeenSkillsCursorOutput());
     return;
   }
-
-  setSessionEnv(platform, "VERCEL_PLUGIN_SEEN_SKILLS", "");
 }
 
 const SESSION_START_SEEN_SKILLS_ENTRYPOINT = fileURLToPath(import.meta.url);
