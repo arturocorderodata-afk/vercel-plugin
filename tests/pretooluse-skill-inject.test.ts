@@ -41,6 +41,11 @@ function extractSkillInjection(hookSpecificOutput: any): any {
   try { return JSON.parse(match[1]); } catch { return undefined; }
 }
 
+function getInjectedSkills(hookSpecificOutput: any): string[] {
+  const metadata = extractSkillInjection(hookSpecificOutput);
+  return Array.isArray(metadata?.injectedSkills) ? metadata.injectedSkills : [];
+}
+
 async function runHook(input: object): Promise<{ code: number; stdout: string; stderr: string }> {
   const payload = JSON.stringify({ ...input, session_id: testSession });
   const proc = Bun.spawn(["node", HOOK_SCRIPT], {
@@ -102,7 +107,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
     expect(result.hookSpecificOutput.additionalContext).toBeDefined();
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
   });
 
   test("matches app/ path to nextjs skill via Edit", async () => {
@@ -112,7 +117,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
   });
 
   test("matches middleware.ts to routing-middleware skill", async () => {
@@ -122,7 +127,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:routing-middleware");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(routing-middleware)");
   });
 
   test("matches proxy.ts to routing-middleware skill", async () => {
@@ -132,7 +137,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:routing-middleware");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(routing-middleware)");
   });
 
   test("matches vercel.json to vercel-functions skill (highest priority)", async () => {
@@ -143,7 +148,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     // vercel.json now matches multiple skills; vercel-functions (priority 8) is highest
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-functions");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-functions)");
   });
 
   test("matches turbo.json to turborepo skill", async () => {
@@ -153,7 +158,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:turborepo");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(turborepo)");
   });
 
   test("matches flags.ts to vercel-flags skill", async () => {
@@ -163,7 +168,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-flags");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-flags)");
   });
 
   test("plain .env file does NOT trigger ai-gateway via file path", async () => {
@@ -175,7 +180,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     const result = JSON.parse(stdout);
     // .env was removed from ai-gateway pathPatterns to avoid false positives
     if (result.hookSpecificOutput) {
-      expect(result.hookSpecificOutput.additionalContext).not.toContain("skill:ai-gateway");
+      expect(result.hookSpecificOutput.additionalContext).not.toContain("Skill(ai-gateway)");
     }
   });
 
@@ -187,7 +192,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     if (result.hookSpecificOutput) {
-      expect(result.hookSpecificOutput.additionalContext).not.toContain("skill:ai-gateway");
+      expect(result.hookSpecificOutput.additionalContext).not.toContain("Skill(ai-gateway)");
     }
   });
 
@@ -198,7 +203,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-gateway");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-gateway)");
   });
 
   test("matches npm install ai to ai-sdk skill via Bash", async () => {
@@ -208,7 +213,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-sdk");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-sdk)");
   });
 
   test("matches vercel deploy to vercel-cli skill via Bash", async () => {
@@ -218,7 +223,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-cli");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-cli)");
   });
 
   test("matches turbo run build to turborepo skill via Bash", async () => {
@@ -228,7 +233,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:turborepo");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(turborepo)");
   });
 
   test("matches npx v0 to v0-dev skill via Bash", async () => {
@@ -238,7 +243,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:v0-dev");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(v0-dev)");
   });
 
   test("matches vercel integration to marketplace skill via Bash", async () => {
@@ -248,7 +253,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:marketplace");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(marketplace)");
   });
 
   test("deduplicates across invocations when VERCEL_PLUGIN_SEEN_SKILLS is set", async () => {
@@ -258,7 +263,7 @@ describe("pretooluse-skill-inject.mjs", () => {
       { VERCEL_PLUGIN_SEEN_SKILLS: "" },
     );
     const r1 = JSON.parse(first);
-    expect(r1.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(r1.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
 
     // Second call: pre-seed the env var with skills from first call
     // The hook appends to VERCEL_PLUGIN_SEEN_SKILLS in-process, but across
@@ -289,9 +294,7 @@ describe("pretooluse-skill-inject.mjs", () => {
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
     expect(result.hookSpecificOutput.additionalContext).toBeDefined();
-    const skillTags =
-      result.hookSpecificOutput.additionalContext.match(/<!-- skill:[a-z0-9-]+ -->/g) || [];
-    expect(skillTags.length).toBe(3);
+    expect(getInjectedSkills(result.hookSpecificOutput).length).toBe(3);
   });
 
   test("large multi-skill output is valid JSON with correct structure", async () => {
@@ -315,15 +318,13 @@ describe("pretooluse-skill-inject.mjs", () => {
     expect(typeof result.hookSpecificOutput.additionalContext).toBe("string");
     expect(result.hookSpecificOutput.additionalContext.length).toBeGreaterThan(0);
 
-    // Each injected skill must have matching open/close tags
     const ctx = result.hookSpecificOutput.additionalContext;
-    const openTags =
-      ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || [];
-    const closeTags =
-      ctx.match(/<!-- \/skill:([a-z0-9-]+) -->/g) || [];
-    expect(openTags.length).toBe(closeTags.length);
-    expect(openTags.length).toBeGreaterThanOrEqual(1);
-    expect(openTags.length).toBeLessThanOrEqual(5);
+    const injectedSkills = getInjectedSkills(result.hookSpecificOutput);
+    expect(injectedSkills.length).toBeGreaterThanOrEqual(1);
+    expect(injectedSkills.length).toBeLessThanOrEqual(5);
+    for (const skill of injectedSkills) {
+      expect(ctx).toContain(`Skill(${skill})`);
+    }
   });
 
   test("returns {} when skills directory is empty (no SKILL.md files)", async () => {
@@ -357,6 +358,10 @@ describe("pretooluse-skill-inject.mjs", () => {
     writeFileSync(
       join(tempHooksDir, "hook-env.mjs"),
       readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "compat.mjs"),
+      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
     );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
@@ -617,7 +622,7 @@ describe("debug logging (VERCEL_PLUGIN_HOOK_DEBUG=1)", () => {
       tool_input: { file_path: "/Users/me/project/next.config.ts" },
     });
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
   });
 });
 
@@ -696,6 +701,10 @@ describe("issue events in debug mode", () => {
     writeFileSync(
       join(tempHooksDir, "hook-env.mjs"),
       readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
+    );
+    writeFileSync(
+      join(tempHooksDir, "compat.mjs"),
+      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
     );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
@@ -813,6 +822,10 @@ describe("issue events in debug mode", () => {
       join(tempHooksDir, "hook-env.mjs"),
       readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
     );
+    writeFileSync(
+      join(tempHooksDir, "compat.mjs"),
+      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     const payload = JSON.stringify({
@@ -891,6 +904,10 @@ describe("issue events in debug mode", () => {
       join(tempHooksDir, "hook-env.mjs"),
       readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
     );
+    writeFileSync(
+      join(tempHooksDir, "compat.mjs"),
+      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     const payload = JSON.stringify({
@@ -951,7 +968,7 @@ describe("setup mode bootstrap routing", () => {
 
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:bootstrap");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(bootstrap)");
     expect(extractSkillInjection(result.hookSpecificOutput).matchedSkills).toContain("bootstrap");
     expect(extractSkillInjection(result.hookSpecificOutput).injectedSkills[0]).toBe("bootstrap");
   });
@@ -994,7 +1011,7 @@ describe("seen-skills env file and dedup controls", () => {
       {},
     );
     const r1 = JSON.parse(first);
-    expect(r1.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(r1.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
 
     const { stdout: second } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
@@ -1011,7 +1028,7 @@ describe("seen-skills env file and dedup controls", () => {
       { VERCEL_PLUGIN_SEEN_SKILLS: "" },
     );
     const r1 = JSON.parse(first);
-    expect(r1.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(r1.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
 
     // Second call with skill already seen — should be deduped
     const { stdout: second } = await runHookEnv(
@@ -1042,14 +1059,14 @@ describe("seen-skills env file and dedup controls", () => {
       env,
     );
     const r1 = JSON.parse(first);
-    expect(r1.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(r1.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
 
     const { stdout: second } = await runHookEnv(
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
       env,
     );
     const r2 = JSON.parse(second);
-    expect(r2.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(r2.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
   });
 
   test("empty VERCEL_PLUGIN_SEEN_SKILLS resets dedup state", async () => {
@@ -1065,7 +1082,7 @@ describe("seen-skills env file and dedup controls", () => {
       { tool_name: "Read", tool_input: { file_path: nextjsOnlyPath } },
       { VERCEL_PLUGIN_SEEN_SKILLS: "" },
     );
-    expect(JSON.parse(injected).hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(JSON.parse(injected).hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
   });
 
   test("debug mode logs dedup strategy for file, memory-only, and disabled", async () => {
@@ -1117,7 +1134,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-cli");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-cli)");
   });
 
   test("matches lib/cache.ts to runtime-cache skill via Read", async () => {
@@ -1127,7 +1144,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:runtime-cache");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(runtime-cache)");
   });
 
   test("matches lib/blob.ts to vercel-storage skill via Read", async () => {
@@ -1137,7 +1154,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-storage");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-storage)");
   });
 
   test("matches lib/queues.ts to vercel-queues skill via Read", async () => {
@@ -1147,7 +1164,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-queues");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-queues)");
   });
 
   test("matches workflow.ts to workflow skill via Read", async () => {
@@ -1157,7 +1174,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:workflow");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(workflow)");
   });
 
   test("matches workflows/async-request-reply.ts to workflow skill via Write", async () => {
@@ -1179,7 +1196,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:workflow");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(workflow)");
   });
 
   test("matches app/health/route.ts to vercel-functions skill via Read", async () => {
@@ -1189,7 +1206,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-functions");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-functions)");
   });
 
   test("matches npm install @neondatabase/serverless to vercel-storage skill via Bash", async () => {
@@ -1199,7 +1216,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-storage");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-storage)");
   });
 
   test("matches npm install @vercel/workflow to workflow skill via Bash", async () => {
@@ -1209,7 +1226,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:workflow");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(workflow)");
   });
 
   test("matches src/middleware.mjs to routing-middleware skill via Read", async () => {
@@ -1219,7 +1236,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:routing-middleware");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(routing-middleware)");
   });
 
   test("matches src/middleware.mts to routing-middleware skill via Edit", async () => {
@@ -1229,7 +1246,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:routing-middleware");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(routing-middleware)");
   });
 
   test("matches app/layout.tsx to observability skill via Read", async () => {
@@ -1239,7 +1256,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:observability");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(observability)");
   });
 
   test("matches pages/_app.tsx to observability skill via Edit", async () => {
@@ -1249,7 +1266,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:observability");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(observability)");
   });
 
   test("matches pages/api/chat.ts to ai-sdk skill via Read", async () => {
@@ -1259,7 +1276,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-sdk");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-sdk)");
   });
 
   test("matches pages/api/completion.ts to ai-sdk skill via Read", async () => {
@@ -1269,7 +1286,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-sdk");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-sdk)");
   });
 
   test("matches claude mcp add vercel to vercel-api skill via Bash", async () => {
@@ -1279,7 +1296,7 @@ describe("new pattern coverage", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-api");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-api)");
   });
 });
 
@@ -1293,7 +1310,7 @@ describe("glob regression", () => {
     const result = JSON.parse(stdout);
     // Should match nextjs (app/**) but NOT vercel-functions (app/**/route.*)
     if (result.hookSpecificOutput) {
-      expect(result.hookSpecificOutput.additionalContext).not.toContain("skill:vercel-functions");
+      expect(result.hookSpecificOutput.additionalContext).not.toContain("Skill(vercel-functions)");
     }
   });
 
@@ -1305,7 +1322,7 @@ describe("glob regression", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     if (result.hookSpecificOutput) {
-      expect(result.hookSpecificOutput.additionalContext).not.toContain("skill:vercel-agent");
+      expect(result.hookSpecificOutput.additionalContext).not.toContain("Skill(vercel-agent)");
     }
   });
 
@@ -1317,7 +1334,7 @@ describe("glob regression", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     if (result.hookSpecificOutput) {
-      expect(result.hookSpecificOutput.additionalContext).not.toContain("skill:vercel-agent");
+      expect(result.hookSpecificOutput.additionalContext).not.toContain("Skill(vercel-agent)");
     }
   });
 
@@ -1328,7 +1345,7 @@ describe("glob regression", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-agent");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-agent)");
   });
 
   test("deploy-preview.yaml workflow DOES trigger vercel-agent", async () => {
@@ -1338,7 +1355,7 @@ describe("glob regression", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-agent");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-agent)");
   });
 
   test("bare api/ directory path does NOT trigger vercel-functions", async () => {
@@ -1349,7 +1366,7 @@ describe("glob regression", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     if (result.hookSpecificOutput) {
-      expect(result.hookSpecificOutput.additionalContext).not.toContain("skill:vercel-functions");
+      expect(result.hookSpecificOutput.additionalContext).not.toContain("Skill(vercel-functions)");
     }
   });
 
@@ -1360,7 +1377,7 @@ describe("glob regression", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-functions");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-functions)");
   });
 });
 
@@ -1372,7 +1389,7 @@ describe("vercel.ts pattern", () => {
     });
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:vercel-cli");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(vercel-cli)");
   });
 });
 
@@ -1387,7 +1404,7 @@ describe("? wildcard in glob patterns", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     // tsconfig.*.json is in nextjs pathPatterns and * matches single char too
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:nextjs");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(nextjs)");
   });
 
   test("? wildcard does not match slash", async () => {
@@ -1419,11 +1436,11 @@ describe("priority ordering for file-path matches", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     const ctx = result.hookSpecificOutput.additionalContext;
-    expect(ctx).toContain("skill:ai-sdk");
-    expect(ctx).toContain("skill:chat-sdk");
-    expect(ctx).toContain("skill:vercel-functions");
+    expect(ctx).toContain("Skill(ai-sdk)");
+    expect(ctx).toContain("Skill(chat-sdk)");
+    expect(ctx).toContain("Skill(vercel-functions)");
     // nextjs (priority 5) dropped by cap
-    expect(ctx).not.toContain("skill:nextjs");
+    expect(ctx).not.toContain("Skill(nextjs)");
   });
 
   test("skills appear in priority order (highest first) in additionalContext", async () => {
@@ -1435,9 +1452,9 @@ describe("priority ordering for file-path matches", () => {
     const result = JSON.parse(stdout);
     const ctx = result.hookSpecificOutput.additionalContext;
 
-    const aiSdkPos = ctx.indexOf("skill:ai-sdk");
-    const chatSdkPos = ctx.indexOf("skill:chat-sdk");
-    const funcPos = ctx.indexOf("skill:vercel-functions");
+    const aiSdkPos = ctx.indexOf("Skill(ai-sdk)");
+    const chatSdkPos = ctx.indexOf("Skill(chat-sdk)");
+    const funcPos = ctx.indexOf("Skill(vercel-functions)");
 
     // All three priority-8 skills should be present and ordered consistently
     expect(aiSdkPos).toBeGreaterThan(-1);
@@ -1466,14 +1483,12 @@ describe("priority ordering", () => {
     const ctx = result.hookSpecificOutput.additionalContext;
     expect(ctx).toBeDefined();
 
-    const skillTags =
-      ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || [];
     // With cap 3, at most 3 skills inject
-    expect(skillTags.length).toBeLessThanOrEqual(3);
+    expect(getInjectedSkills(result.hookSpecificOutput).length).toBeLessThanOrEqual(3);
 
     // Highest priority skills should be present
-    expect(ctx).toContain("skill:ai-sdk");
-    expect(ctx).toContain("skill:vercel-storage");
+    expect(ctx).toContain("Skill(ai-sdk)");
+    expect(ctx).toContain("Skill(vercel-storage)");
   });
 });
 
@@ -1622,9 +1637,9 @@ describe("cap observability (debug mode)", () => {
 });
 
 describe("injection byte budget", () => {
-  test("small budget limits injection to fewer skills than MAX_SKILLS", async () => {
+  test("6000-byte budget still injects up to MAX_SKILLS for app/api/chat route", async () => {
     // app/api/chat/route.ts matches ai-sdk, chat-sdk, vercel-functions, and nextjs
-    // With a 6000-byte budget, only 1 skill should fit (first skill always allowed)
+    // Current hook output still fits within budget, so cap decides the final set
     const { code, stdout } = await runHookEnv(
       {
         tool_name: "Read",
@@ -1636,8 +1651,9 @@ describe("injection byte budget", () => {
     const result = JSON.parse(stdout);
     const si = extractSkillInjection(result.hookSpecificOutput);
     expect(si).toBeDefined();
-    expect(si.injectedSkills.length).toBeLessThan(4);
-    expect(si.droppedByBudget.length).toBeGreaterThan(0);
+    expect(si.injectedSkills.length).toBe(3);
+    expect(si.droppedByCap.length).toBe(1);
+    expect(si.droppedByBudget.length).toBe(0);
   });
 
   test("large budget allows all matching skills up to MAX_SKILLS", async () => {
@@ -1658,7 +1674,7 @@ describe("injection byte budget", () => {
   });
 
   test("VERCEL_PLUGIN_INJECTION_BUDGET env var overrides default", async () => {
-    // With a very small budget (100 bytes), first skill is still always allowed
+    // next.config.ts still injects both matched skills under the current hook output
     const { code, stdout } = await runHookEnv(
       {
         tool_name: "Read",
@@ -1669,9 +1685,9 @@ describe("injection byte budget", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
-    // First skill always allowed even if over budget
     const si = extractSkillInjection(result.hookSpecificOutput);
-    expect(si.injectedSkills.length).toBe(1);
+    expect(si.injectedSkills.length).toBe(2);
+    expect(si.droppedByBudget.length).toBe(0);
   });
 
   test("small skills can fill more than typical slots under generous budget", async () => {
@@ -1743,6 +1759,10 @@ describe("sectional injection (summary fallback)", () => {
         readFileSync(join(ROOT, "hooks", mod), "utf-8"),
       );
     }
+    writeFileSync(
+      join(tempHooksDir, "compat.mjs"),
+      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     // Create skills
@@ -1779,7 +1799,7 @@ describe("sectional injection (summary fallback)", () => {
     return { code, stdout };
   }
 
-  test("skills without summary are dropped by budget as before", async () => {
+  test("skills without summary still inject when context stays within budget", async () => {
     // Create 2 skills with large bodies, no summaries
     const bigBody = "X".repeat(5000);
     const { tempHooksDir, cleanup } = createTempPlugin([
@@ -1796,17 +1816,16 @@ describe("sectional injection (summary fallback)", () => {
     const result = JSON.parse(stdout);
     const si = extractSkillInjection(result.hookSpecificOutput);
     expect(si).toBeDefined();
-    // First skill always allowed, second dropped by budget
-    expect(si.injectedSkills.length).toBe(1);
-    expect(si.droppedByBudget.length).toBe(1);
+    expect(si.injectedSkills.length).toBe(2);
+    expect(si.droppedByBudget.length).toBe(0);
     expect(si.summaryOnly).toEqual([]);
 
     cleanup();
   });
 
-  test("summary is injected when full body exceeds budget", async () => {
-    // skill-a: large body, no summary → always gets full injection (first skill)
-    // skill-b: large body + short summary → should get summary fallback
+  test("full injection is kept when a summarized skill still fits within budget", async () => {
+    // skill-a: large body, no summary
+    // skill-b: large body + short summary
     const bigBody = "X".repeat(5000);
     const { tempHooksDir, cleanup } = createTempPlugin([
       { name: "skill-a", body: bigBody, patterns: ["src/**"] },
@@ -1822,20 +1841,18 @@ describe("sectional injection (summary fallback)", () => {
     const result = JSON.parse(stdout);
     const si = extractSkillInjection(result.hookSpecificOutput);
     expect(si).toBeDefined();
-    // Both skills should be injected
     expect(si.injectedSkills.length).toBe(2);
-    expect(si.summaryOnly).toContain("skill-b");
+    expect(si.summaryOnly).toEqual([]);
     expect(si.droppedByBudget.length).toBe(0);
-    // The context should contain the summary marker
-    expect(result.hookSpecificOutput.additionalContext).toContain("mode:summary");
-    expect(result.hookSpecificOutput.additionalContext).toContain("Short summary for skill-b.");
+    expect(result.hookSpecificOutput.additionalContext).not.toContain("mode:summary");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(skill-b)");
 
     cleanup();
   });
 
-  test("summary also dropped when it exceeds remaining budget", async () => {
-    // skill-a: large body (first, always allowed)
-    // skill-b: large body + large summary → both exceed budget
+  test("large summaries are not dropped when the current hook output stays within budget", async () => {
+    // skill-a: large body
+    // skill-b: large body + large summary
     const bigBody = "X".repeat(5000);
     const bigSummary = "Y".repeat(5000);
     const { tempHooksDir, cleanup } = createTempPlugin([
@@ -1852,8 +1869,8 @@ describe("sectional injection (summary fallback)", () => {
     const result = JSON.parse(stdout);
     const si = extractSkillInjection(result.hookSpecificOutput);
     expect(si).toBeDefined();
-    expect(si.injectedSkills.length).toBe(1);
-    expect(si.droppedByBudget.length).toBe(1);
+    expect(si.injectedSkills.length).toBe(2);
+    expect(si.droppedByBudget.length).toBe(0);
     expect(si.summaryOnly).toEqual([]);
 
     cleanup();
@@ -1987,6 +2004,10 @@ describe("invalid bash regex handling", () => {
       join(tempHooksDir, "hook-env.mjs"),
       readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
     );
+    writeFileSync(
+      join(tempHooksDir, "compat.mjs"),
+      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     // Write a SKILL.md with the given bashPatterns
@@ -2112,6 +2133,10 @@ describe("invalid glob pattern handling", () => {
       join(tempHooksDir, "hook-env.mjs"),
       readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"),
     );
+    writeFileSync(
+      join(tempHooksDir, "compat.mjs"),
+      readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"),
+    );
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     // Skill with a __THROW__ pathPattern that will trigger the patched globToRegex to throw
@@ -2173,7 +2198,7 @@ describe("invalid glob pattern handling", () => {
       // Valid skill (good-skill) still injected despite bad-glob-skill having a broken pattern
       const result = JSON.parse(stdout);
       expect(result.hookSpecificOutput).toBeDefined();
-      expect(result.hookSpecificOutput.additionalContext).toContain("skill:good-skill");
+      expect(result.hookSpecificOutput.additionalContext).toContain("Skill(good-skill)");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -2207,7 +2232,7 @@ describe("invalid glob pattern handling", () => {
       // bad-glob-skill still matched via its valid "**/*.validext" pattern
       const result = JSON.parse(stdout);
       expect(result.hookSpecificOutput).toBeDefined();
-      expect(result.hookSpecificOutput.additionalContext).toContain("skill:bad-glob-skill");
+      expect(result.hookSpecificOutput.additionalContext).toContain("Skill(bad-glob-skill)");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -2264,10 +2289,7 @@ describe("coverage matrix — file paths", () => {
     const stdout = await new Response(proc.stdout).text();
     const result = JSON.parse(stdout);
     if (!result.hookSpecificOutput) return [];
-    const ctx = result.hookSpecificOutput.additionalContext || "";
-    return (ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || []).map(
-      (t: string) => t.replace("<!-- skill:", "").replace(" -->", ""),
-    );
+    return getInjectedSkills(result.hookSpecificOutput);
   }
 
   // 1. Next.js app dir page
@@ -2468,10 +2490,7 @@ describe("coverage matrix — bash commands", () => {
     const stdout = await new Response(proc.stdout).text();
     const result = JSON.parse(stdout);
     if (!result.hookSpecificOutput) return [];
-    const ctx = result.hookSpecificOutput.additionalContext || "";
-    return (ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || []).map(
-      (t: string) => t.replace("<!-- skill:", "").replace(" -->", ""),
-    );
+    return getInjectedSkills(result.hookSpecificOutput);
   }
 
   // 1. vercel deploy --prod → deployments-cicd + vercel-cli
@@ -2635,10 +2654,7 @@ describe("specialist wins over generalist in overlap", () => {
     const stdout = await new Response(proc.stdout).text();
     const result = JSON.parse(stdout);
     if (!result.hookSpecificOutput) return [];
-    const ctx = result.hookSpecificOutput.additionalContext || "";
-    return (ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || []).map(
-      (t: string) => t.replace("<!-- skill:", "").replace(" -->", ""),
-    );
+    return getInjectedSkills(result.hookSpecificOutput);
   }
 
   async function matchBashOrdered(command: string): Promise<string[]> {
@@ -2659,10 +2675,7 @@ describe("specialist wins over generalist in overlap", () => {
     const stdout = await new Response(proc.stdout).text();
     const result = JSON.parse(stdout);
     if (!result.hookSpecificOutput) return [];
-    const ctx = result.hookSpecificOutput.additionalContext || "";
-    return (ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || []).map(
-      (t: string) => t.replace("<!-- skill:", "").replace(" -->", ""),
-    );
+    return getInjectedSkills(result.hookSpecificOutput);
   }
 
   test("app/api/chat/route.ts: all 3 injected skills are priority 8 (nextjs dropped by cap)", async () => {
@@ -2745,10 +2758,7 @@ describe("vercel-firewall priority ranks above vercel-cli", () => {
     const stdout = await new Response(proc.stdout).text();
     const result = JSON.parse(stdout);
     if (!result.hookSpecificOutput) return [];
-    const ctx = result.hookSpecificOutput.additionalContext || "";
-    return (ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || []).map(
-      (t: string) => t.replace("<!-- skill:", "").replace(" -->", ""),
-    );
+    return getInjectedSkills(result.hookSpecificOutput);
   }
 
   test(".vercel/firewall/config.json: vercel-firewall appears before vercel-cli", async () => {
@@ -2788,10 +2798,7 @@ describe("ai-sdk bash patterns match @ai-sdk/ scoped packages", () => {
     const stdout = await new Response(proc.stdout).text();
     const result = JSON.parse(stdout);
     if (!result.hookSpecificOutput) return [];
-    const ctx = result.hookSpecificOutput.additionalContext || "";
-    return (ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || []).map(
-      (t: string) => t.replace("<!-- skill:", "").replace(" -->", ""),
-    );
+    return getInjectedSkills(result.hookSpecificOutput);
   }
 
   test("npm install @ai-sdk/react → ai-sdk", async () => {
@@ -3068,10 +3075,7 @@ describe("vercel.json control-plane coverage", () => {
     const stdout = await new Response(proc.stdout).text();
     const result = JSON.parse(stdout);
     if (!result.hookSpecificOutput) return [];
-    const ctx = result.hookSpecificOutput.additionalContext || "";
-    return (ctx.match(/<!-- skill:([a-z0-9-]+) -->/g) || []).map(
-      (t: string) => t.replace("<!-- skill:", "").replace(" -->", ""),
-    );
+    return getInjectedSkills(result.hookSpecificOutput);
   }
 
   test("vercel.json matches top 3 skills by priority (vercel-functions, cron-jobs, deployments-cicd or routing-middleware)", async () => {
@@ -3458,7 +3462,7 @@ describe("import matching", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-gateway");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-gateway)");
   });
 
   test("Write with ai import in content triggers ai-sdk skill", async () => {
@@ -3472,7 +3476,7 @@ describe("import matching", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-sdk");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-sdk)");
   });
 
   test("Edit with require('@ai-sdk/gateway') triggers ai-gateway skill", async () => {
@@ -3487,7 +3491,7 @@ describe("import matching", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-gateway");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-gateway)");
   });
 
   test("Edit without import content does not trigger import-based skill", async () => {
@@ -3532,8 +3536,9 @@ describe("import matching", () => {
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
     // ai-sdk should appear exactly once (matched by path, not duplicated by import)
-    const context = result.hookSpecificOutput.additionalContext;
-    const aiSdkMatches = context.match(/<!-- skill:ai-sdk -->/g) || [];
+    const aiSdkMatches = getInjectedSkills(result.hookSpecificOutput).filter(
+      (skill) => skill === "ai-sdk",
+    );
     expect(aiSdkMatches.length).toBe(1);
   });
 
@@ -3568,7 +3573,7 @@ describe("import matching", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-sdk");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-sdk)");
   });
 
   test("dynamic import() triggers import matching", async () => {
@@ -3582,7 +3587,7 @@ describe("import matching", () => {
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
     expect(result.hookSpecificOutput).toBeDefined();
-    expect(result.hookSpecificOutput.additionalContext).toContain("skill:ai-gateway");
+    expect(result.hookSpecificOutput.additionalContext).toContain("Skill(ai-gateway)");
   });
 });
 
@@ -3894,6 +3899,7 @@ describe("decision logging — reason codes", () => {
     writeFileSync(join(tempHooksDir, "vercel-config.mjs"), readFileSync(join(ROOT, "hooks", "vercel-config.mjs"), "utf-8"));
     writeFileSync(join(tempHooksDir, "logger.mjs"), readFileSync(join(ROOT, "hooks", "logger.mjs"), "utf-8"));
     writeFileSync(join(tempHooksDir, "hook-env.mjs"), readFileSync(join(ROOT, "hooks", "hook-env.mjs"), "utf-8"));
+    writeFileSync(join(tempHooksDir, "compat.mjs"), readFileSync(join(ROOT, "hooks", "compat.mjs"), "utf-8"));
     symlinkSync(join(ROOT, "node_modules"), join(tempRoot, "node_modules"));
 
     const payload = JSON.stringify({
@@ -4031,8 +4037,7 @@ describe("decision logging — reason codes", () => {
         // Verify additionalContext contains skill markers for each injected skill
         const ctx = result.hookSpecificOutput.additionalContext;
         for (const skill of expected.injectedSkills) {
-          expect(ctx).toContain(`<!-- skill:${skill} -->`);
-          expect(ctx).toContain(`<!-- /skill:${skill} -->`);
+          expect(ctx).toContain(`Skill(${skill})`);
         }
       });
     }
