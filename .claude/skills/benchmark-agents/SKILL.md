@@ -64,7 +64,7 @@ TS=$(date +%Y%m%d-%H%M)
 SLUG="my-app-$TS"
 mkdir -p ~/dev/vercel-plugin-testing/$SLUG
 cd ~/dev/vercel-plugin-testing/$SLUG
-npx add-plugin https://github.com/vercel-labs/vercel-plugin -s project -y
+npx add-plugin https://github.com/vercel/vercel-plugin -s project -y
 ```
 
 ### 2. Launch session via WezTerm
@@ -95,7 +95,7 @@ TS=$(date +%Y%m%d-%H%M)
 cd ~/dev/vercel-plugin-testing
 for name in tarot-deck interior-designer superhero-origin; do
   d="${name}-${TS}"
-  mkdir -p "$d" && (cd "$d" && npx add-plugin https://github.com/vercel-labs/vercel-plugin -s project -y)
+  mkdir -p "$d" && (cd "$d" && npx add-plugin https://github.com/vercel/vercel-plugin -s project -y)
 done
 
 # Then spawn each (these run in separate terminal panes)

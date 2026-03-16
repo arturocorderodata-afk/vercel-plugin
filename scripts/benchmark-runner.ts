@@ -117,7 +117,7 @@ const PROJECTS: BenchmarkProject[] = [
 
 const DEFAULT_BASE = join(homedir(), "dev", "vercel-plugin-testing");
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-const PLUGIN_URL = "https://github.com/vercel-labs/vercel-plugin";
+const PLUGIN_URL = "https://github.com/vercel/vercel-plugin";
 
 // ---------------------------------------------------------------------------
 // CLI

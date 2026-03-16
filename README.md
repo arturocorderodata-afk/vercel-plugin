@@ -19,7 +19,7 @@
 ### Installation
 
 ```bash
-npx plugins add vercel-labs/vercel-plugin
+npx plugins add vercel/vercel-plugin
 ```
 
 That's it. The plugin activates automatically — no setup, no commands to learn. Just build.
@@ -200,7 +200,7 @@ vercel-plugin/
 
 ## Reporting Issues
 
-If something doesn't work right, a skill gives bad advice, or injection doesn't fire when it should — file an issue on [GitHub](https://github.com/vercel-labs/vercel-plugin/issues). Include:
+If something doesn't work right, a skill gives bad advice, or injection doesn't fire when it should — file an issue on [GitHub](https://github.com/vercel/vercel-plugin/issues). Include:
 
 - What you were building
 - What the plugin injected (or didn't) — enable debug logs with `VERCEL_PLUGIN_LOG_LEVEL=debug`

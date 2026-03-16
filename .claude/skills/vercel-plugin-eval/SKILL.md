@@ -30,7 +30,7 @@ TS=$(date +%Y%m%d-%H%M)
 SLUG="my-eval-$TS"
 mkdir -p ~/dev/vercel-plugin-testing/$SLUG
 cd ~/dev/vercel-plugin-testing/$SLUG
-npx add-plugin https://github.com/vercel-labs/vercel-plugin -s project -y
+npx add-plugin https://github.com/vercel/vercel-plugin -s project -y
 
 # 2. Launch session via WezTerm
 wezterm cli spawn --cwd /Users/johnlindquist/dev/vercel-plugin-testing/$SLUG -- /bin/zsh -ic \

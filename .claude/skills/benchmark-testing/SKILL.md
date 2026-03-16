@@ -21,7 +21,7 @@ mkdir -p "$BASE"/{01-slug,02-slug,...}
 ```bash
 for dir in "$BASE"/*/; do
   echo "=== $(basename "$dir") ==="
-  cd "$dir" && npx add-plugin https://github.com/vercel-labs/vercel-plugin -s project -y 2>&1 | tail -1
+  cd "$dir" && npx add-plugin https://github.com/vercel/vercel-plugin -s project -y 2>&1 | tail -1
 done
 ```
 

@@ -136,7 +136,7 @@ async function main() {
     // Install vercel-plugin into the project
     const pluginInstall = await run(sandbox, "sh", [
       "-c",
-      `cd ${projectDir} && npx -y add-plugin https://github.com/vercel-labs/vercel-plugin -s project -y`,
+      `cd ${projectDir} && npx -y add-plugin https://github.com/vercel/vercel-plugin -s project -y`,
     ]);
     const pluginOk =
       pluginInstall.exit === 0 ||
