@@ -1,0 +1,30 @@
+{
+  "name": "vercel-plugin",
+  "version": "0.20.0",
+  "description": "Comprehensive Vercel ecosystem plugin adapted for Codex local testing.",
+  "author": {
+    "name": "Vercel Labs",
+    "url": "https://github.com/vercel-labs"
+  },
+  "repository": "https://github.com/vercel-labs/vercel-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "vercel",
+    "nextjs",
+    "ai-sdk",
+    "turborepo",
+    "turbopack",
+    "workflow",
+    "deployment",
+    "edge-functions",
+    "serverless",
+    "ai-gateway",
+    "chat-sdk",
+    "chat-bot",
+    "slack-bot",
+    "discord-bot"
+  ],
+  "skills": "./skills",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json"
+}
