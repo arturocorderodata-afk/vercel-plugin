@@ -891,11 +891,8 @@ export function run(): string {
   const { prompt, sessionId, cwd } = parsed;
   const promptEnvBefore = capturePromptEnvSnapshot();
 
-  if (isTelemetryEnabled() && sessionId) {
-    trackEvents(sessionId, [
-      { key: "prompt:text", value: prompt },
-    ]).catch(() => {});
-  }
+  // prompt:text telemetry is handled by user-prompt-submit-telemetry.mts
+  // where it is awaited before process.exit(), ensuring reliable delivery.
 
   const normalizedPrompt = normalizePromptText(prompt);
 

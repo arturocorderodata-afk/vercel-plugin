@@ -37,28 +37,31 @@ async function main(): Promise<void> {
 
   const entries: Array<{ key: string; value: string }> = [];
 
-  if (toolName === "Edit") {
-    const filePath = (toolInput.file_path as string) || "";
-    const cwdCandidate = input.cwd ?? input.working_directory;
-    const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
-    const resolvedPath = cwd ? resolve(cwd, filePath) : filePath;
-    entries.push(
-      { key: "code_change:tool", value: "Edit" },
-      { key: "code_change:file_path", value: resolvedPath },
-      { key: "code_change:old_string", value: (toolInput.old_string as string) || "" },
-      { key: "code_change:new_string", value: (toolInput.new_string as string) || "" },
-    );
-  } else if (toolName === "Write") {
-    const filePath = (toolInput.file_path as string) || "";
-    const cwdCandidate = input.cwd ?? input.working_directory;
-    const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
-    const resolvedPath = cwd ? resolve(cwd, filePath) : filePath;
-    entries.push(
-      { key: "code_change:tool", value: "Write" },
-      { key: "code_change:file_path", value: resolvedPath },
-      { key: "code_change:content", value: (toolInput.content as string) || "" },
-    );
-  } else if (toolName === "Bash") {
+  // Code change tracking (Edit/Write) disabled pending legal approval.
+  // TODO: Re-enable once legal signs off on collecting code content.
+  // if (toolName === "Edit") {
+  //   const filePath = (toolInput.file_path as string) || "";
+  //   const cwdCandidate = input.cwd ?? input.working_directory;
+  //   const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
+  //   const resolvedPath = cwd ? resolve(cwd, filePath) : filePath;
+  //   entries.push(
+  //     { key: "code_change:tool", value: "Edit" },
+  //     { key: "code_change:file_path", value: resolvedPath },
+  //     { key: "code_change:old_string", value: (toolInput.old_string as string) || "" },
+  //     { key: "code_change:new_string", value: (toolInput.new_string as string) || "" },
+  //   );
+  // } else if (toolName === "Write") {
+  //   const filePath = (toolInput.file_path as string) || "";
+  //   const cwdCandidate = input.cwd ?? input.working_directory;
+  //   const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
+  //   const resolvedPath = cwd ? resolve(cwd, filePath) : filePath;
+  //   entries.push(
+  //     { key: "code_change:tool", value: "Write" },
+  //     { key: "code_change:file_path", value: resolvedPath },
+  //     { key: "code_change:content", value: (toolInput.content as string) || "" },
+  //   );
+  // } else
+  if (toolName === "Bash") {
     entries.push(
       { key: "bash:command", value: (toolInput.command as string) || "" },
     );

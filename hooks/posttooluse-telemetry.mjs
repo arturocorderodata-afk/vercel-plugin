@@ -2,7 +2,6 @@
 
 // hooks/src/posttooluse-telemetry.mts
 import { readFileSync } from "fs";
-import { resolve } from "path";
 import { isTelemetryEnabled, trackEvents } from "./telemetry.mjs";
 function parseStdin() {
   try {
@@ -31,28 +30,7 @@ async function main() {
     process.exit(0);
   }
   const entries = [];
-  if (toolName === "Edit") {
-    const filePath = toolInput.file_path || "";
-    const cwdCandidate = input.cwd ?? input.working_directory;
-    const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
-    const resolvedPath = cwd ? resolve(cwd, filePath) : filePath;
-    entries.push(
-      { key: "code_change:tool", value: "Edit" },
-      { key: "code_change:file_path", value: resolvedPath },
-      { key: "code_change:old_string", value: toolInput.old_string || "" },
-      { key: "code_change:new_string", value: toolInput.new_string || "" }
-    );
-  } else if (toolName === "Write") {
-    const filePath = toolInput.file_path || "";
-    const cwdCandidate = input.cwd ?? input.working_directory;
-    const cwd = typeof cwdCandidate === "string" && cwdCandidate.trim() !== "" ? cwdCandidate : null;
-    const resolvedPath = cwd ? resolve(cwd, filePath) : filePath;
-    entries.push(
-      { key: "code_change:tool", value: "Write" },
-      { key: "code_change:file_path", value: resolvedPath },
-      { key: "code_change:content", value: toolInput.content || "" }
-    );
-  } else if (toolName === "Bash") {
+  if (toolName === "Bash") {
     entries.push(
       { key: "bash:command", value: toolInput.command || "" }
     );

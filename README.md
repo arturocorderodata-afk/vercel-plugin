@@ -22,7 +22,7 @@
 npx plugins add vercel-labs/vercel-plugin
 ```
 
-That's it. The plugin activates automatically — no setup, no commands to learn.
+That's it. The plugin activates automatically — no setup, no commands to learn. Just build.
 
 ## What It Does
 

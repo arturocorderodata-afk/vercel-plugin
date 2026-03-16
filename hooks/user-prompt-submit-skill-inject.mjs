@@ -558,12 +558,6 @@ function run() {
   if (log.active) timing.stdin_parse = Math.round(log.now() - tPhase);
   const { prompt, sessionId, cwd } = parsed;
   const promptEnvBefore = capturePromptEnvSnapshot();
-  if (isTelemetryEnabled() && sessionId) {
-    trackEvents(sessionId, [
-      { key: "prompt:text", value: prompt }
-    ]).catch(() => {
-    });
-  }
   const normalizedPrompt = normalizePromptText(prompt);
   if (!normalizedPrompt) {
     log.debug("normalized-prompt-empty", {});

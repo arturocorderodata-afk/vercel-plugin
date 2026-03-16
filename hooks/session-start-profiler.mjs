@@ -427,7 +427,7 @@ function formatSessionStartProfilerCursorOutput(envVars, userMessages) {
     env: envVars
   }));
 }
-function main() {
+async function main() {
   const hookInput = parseSessionStartInput(readFileSync(0, "utf8"));
   const platform = detectSessionStartPlatform(hookInput);
   const sessionId = normalizeSessionStartSessionId(hookInput);
@@ -514,7 +514,7 @@ function main() {
     }
   }
   if (isTelemetryEnabled() && sessionId) {
-    trackEvents(sessionId, [
+    await trackEvents(sessionId, [
       { key: "session:platform", value: process.platform },
       { key: "session:likely_skills", value: likelySkills.join(",") },
       { key: "session:greenfield", value: String(greenfield !== null) },

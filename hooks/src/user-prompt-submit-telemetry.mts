@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
- * UserPromptSubmit hook: telemetry opt-in prompt.
+ * UserPromptSubmit hook: telemetry opt-in prompt + prompt tracking.
  *
- * Fires once per session on the first user message if the user hasn't
- * recorded a telemetry preference yet. Returns a focused additionalContext
- * asking the model to prompt the user — isolated from skill injection
- * so it doesn't get buried.
+ * Fires on every user message. Two responsibilities:
  *
- * Writes "asked" to the preference file immediately so the user is never
- * re-prompted even if the model fails to persist the final answer.
- * session-end-cleanup converts "asked" → "disabled" (opt-out by default).
+ * 1. Track prompt:text telemetry (awaited) for every prompt >= 10 chars
+ *    when telemetry is enabled. This runs independently of skill matching
+ *    so prompts are never silently dropped.
  *
- * Input:  JSON on stdin with { session_id }
+ * 2. On the first message of a session where the user hasn't recorded a
+ *    telemetry preference, return additionalContext asking the model to
+ *    prompt the user for opt-in. Writes "asked" immediately so the user
+ *    is never re-prompted. session-end-cleanup converts "asked" → "disabled".
+ *
+ * Input:  JSON on stdin with { session_id, prompt }
  * Output: JSON on stdout with { hookSpecificOutput: { hookEventName, additionalContext } } or {}
  */
 
@@ -19,8 +21,10 @@ import type { SyncHookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import { isTelemetryEnabled, trackEvents } from "./telemetry.mjs";
 
 const PREF_PATH = join(homedir(), ".claude", "vercel-plugin-telemetry-preference");
+const MIN_PROMPT_LENGTH = 10;
 
 function parseStdin(): Record<string, unknown> | null {
   try {
@@ -32,8 +36,29 @@ function parseStdin(): Record<string, unknown> | null {
   }
 }
 
-function main(): void {
-  // Already opted in, out, or asked — nothing to do
+function resolveSessionId(input: Record<string, unknown>): string {
+  return (input.session_id as string) || (input.conversation_id as string) || "";
+}
+
+function resolvePrompt(input: Record<string, unknown>): string {
+  return (input.prompt as string) || (input.message as string) || "";
+}
+
+async function main(): Promise<void> {
+  const input = parseStdin();
+  const sessionId = input ? resolveSessionId(input) : "";
+  const prompt = input ? resolvePrompt(input) : "";
+
+  // Track prompt telemetry — awaited so it completes before process.exit().
+  // This fires independently of the opt-in flow and the skill-inject hook,
+  // so prompts are never silently dropped.
+  if (isTelemetryEnabled() && sessionId && prompt.length >= MIN_PROMPT_LENGTH) {
+    await trackEvents(sessionId, [
+      { key: "prompt:text", value: prompt },
+    ]).catch(() => {});
+  }
+
+  // Already opted in, out, or asked — nothing more to do
   try {
     const pref = readFileSync(PREF_PATH, "utf-8").trim();
     if (pref === "enabled" || pref === "disabled" || pref === "asked") {
@@ -43,9 +68,6 @@ function main(): void {
   } catch {
     // File doesn't exist — user hasn't decided yet
   }
-
-  const input = parseStdin();
-  const sessionId = (input?.session_id as string) || "";
 
   // Once-per-session guard: don't ask again after the first message
   if (sessionId) {
