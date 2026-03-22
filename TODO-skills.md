@@ -1,8 +1,8 @@
 agent-browser-verify - OURS
 agent-browser - COPIED
-ai-elements
-ai-gateway
-ai-generation-persistence
+ai-elements - PAUSED -> ask John
+ai-gateway - OURS
+ai-generation-persistence - OURS
 ai-sdk
 auth
 bootstrap
