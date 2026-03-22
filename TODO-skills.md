@@ -19,10 +19,12 @@ json-render - PAUSE -> ask John, its a combinatin
 marketplace - OURS
 micro - OURS
 ncc - OURS
-next-forge
-nextjs
-observability
-payments
+next-forge - COPIED
+nextjs - COPIED
+next-cache-components - COPIED/NEW
+next-upgrade - COPIED/NEW
+observability - OURS
+payments - OURS
 react-best-practices
 routing-middleware
 runtime-cache
@@ -45,3 +47,5 @@ vercel-services
 vercel-storage
 verification
 workflow
+
+TODO: look at agent-skills
