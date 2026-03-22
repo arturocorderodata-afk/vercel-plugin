@@ -29,11 +29,11 @@ react-best-practices - COPIED
 routing-middleware - OURS -> KEEP
 runtime-cache - OURS -> KEEP
 satori - OURS -> DELETED
-shadcn - PAUSE -> ask John
-sign-in-with-vercel - OURS
-swr - OURS -> delete
-turbopack - OURS
-turborepo - COPIED
+shadcn - PAUSE -> ask John, KEEP
+sign-in-with-vercel - OURS, KEEP
+swr - OURS -> DELETE
+turbopack - OURS, KEEP
+turborepo - COPIED, KEEP
 v0-dev - OURS
 vercel-agent - OURS
 vercel-api - OURS

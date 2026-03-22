@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-22T21:38:18.434Z",
+  "generatedAt": "2026-03-22T21:43:33.300Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -132,15 +132,6 @@
       "importRegexSources": [],
       "validate": [
         {
-          "pattern": "const\\s+(blockedIps|denylist|allowlist)\\s*=\\s*\\[|from\\s+[''\"](rate-limiter-flexible)[''\"]|rateLimit",
-          "message": "App-layer rate limiting or IP blocking in middleware. Use Vercel Firewall/WAF for platform-level protection.",
-          "severity": "recommended",
-          "skipIfFileContains": "@vercel/firewall|vercel\\.json.*firewall",
-          "upgradeToSkill": "vercel-firewall",
-          "upgradeWhy": "Move IP blocking and rate limiting from middleware code to Vercel Firewall/WAF for better performance and maintainability.",
-          "upgradeMode": "soft"
-        },
-        {
           "pattern": "NextResponse.*from\\s+[''\"]next/server[''\"]|from\\s+[''\"]next/server[''\"].*NextResponse",
           "message": "Next.js middleware.ts is renamed to proxy.ts in Next.js 16 — rename the file and use the Node.js runtime. Run Skill(nextjs) for proxy.ts migration guidance.",
           "severity": "recommended",
@@ -151,11 +142,6 @@
         }
       ],
       "chainTo": [
-        {
-          "pattern": "const\\s+(blockedIps|denylist|allowlist)\\s*=\\s*\\[|from\\s+[''\\\"](rate-limiter-flexible)[''\"]|rateLimit",
-          "targetSkill": "vercel-firewall",
-          "message": "App-layer rate limiting or IP blocking in middleware — loading Vercel Firewall guidance for platform-level protection."
-        },
         {
           "pattern": "from\\s+[''\"\"]next-auth[''\"\"]",
           "targetSkill": "auth",
@@ -3849,15 +3835,6 @@
       ],
       "validate": [
         {
-          "pattern": "from\\s+[''\"](axios)[''\"]|axios\\.(get|post|put|delete)\\(",
-          "message": "Client-side axios detected. Use SWR for React data fetching with caching, revalidation, and deduplication.",
-          "severity": "recommended",
-          "skipIfFileContains": "useSWR|from\\s+[''\"](swr)[''\"]|@tanstack/react-query",
-          "upgradeToSkill": "swr",
-          "upgradeWhy": "Replace manual fetch/axios with SWR for automatic caching, revalidation, and optimistic UI.",
-          "upgradeMode": "soft"
-        },
-        {
           "pattern": "from\\s+[''\"](styled-components|@emotion/styled|@emotion/react|@mui/material|@chakra-ui/react)[''\"]|styled\\.",
           "message": "Legacy CSS-in-JS or component library detected. Consider shadcn/ui + Tailwind for modern Vercel-native UI.",
           "severity": "warn",
@@ -3869,20 +3846,9 @@
       ],
       "chainTo": [
         {
-          "pattern": "from\\s+[''\\\"](axios)[''\"]|axios\\.(get|post|put|delete)\\(",
-          "targetSkill": "swr",
-          "message": "Client-side axios detected — loading SWR guidance for React data fetching with caching and revalidation."
-        },
-        {
           "pattern": "from\\s+[''\\\"](styled-components|@emotion/styled|@emotion/react|@mui/material|@chakra-ui/react)[''\"]|styled\\.",
           "targetSkill": "shadcn",
           "message": "Legacy CSS-in-JS or component library detected — loading shadcn/ui guidance for modern Vercel-native UI."
-        },
-        {
-          "pattern": "fetch\\s*\\([^)]*\\)\\s*\\.then\\s*\\(|\\.then\\s*\\(\\s*(res|response)\\s*=>",
-          "targetSkill": "swr",
-          "message": "Manual fetch().then() in component — loading SWR guidance for declarative data fetching with caching and revalidation.",
-          "skipIfFileContains": "useSWR|from\\s+[''\"\"](swr)[''\"\"]|useQuery|@tanstack/react-query"
         }
       ],
       "retrieval": {
@@ -6328,77 +6294,6 @@
         "examples": []
       }
     },
-    "vercel-firewall": {
-      "priority": 5,
-      "summary": "",
-      "docs": [
-        "https://vercel.com/docs/security/vercel-firewall"
-      ],
-      "sitemap": "https://vercel.com/sitemap/docs.xml",
-      "pathPatterns": [
-        ".vercel/firewall/**"
-      ],
-      "bashPatterns": [
-        "\\bvercel\\s+firewall\\b"
-      ],
-      "importPatterns": [],
-      "bodyPath": "skills/vercel-firewall/SKILL.md",
-      "pathRegexSources": [
-        "^\\.vercel\\/firewall\\/.*$"
-      ],
-      "bashRegexSources": [
-        "\\bvercel\\s+firewall\\b"
-      ],
-      "importRegexSources": [],
-      "chainTo": [
-        {
-          "pattern": "from\\s+[''\"\"]express-rate-limit[''\"\"]|from\\s+[''\"\"]rate-limiter-flexible[''\"\"]",
-          "targetSkill": "routing-middleware",
-          "message": "Application-level rate limiting detected — Vercel Firewall provides platform-level rate limiting without code. Loading Routing Middleware for request interception patterns."
-        },
-        {
-          "pattern": "req\\.ip|request\\.headers\\.get\\([''\"]x-forwarded-for[''\"]\\).*block|ipBlock|denyList",
-          "targetSkill": "routing-middleware",
-          "message": "Manual IP blocking in application code detected — Vercel Firewall handles IP blocking at the edge. Loading Routing Middleware guidance for proper request interception."
-        }
-      ],
-      "promptSignals": {
-        "phrases": [
-          "rate limit",
-          "rate limiting",
-          "firewall",
-          "WAF",
-          "DDoS protection"
-        ],
-        "allOf": [],
-        "anyOf": [],
-        "noneOf": [],
-        "minScore": 6
-      },
-      "retrieval": {
-        "aliases": [
-          "waf",
-          "ddos protection",
-          "security rules",
-          "rate limiting"
-        ],
-        "intents": [
-          "configure firewall",
-          "add rate limiting",
-          "block ips",
-          "set up waf rules"
-        ],
-        "entities": [
-          "WAF",
-          "DDoS",
-          "rate limiting",
-          "IP block",
-          "OWASP",
-          "Attack Challenge Mode"
-        ],
-        "examples": []
-      }
-    },
     "vercel-functions": {
       "priority": 8,
       "summary": "",
@@ -6591,138 +6486,6 @@
           "Cron Jobs"
         ],
         "examples": []
-      }
-    },
-    "swr": {
-      "priority": 4,
-      "summary": "",
-      "docs": [
-        "https://swr.vercel.app/docs"
-      ],
-      "sitemap": "https://swr.vercel.app/sitemap.xml",
-      "pathPatterns": [
-        "lib/fetcher.*",
-        "src/lib/fetcher.*",
-        "utils/fetcher.*",
-        "src/utils/fetcher.*",
-        "hooks/use*SWR*",
-        "src/hooks/use*SWR*",
-        "hooks/useFetch*",
-        "src/hooks/useFetch*"
-      ],
-      "bashPatterns": [
-        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bswr\\b",
-        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*\\bswr\\b",
-        "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bswr\\b",
-        "\\byarn\\s+add\\s+[^\\n]*\\bswr\\b"
-      ],
-      "importPatterns": [
-        "swr",
-        "swr/*"
-      ],
-      "bodyPath": "skills/swr/SKILL.md",
-      "pathRegexSources": [
-        "^lib\\/fetcher\\.[^/]*$",
-        "^src\\/lib\\/fetcher\\.[^/]*$",
-        "^utils\\/fetcher\\.[^/]*$",
-        "^src\\/utils\\/fetcher\\.[^/]*$",
-        "^hooks\\/use[^/]*SWR[^/]*$",
-        "^src\\/hooks\\/use[^/]*SWR[^/]*$",
-        "^hooks\\/useFetch[^/]*$",
-        "^src\\/hooks\\/useFetch[^/]*$"
-      ],
-      "bashRegexSources": [
-        "\\bnpm\\s+(install|i|add)\\s+[^\\n]*\\bswr\\b",
-        "\\bpnpm\\s+(install|i|add)\\s+[^\\n]*\\bswr\\b",
-        "\\bbun\\s+(install|i|add)\\s+[^\\n]*\\bswr\\b",
-        "\\byarn\\s+add\\s+[^\\n]*\\bswr\\b"
-      ],
-      "importRegexSources": [
-        {
-          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]swr(?:\\/[^'\"]*)?['\"]",
-          "flags": "m"
-        },
-        {
-          "source": "(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*)['\"]swr\\/[^'\"]*(?:\\/[^'\"]*)?['\"]",
-          "flags": "m"
-        }
-      ],
-      "chainTo": [
-        {
-          "pattern": "from\\s+[''\\\"](openai|@anthropic-ai/sdk|anthropic)[''\"]|new\\s+(OpenAI|Anthropic)\\(",
-          "targetSkill": "ai-sdk",
-          "message": "Direct AI provider SDK detected alongside SWR — loading AI SDK guidance for unified streaming and provider-agnostic patterns."
-        },
-        {
-          "pattern": "from\\s+[''\"\"]@vercel/(postgres|kv)[''\"\"]",
-          "targetSkill": "vercel-storage",
-          "message": "@vercel/postgres and @vercel/kv are sunset — loading Vercel Storage guidance for Neon and Upstash migration."
-        },
-        {
-          "pattern": "useEffect\\s*\\([^)]*\\)\\s*\\{[^}]*fetch\\s*\\(|useEffect\\s*\\(\\s*\\(\\)\\s*=>\\s*\\{[^}]*fetch\\s*\\(",
-          "targetSkill": "swr",
-          "message": "Manual useEffect+fetch pattern detected — SWR provides automatic caching, deduplication, revalidation, and error retry. Replace with useSWR for cleaner data fetching."
-        },
-        {
-          "pattern": "from\\s+[''\\\"](axios)[''\"]|require\\s*\\(\\s*[''\\\"](axios)[''\"]",
-          "targetSkill": "swr",
-          "message": "Axios detected in React component — SWR with a native fetch wrapper provides caching, deduplication, and revalidation that axios alone cannot. Use useSWR with a fetcher function instead."
-        }
-      ],
-      "promptSignals": {
-        "phrases": [
-          "swr",
-          "useswr",
-          "stale-while-revalidate"
-        ],
-        "allOf": [
-          [
-            "data fetching",
-            "client"
-          ],
-          [
-            "cache",
-            "revalidat"
-          ]
-        ],
-        "anyOf": [
-          "mutation",
-          "optimistic",
-          "infinite loading",
-          "pagination"
-        ],
-        "noneOf": [],
-        "minScore": 6
-      },
-      "retrieval": {
-        "aliases": [
-          "data fetching",
-          "client cache",
-          "stale while revalidate",
-          "react hooks data"
-        ],
-        "intents": [
-          "refresh stale client cache after a mutation",
-          "fetch and cache API data on the client side",
-          "add infinite scroll or paginated data loading",
-          "keep UI in sync with server data automatically",
-          "revalidate cached data after updating a record"
-        ],
-        "entities": [
-          "useSWR",
-          "useSWRMutation",
-          "useSWRInfinite",
-          "mutate",
-          "SWRConfig",
-          "fetcher"
-        ],
-        "examples": [
-          "refresh stale client cache after mutation",
-          "load more items on scroll",
-          "revalidate data when the window regains focus",
-          "fetch data client side with caching",
-          "add infinite scrolling to load more items"
-        ]
       }
     }
   }

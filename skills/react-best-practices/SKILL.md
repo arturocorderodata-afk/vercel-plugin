@@ -21,13 +21,6 @@ metadata:
     - 'react-dom'
 validate:
   -
-    pattern: 'from\s+[''"](axios)[''"]|axios\.(get|post|put|delete)\('
-    message: 'Client-side axios detected. Use SWR for React data fetching with caching, revalidation, and deduplication.'
-    severity: recommended
-    upgradeToSkill: swr
-    upgradeWhy: 'Replace manual fetch/axios with SWR for automatic caching, revalidation, and optimistic UI.'
-    skipIfFileContains: 'useSWR|from\s+[''"](swr)[''"]|@tanstack/react-query'
-  -
     pattern: 'from\s+[''"](styled-components|@emotion/styled|@emotion/react|@mui/material|@chakra-ui/react)[''"]|styled\.'
     message: 'Legacy CSS-in-JS or component library detected. Consider shadcn/ui + Tailwind for modern Vercel-native UI.'
     severity: warn
@@ -53,18 +46,9 @@ retrieval:
     - component
 chainTo:
   -
-    pattern: 'from\s+[''\"](axios)[''"]|axios\.(get|post|put|delete)\('
-    targetSkill: swr
-    message: 'Client-side axios detected — loading SWR guidance for React data fetching with caching and revalidation.'
-  -
     pattern: 'from\s+[''\"](styled-components|@emotion/styled|@emotion/react|@mui/material|@chakra-ui/react)[''"]|styled\.'
     targetSkill: shadcn
     message: 'Legacy CSS-in-JS or component library detected — loading shadcn/ui guidance for modern Vercel-native UI.'
-  -
-    pattern: 'fetch\s*\([^)]*\)\s*\.then\s*\(|\.then\s*\(\s*(res|response)\s*=>'
-    targetSkill: swr
-    message: 'Manual fetch().then() in component — loading SWR guidance for declarative data fetching with caching and revalidation.'
-    skipIfFileContains: 'useSWR|from\s+[''""](swr)[''""]|useQuery|@tanstack/react-query'
 
 ---
 
