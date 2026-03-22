@@ -13,7 +13,7 @@ deployments-cicd - OURS -> replace with agent-browser
 email - OURS -> DELETED
 env-vars - OURS, keep
 geist - OURS -> DELETED
-geistdocs - OURS -> delete
+geistdocs - OURS -> DELETED
 investigation-mode - OURS, keep
 json-render - PAUSE -> ask John, its a combinatin
 marketplace - OURS -> delete
