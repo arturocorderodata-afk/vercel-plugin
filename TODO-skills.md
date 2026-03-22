@@ -50,6 +50,6 @@ workflow - COPIED
 
 TODO:
 
-- look at agent-skills
+- look at agent-skills - done
 - run evals with both branches
 - Ask Claude to run everything - done
