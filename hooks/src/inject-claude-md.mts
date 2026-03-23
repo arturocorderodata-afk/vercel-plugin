@@ -51,11 +51,16 @@ export function detectInjectClaudeMdPlatform(
 export function buildInjectClaudeMdParts(
   content: string | null,
   env: NodeJS.ProcessEnv = process.env,
+  knowledgeUpdate: string | null = null,
 ): string[] {
   const parts: string[] = [];
 
   if (content !== null) {
     parts.push(content);
+  }
+
+  if (knowledgeUpdate !== null) {
+    parts.push(knowledgeUpdate);
   }
 
   if (env.VERCEL_PLUGIN_GREENFIELD === "true") {
@@ -73,10 +78,17 @@ export function formatInjectClaudeMdOutput(platform: HookPlatform, content: stri
   return content;
 }
 
+function stripFrontmatter(content: string): string {
+  const match = content.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/);
+  return match ? match[1].trim() : content.trim();
+}
+
 function main(): void {
   const input = parseInjectClaudeMdInput(readFileSync(0, "utf8"));
   const platform = detectInjectClaudeMdPlatform(input);
-  const parts = buildInjectClaudeMdParts(safeReadFile(join(pluginRoot(), "vercel.md")));
+  const knowledgeUpdateRaw = safeReadFile(join(pluginRoot(), "skills", "knowledge-update", "SKILL.md"));
+  const knowledgeUpdate = knowledgeUpdateRaw !== null ? stripFrontmatter(knowledgeUpdateRaw) : null;
+  const parts = buildInjectClaudeMdParts(safeReadFile(join(pluginRoot(), "vercel.md")), process.env, knowledgeUpdate);
 
   if (parts.length === 0) {
     return;

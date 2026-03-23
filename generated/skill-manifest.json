@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-22T22:50:07.847Z",
+  "generatedAt": "2026-03-23T17:49:17.481Z",
   "version": 2,
   "skills": {
     "vercel-agent": {
@@ -1380,6 +1380,36 @@
         "examples": []
       }
     },
+    "knowledge-update": {
+      "priority": 10,
+      "summary": "",
+      "docs": [
+        "https://vercel.com/docs"
+      ],
+      "pathPatterns": [
+        "vercel.ts"
+      ],
+      "bashPatterns": [],
+      "importPatterns": [],
+      "bodyPath": "skills/knowledge-update/SKILL.md",
+      "pathRegexSources": [
+        "^vercel\\.ts$"
+      ],
+      "bashRegexSources": [],
+      "importRegexSources": [],
+      "promptSignals": {
+        "phrases": [
+          "knowledge update",
+          "outdated knowledge",
+          "fluid compute",
+          "vercel.ts"
+        ],
+        "allOf": [],
+        "anyOf": [],
+        "noneOf": [],
+        "minScore": 6
+      }
+    },
     "vercel-cli": {
       "priority": 4,
       "summary": "",
@@ -2397,6 +2427,18 @@
         ],
         "examples": []
       }
+    },
+    "fake-orphan-test-skill": {
+      "priority": 5,
+      "summary": "",
+      "docs": [],
+      "pathPatterns": [],
+      "bashPatterns": [],
+      "importPatterns": [],
+      "bodyPath": "skills/fake-orphan-test-skill/SKILL.md",
+      "pathRegexSources": [],
+      "bashRegexSources": [],
+      "importRegexSources": []
     },
     "vercel-services": {
       "priority": 7,

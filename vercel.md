@@ -3,6 +3,8 @@
 > This document is the master reference for understanding the entire Vercel ecosystem.
 > It maps every product, library, CLI, API, and service — how they relate, when to use each,
 > and which bundled skills provide deeper guidance.
+>
+> ⤳ skill: knowledge-update — Corrects outdated LLM knowledge about the Vercel platform
 
 ---
 

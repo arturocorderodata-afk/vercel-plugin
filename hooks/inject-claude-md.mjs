@@ -29,10 +29,13 @@ function detectInjectClaudeMdPlatform(input, _env = process.env) {
   }
   return "claude-code";
 }
-function buildInjectClaudeMdParts(content, env = process.env) {
+function buildInjectClaudeMdParts(content, env = process.env, knowledgeUpdate = null) {
   const parts = [];
   if (content !== null) {
     parts.push(content);
+  }
+  if (knowledgeUpdate !== null) {
+    parts.push(knowledgeUpdate);
   }
   if (env.VERCEL_PLUGIN_GREENFIELD === "true") {
     parts.push(GREENFIELD_CONTEXT);
@@ -45,10 +48,16 @@ function formatInjectClaudeMdOutput(platform, content) {
   }
   return content;
 }
+function stripFrontmatter(content) {
+  const match = content.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/);
+  return match ? match[1].trim() : content.trim();
+}
 function main() {
   const input = parseInjectClaudeMdInput(readFileSync(0, "utf8"));
   const platform = detectInjectClaudeMdPlatform(input);
-  const parts = buildInjectClaudeMdParts(safeReadFile(join(pluginRoot(), "vercel.md")));
+  const knowledgeUpdateRaw = safeReadFile(join(pluginRoot(), "skills", "knowledge-update", "SKILL.md"));
+  const knowledgeUpdate = knowledgeUpdateRaw !== null ? stripFrontmatter(knowledgeUpdateRaw) : null;
+  const parts = buildInjectClaudeMdParts(safeReadFile(join(pluginRoot(), "vercel.md")), process.env, knowledgeUpdate);
   if (parts.length === 0) {
     return;
   }
