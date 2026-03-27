@@ -11,6 +11,7 @@ import {
   recordObservation
 } from "./verification-ledger.mjs";
 import { resolveBoundaryOutcome } from "./routing-policy-ledger.mjs";
+import { selectPrimaryStory } from "./verification-plan.mjs";
 function isVerificationReport(value) {
   if (typeof value !== "object" || value === null) return false;
   const obj = value;
@@ -175,16 +176,21 @@ function run(rawInput) {
       blockedReasons: [...plan.blockedReasons]
     });
     if (boundaryEvent.boundary !== "unknown") {
+      const primaryStory = plan.stories.length > 0 ? selectPrimaryStory(plan.stories) : null;
       const resolved = resolveBoundaryOutcome({
         sessionId,
         boundary: boundaryEvent.boundary,
         matchedSuggestedAction: boundaryEvent.matchedSuggestedAction,
+        storyId: primaryStory?.id ?? null,
+        route: inferredRoute,
         now: boundaryEvent.timestamp
       });
       if (resolved.length > 0) {
         log.summary("verification.routing-policy-resolved", {
           verificationId,
           boundary: boundaryEvent.boundary,
+          storyId: primaryStory?.id ?? null,
+          route: inferredRoute,
           resolvedCount: resolved.length,
           skills: resolved.map((e) => e.skill)
         });

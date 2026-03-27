@@ -12,12 +12,17 @@ import {
   recordOutcome as policyRecordOutcome
 } from "./routing-policy.mjs";
 import { createLogger } from "./logger.mjs";
+var SAFE_SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
+function safeSessionSegment(sessionId) {
+  if (SAFE_SESSION_ID_RE.test(sessionId)) return sessionId;
+  return createHash("sha256").update(sessionId).digest("hex");
+}
 function projectPolicyPath(projectRoot) {
   const hash = createHash("sha256").update(projectRoot).digest("hex");
   return `${tmpdir()}/vercel-plugin-routing-policy-${hash}.json`;
 }
 function sessionExposurePath(sessionId) {
-  return `${tmpdir()}/vercel-plugin-${sessionId}-routing-exposures.jsonl`;
+  return `${tmpdir()}/vercel-plugin-${safeSessionSegment(sessionId)}-routing-exposures.jsonl`;
 }
 function loadProjectRoutingPolicy(projectRoot) {
   const path = projectPolicyPath(projectRoot);
@@ -73,12 +78,14 @@ function loadSessionExposures(sessionId) {
 }
 function resolveBoundaryOutcome(params) {
   const { sessionId, boundary, matchedSuggestedAction } = params;
+  const storyId = params.storyId ?? null;
+  const route = params.route ?? null;
   const now = params.now ?? (/* @__PURE__ */ new Date()).toISOString();
   const log = createLogger();
   const exposures = loadSessionExposures(sessionId);
   const resolved = [];
   const pending = exposures.filter(
-    (e) => e.outcome === "pending" && e.sessionId === sessionId && e.targetBoundary === boundary
+    (e) => e.outcome === "pending" && e.sessionId === sessionId && e.targetBoundary === boundary && (storyId === null || e.storyId === storyId) && (route === null || e.route === route)
   );
   if (pending.length === 0) {
     log.trace("routing-policy-ledger.resolve-skip", {
@@ -116,6 +123,8 @@ function resolveBoundaryOutcome(params) {
   log.summary("routing-policy-ledger.resolve", {
     sessionId,
     boundary,
+    storyId,
+    route,
     outcome,
     resolvedCount: resolved.length,
     skills: resolved.map((e) => e.skill)

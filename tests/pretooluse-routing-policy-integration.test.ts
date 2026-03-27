@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { writeFileSync, unlinkSync, existsSync, readFileSync } from "node:fs";
+import { writeFileSync, unlinkSync, existsSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
   deduplicateSkills,
@@ -18,6 +19,9 @@ import {
   loadSessionExposures,
   saveProjectRoutingPolicy,
 } from "../hooks/src/routing-policy-ledger.mts";
+import {
+  statePath as verificationStatePath,
+} from "../hooks/src/verification-ledger.mts";
 import type { CompiledSkillEntry } from "../hooks/src/patterns.mts";
 
 // ---------------------------------------------------------------------------
@@ -52,15 +56,51 @@ function cleanupExposureFile(): void {
   try { unlinkSync(path); } catch {}
 }
 
+/** Write a minimal mock verification plan state so loadCachedPlanResult returns a story. */
+function writeMockPlanState(sessionId: string, story?: {
+  id?: string;
+  kind?: string;
+  route?: string | null;
+  updatedAt?: string;
+}): void {
+  const sp = verificationStatePath(sessionId);
+  mkdirSync(join(sp, ".."), { recursive: true });
+  const s = {
+    id: story?.id ?? "test-story-1",
+    kind: story?.kind ?? "deployment",
+    route: story?.route ?? "/api/test",
+    promptExcerpt: "test prompt",
+    createdAt: T0,
+    updatedAt: story?.updatedAt ?? T1,
+    requestedSkills: [],
+  };
+  writeFileSync(sp, JSON.stringify({
+    version: 1,
+    stories: [s],
+    observationIds: [],
+    satisfiedBoundaries: [],
+    missingBoundaries: ["clientRequest"],
+    recentRoutes: [],
+    primaryNextAction: { targetBoundary: "clientRequest", suggestedAction: "curl test" },
+    blockedReasons: [],
+  }));
+}
+
+function cleanupMockPlanState(sessionId: string): void {
+  const sp = verificationStatePath(sessionId);
+  try { rmSync(join(sp, ".."), { recursive: true, force: true }); } catch {}
+}
+
 function buildPolicyWithHistory(
   skill: string,
   exposures: number,
   wins: number,
   directiveWins: number,
   staleMisses: number,
+  scenarioKey?: string,
 ): RoutingPolicyFile {
   const policy = createEmptyRoutingPolicy();
-  const scenario = "PreToolUse|none|none|Bash";
+  const scenario = scenarioKey ?? "PreToolUse|deployment|clientRequest|Bash";
   policy.scenarios[scenario] = {
     [skill]: {
       exposures,
@@ -80,11 +120,13 @@ function buildPolicyWithHistory(
 beforeEach(() => {
   cleanupPolicyFile();
   cleanupExposureFile();
+  writeMockPlanState(TEST_SESSION);
 });
 
 afterEach(() => {
   cleanupPolicyFile();
   cleanupExposureFile();
+  cleanupMockPlanState(TEST_SESSION);
 });
 
 // ---------------------------------------------------------------------------
@@ -297,5 +339,112 @@ describe("pretooluse routing-policy integration", () => {
     });
 
     expect(result.policyBoosted).toEqual([]);
+  });
+
+  test("no policy boost when session has no active verification story", () => {
+    // Remove mock plan state so no story is found
+    cleanupMockPlanState(TEST_SESSION);
+
+    const policy = buildPolicyWithHistory("agent-browser-verify", 5, 4, 3, 0, "PreToolUse|none|none|Bash");
+    saveProjectRoutingPolicy(TEST_PROJECT, policy);
+
+    const entries = [makeEntry("agent-browser-verify", 7)];
+    const result = deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["agent-browser-verify"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    // No boosts — story gate prevents policy application
+    expect(result.policyBoosted).toEqual([]);
+  });
+
+  test("does not create none|none scenario keys for exposures", () => {
+    // Remove mock plan state so no story is found
+    cleanupMockPlanState(TEST_SESSION);
+
+    const entries = [makeEntry("next-config", 7)];
+    deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["next-config"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    // No exposures should be recorded when no story exists
+    const exposures = loadSessionExposures(TEST_SESSION);
+    const noneNone = exposures.filter(
+      (e) => e.storyId === null && e.storyKind === null,
+    );
+    expect(noneNone).toEqual([]);
+  });
+
+  test("uses selectPrimaryStory for deterministic story attribution", () => {
+    // Write plan state with two stories, the second one more recently updated
+    const sp = verificationStatePath(TEST_SESSION);
+    mkdirSync(join(sp, ".."), { recursive: true });
+    writeFileSync(sp, JSON.stringify({
+      version: 1,
+      stories: [
+        {
+          id: "story-older",
+          kind: "deployment",
+          route: "/api/old",
+          promptExcerpt: "old",
+          createdAt: T0,
+          updatedAt: T1,
+          requestedSkills: [],
+        },
+        {
+          id: "story-newer",
+          kind: "feature-investigation",
+          route: "/settings",
+          promptExcerpt: "new",
+          createdAt: T2,
+          updatedAt: T3,
+          requestedSkills: [],
+        },
+      ],
+      observationIds: [],
+      satisfiedBoundaries: [],
+      missingBoundaries: ["clientRequest"],
+      recentRoutes: [],
+      primaryNextAction: { targetBoundary: "clientRequest", suggestedAction: "curl test" },
+      blockedReasons: [],
+    }));
+
+    // Build policy matching the newer story's kind
+    const policy = buildPolicyWithHistory(
+      "agent-browser-verify", 5, 4, 3, 0,
+      "PreToolUse|feature-investigation|clientRequest|Bash",
+    );
+    saveProjectRoutingPolicy(TEST_PROJECT, policy);
+
+    const entries = [makeEntry("agent-browser-verify", 7), makeEntry("next-config", 8)];
+    const result = deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["agent-browser-verify", "next-config"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    // selectPrimaryStory should pick story-newer (most recently updated)
+    // and match the "feature-investigation" scenario key
+    expect(result.policyBoosted.length).toBe(1);
+    expect(result.policyBoosted[0].skill).toBe("agent-browser-verify");
+    expect(result.policyBoosted[0].boost).toBe(8);
   });
 });

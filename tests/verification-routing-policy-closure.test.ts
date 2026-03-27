@@ -209,6 +209,77 @@ describe("verification → routing-policy closure", () => {
     });
   });
 
+  describe("story/route-scoped resolution in closure", () => {
+    test("verification for /settings does not resolve /dashboard exposures", () => {
+      appendSkillExposure(exposure("settings-1", {
+        storyId: "story-1",
+        route: "/settings",
+        targetBoundary: "clientRequest",
+        createdAt: T0,
+      }));
+      appendSkillExposure(exposure("dashboard-1", {
+        storyId: "story-1",
+        route: "/dashboard",
+        targetBoundary: "clientRequest",
+        createdAt: T1,
+      }));
+
+      const resolved = resolveBoundaryOutcome({
+        sessionId: SESSION_ID,
+        boundary: "clientRequest",
+        matchedSuggestedAction: true,
+        route: "/settings",
+        now: T3,
+      });
+
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0].id).toBe("settings-1");
+      expect(resolved[0].outcome).toBe("directive-win");
+
+      // /dashboard exposure remains pending
+      const all = loadSessionExposures(SESSION_ID);
+      expect(all.find((e) => e.id === "dashboard-1")!.outcome).toBe("pending");
+
+      // Finalize: /dashboard becomes stale-miss
+      const stale = finalizeStaleExposures(SESSION_ID, T_END);
+      expect(stale).toHaveLength(1);
+      expect(stale[0].id).toBe("dashboard-1");
+      expect(stale[0].outcome).toBe("stale-miss");
+    });
+
+    test("cross-story observation does not over-credit unrelated exposures", () => {
+      appendSkillExposure(exposure("s1-e1", {
+        storyId: "story-1",
+        route: "/settings",
+        targetBoundary: "clientRequest",
+        createdAt: T0,
+      }));
+      appendSkillExposure(exposure("s2-e1", {
+        storyId: "story-2",
+        route: "/dashboard",
+        targetBoundary: "clientRequest",
+        createdAt: T1,
+      }));
+
+      // Observation scoped to story-1 + /settings
+      const resolved = resolveBoundaryOutcome({
+        sessionId: SESSION_ID,
+        boundary: "clientRequest",
+        matchedSuggestedAction: false,
+        storyId: "story-1",
+        route: "/settings",
+        now: T3,
+      });
+
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0].id).toBe("s1-e1");
+
+      // story-2's exposure is unaffected
+      const all = loadSessionExposures(SESSION_ID);
+      expect(all.find((e) => e.id === "s2-e1")!.outcome).toBe("pending");
+    });
+  });
+
   describe("mixed boundaries", () => {
     test("resolves only matching boundary exposures", () => {
       appendSkillExposure(exposure("ui-1", { targetBoundary: "uiRender", createdAt: T0 }));

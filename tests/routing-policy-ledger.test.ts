@@ -77,9 +77,21 @@ describe("routing-policy-ledger", () => {
   });
 
   describe("sessionExposurePath", () => {
-    test("uses sessionId in tmpdir", () => {
+    test("uses sessionId in tmpdir for safe IDs", () => {
       const path = sessionExposurePath(TEST_SESSION);
       expect(path).toBe(`${tmpdir()}/vercel-plugin-${TEST_SESSION}-routing-exposures.jsonl`);
+    });
+
+    test("hashes unsafe session IDs containing / or :", () => {
+      const unsafeId = "abc/def:ghi";
+      const path = sessionExposurePath(unsafeId);
+      const hash = createHash("sha256").update(unsafeId).digest("hex");
+      expect(path).toBe(`${tmpdir()}/vercel-plugin-${hash}-routing-exposures.jsonl`);
+      expect(path).not.toContain("abc/def:ghi");
+      // The only slashes should be from the tmpdir prefix
+      const segment = path.replace(`${tmpdir()}/`, "");
+      expect(segment).not.toContain("/");
+      expect(segment).not.toContain(":");
     });
   });
 
@@ -313,6 +325,185 @@ describe("routing-policy-ledger", () => {
     test("returns empty array when no pending exposures exist", () => {
       const stale = finalizeStaleExposures(TEST_SESSION, T3);
       expect(stale).toEqual([]);
+    });
+  });
+
+  describe("story/route-scoped resolution", () => {
+    test("resolves only exposures matching the observed storyId", () => {
+      appendSkillExposure(makeExposure({
+        id: "story1-e1",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T0,
+      }));
+      appendSkillExposure(makeExposure({
+        id: "story2-e1",
+        storyId: "story-2",
+        route: "/dashboard",
+        createdAt: T1,
+      }));
+
+      const resolved = resolveBoundaryOutcome({
+        sessionId: TEST_SESSION,
+        boundary: "uiRender",
+        matchedSuggestedAction: false,
+        storyId: "story-1",
+        now: T2,
+      });
+
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0].id).toBe("story1-e1");
+      expect(resolved[0].outcome).toBe("win");
+
+      // story-2 exposure remains pending
+      const all = loadSessionExposures(TEST_SESSION);
+      const story2 = all.find((e) => e.id === "story2-e1");
+      expect(story2!.outcome).toBe("pending");
+    });
+
+    test("resolves only exposures matching the observed route", () => {
+      appendSkillExposure(makeExposure({
+        id: "settings-e1",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T0,
+      }));
+      appendSkillExposure(makeExposure({
+        id: "dashboard-e1",
+        storyId: "story-1",
+        route: "/dashboard",
+        createdAt: T1,
+      }));
+
+      const resolved = resolveBoundaryOutcome({
+        sessionId: TEST_SESSION,
+        boundary: "uiRender",
+        matchedSuggestedAction: false,
+        route: "/settings",
+        now: T2,
+      });
+
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0].id).toBe("settings-e1");
+
+      const all = loadSessionExposures(TEST_SESSION);
+      expect(all.find((e) => e.id === "dashboard-e1")!.outcome).toBe("pending");
+    });
+
+    test("resolves only exposures matching both storyId and route", () => {
+      appendSkillExposure(makeExposure({
+        id: "match-e1",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T0,
+      }));
+      appendSkillExposure(makeExposure({
+        id: "wrong-story",
+        storyId: "story-2",
+        route: "/settings",
+        createdAt: T1,
+      }));
+      appendSkillExposure(makeExposure({
+        id: "wrong-route",
+        storyId: "story-1",
+        route: "/dashboard",
+        createdAt: T2,
+      }));
+
+      const resolved = resolveBoundaryOutcome({
+        sessionId: TEST_SESSION,
+        boundary: "uiRender",
+        matchedSuggestedAction: false,
+        storyId: "story-1",
+        route: "/settings",
+        now: T3,
+      });
+
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0].id).toBe("match-e1");
+
+      const all = loadSessionExposures(TEST_SESSION);
+      expect(all.find((e) => e.id === "wrong-story")!.outcome).toBe("pending");
+      expect(all.find((e) => e.id === "wrong-route")!.outcome).toBe("pending");
+    });
+
+    test("null storyId/route resolves all matching boundary exposures (backward compat)", () => {
+      appendSkillExposure(makeExposure({
+        id: "any-story-e1",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T0,
+      }));
+      appendSkillExposure(makeExposure({
+        id: "any-story-e2",
+        storyId: "story-2",
+        route: "/dashboard",
+        createdAt: T1,
+      }));
+
+      const resolved = resolveBoundaryOutcome({
+        sessionId: TEST_SESSION,
+        boundary: "uiRender",
+        matchedSuggestedAction: false,
+        now: T2,
+      });
+
+      // Without storyId/route filter, both resolve
+      expect(resolved).toHaveLength(2);
+    });
+  });
+
+  describe("unsafe session ID round-trip", () => {
+    const UNSAFE_SESSION = "abc/def:ghi";
+
+    afterEach(() => {
+      try { unlinkSync(sessionExposurePath(UNSAFE_SESSION)); } catch {}
+      try { unlinkSync(projectPolicyPath(TEST_PROJECT)); } catch {}
+    });
+
+    test("append, load, resolve, and finalize all work with unsafe session IDs", () => {
+      const e1 = makeExposure({
+        id: "unsafe-e1",
+        sessionId: UNSAFE_SESSION,
+        targetBoundary: "clientRequest",
+        createdAt: T0,
+      });
+      const e2 = makeExposure({
+        id: "unsafe-e2",
+        sessionId: UNSAFE_SESSION,
+        targetBoundary: "uiRender",
+        createdAt: T1,
+      });
+
+      // Append should not throw
+      appendSkillExposure(e1);
+      appendSkillExposure(e2);
+
+      // Load should return both
+      const loaded = loadSessionExposures(UNSAFE_SESSION);
+      expect(loaded).toHaveLength(2);
+
+      // Resolve clientRequest
+      const resolved = resolveBoundaryOutcome({
+        sessionId: UNSAFE_SESSION,
+        boundary: "clientRequest",
+        matchedSuggestedAction: false,
+        now: T2,
+      });
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0].id).toBe("unsafe-e1");
+
+      // Finalize remaining
+      const stale = finalizeStaleExposures(UNSAFE_SESSION, T3);
+      expect(stale).toHaveLength(1);
+      expect(stale[0].id).toBe("unsafe-e2");
+      expect(stale[0].outcome).toBe("stale-miss");
+
+      // Verify the file path doesn't contain unsafe characters
+      const path = sessionExposurePath(UNSAFE_SESSION);
+      const segment = path.replace(`${tmpdir()}/`, "");
+      expect(segment).not.toContain("/");
+      expect(segment).not.toContain(":");
     });
   });
 

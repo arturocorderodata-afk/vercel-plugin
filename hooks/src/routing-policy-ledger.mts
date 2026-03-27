@@ -20,6 +20,17 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
+
+// ---------------------------------------------------------------------------
+// Safe session-id segment (mirrors verification-ledger.mts)
+// ---------------------------------------------------------------------------
+
+const SAFE_SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+function safeSessionSegment(sessionId: string): string {
+  if (SAFE_SESSION_ID_RE.test(sessionId)) return sessionId;
+  return createHash("sha256").update(sessionId).digest("hex");
+}
 import {
   createEmptyRoutingPolicy,
   recordExposure as policyRecordExposure,
@@ -62,7 +73,7 @@ export function projectPolicyPath(projectRoot: string): string {
 }
 
 export function sessionExposurePath(sessionId: string): string {
-  return `${tmpdir()}/vercel-plugin-${sessionId}-routing-exposures.jsonl`;
+  return `${tmpdir()}/vercel-plugin-${safeSessionSegment(sessionId)}-routing-exposures.jsonl`;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +154,8 @@ export function loadSessionExposures(sessionId: string): SkillExposure[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve pending exposures whose targetBoundary matches the observed boundary.
+ * Resolve pending exposures whose session, boundary, story scope, and route
+ * scope all match the observed verification event.
  *
  * Only resolves exposures from the same session that are still `pending`.
  * If `matchedSuggestedAction` is true, the outcome is `directive-win`;
@@ -157,9 +169,13 @@ export function resolveBoundaryOutcome(params: {
   sessionId: string;
   boundary: RoutingBoundary;
   matchedSuggestedAction: boolean;
+  storyId?: string | null;
+  route?: string | null;
   now?: string;
 }): SkillExposure[] {
   const { sessionId, boundary, matchedSuggestedAction } = params;
+  const storyId = params.storyId ?? null;
+  const route = params.route ?? null;
   const now = params.now ?? new Date().toISOString();
   const log = createLogger();
 
@@ -170,7 +186,9 @@ export function resolveBoundaryOutcome(params: {
     (e) =>
       e.outcome === "pending" &&
       e.sessionId === sessionId &&
-      e.targetBoundary === boundary,
+      e.targetBoundary === boundary &&
+      (storyId === null || e.storyId === storyId) &&
+      (route === null || e.route === route),
   );
 
   if (pending.length === 0) {
@@ -219,6 +237,8 @@ export function resolveBoundaryOutcome(params: {
   log.summary("routing-policy-ledger.resolve", {
     sessionId,
     boundary,
+    storyId,
+    route,
     outcome,
     resolvedCount: resolved.length,
     skills: resolved.map((e) => e.skill),

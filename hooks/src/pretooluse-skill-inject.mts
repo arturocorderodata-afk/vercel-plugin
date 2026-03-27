@@ -60,7 +60,7 @@ import type { VercelJsonRouting } from "./vercel-config.mjs";
 import { createLogger, logDecision } from "./logger.mjs";
 import type { Logger } from "./logger.mjs";
 import { trackBaseEvents } from "./telemetry.mjs";
-import { loadCachedPlanResult } from "./verification-plan.mjs";
+import { loadCachedPlanResult, selectPrimaryStory } from "./verification-plan.mjs";
 import { applyPolicyBoosts } from "./routing-policy.mjs";
 import type { RoutingHookName, RoutingToolName } from "./routing-policy.mjs";
 import {
@@ -914,49 +914,56 @@ export function deduplicateSkills(
   }
 
   // Policy boost: apply learned routing-policy boosts from verification outcomes
+  // Only apply when an active verification story exists to avoid training on junk none|none buckets
   const policyBoosted: Array<{ skill: string; boost: number; reason: string | null }> = [];
   if (cwd) {
     const plan = sessionId ? loadCachedPlanResult(sessionId, l) : null;
-    const policyScenario = {
-      hook: "PreToolUse" as RoutingHookName,
-      storyKind: plan?.stories[0]?.kind ?? null,
-      targetBoundary: (plan?.primaryNextAction?.targetBoundary as
-        | "uiRender"
-        | "clientRequest"
-        | "serverHandler"
-        | "environment"
-        | null) ?? null,
-      toolName: toolName as RoutingToolName,
-    };
-    const policy = loadProjectRoutingPolicy(cwd);
-    const boosted = applyPolicyBoosts(
-      newEntries.map((e) => ({
-        ...e,
-        skill: e.skill,
-        priority: e.priority,
-        effectivePriority: typeof e.effectivePriority === "number" ? e.effectivePriority : e.priority,
-      })),
-      policy,
-      policyScenario,
-    );
+    const primaryStory = plan ? selectPrimaryStory(plan.stories ?? []) : null;
 
-    for (let i = 0; i < newEntries.length; i++) {
-      const b = boosted[i];
-      newEntries[i].effectivePriority = b.effectivePriority;
-      if (b.policyBoost !== 0) {
-        policyBoosted.push({
-          skill: b.skill,
-          boost: b.policyBoost,
-          reason: b.policyReason,
+    if (primaryStory) {
+      const policyScenario = {
+        hook: "PreToolUse" as RoutingHookName,
+        storyKind: primaryStory.kind ?? null,
+        targetBoundary: (plan?.primaryNextAction?.targetBoundary as
+          | "uiRender"
+          | "clientRequest"
+          | "serverHandler"
+          | "environment"
+          | null) ?? null,
+        toolName: toolName as RoutingToolName,
+      };
+      const policy = loadProjectRoutingPolicy(cwd);
+      const boosted = applyPolicyBoosts(
+        newEntries.map((e) => ({
+          ...e,
+          skill: e.skill,
+          priority: e.priority,
+          effectivePriority: typeof e.effectivePriority === "number" ? e.effectivePriority : e.priority,
+        })),
+        policy,
+        policyScenario,
+      );
+
+      for (let i = 0; i < newEntries.length; i++) {
+        const b = boosted[i];
+        newEntries[i].effectivePriority = b.effectivePriority;
+        if (b.policyBoost !== 0) {
+          policyBoosted.push({
+            skill: b.skill,
+            boost: b.policyBoost,
+            reason: b.policyReason,
+          });
+        }
+      }
+
+      if (policyBoosted.length > 0) {
+        l.debug("policy-boosted", {
+          scenario: `${policyScenario.hook}|${policyScenario.storyKind ?? "none"}|${policyScenario.targetBoundary ?? "none"}|${policyScenario.toolName}`,
+          boostedSkills: policyBoosted,
         });
       }
-    }
-
-    if (policyBoosted.length > 0) {
-      l.debug("policy-boosted", {
-        scenario: `${policyScenario.hook}|${policyScenario.storyKind ?? "none"}|${policyScenario.targetBoundary ?? "none"}|${policyScenario.toolName}`,
-        boostedSkills: policyBoosted,
-      });
+    } else {
+      l.debug("policy-boost-skipped", { reason: "no active verification story" });
     }
   }
 
@@ -1620,36 +1627,46 @@ function run(): string {
   if (log.active) timing.skill_read = Math.round(log.now() - tSkillRead);
 
   // Record routing-policy exposures for actually injected skills
+  // Only record when an active verification story exists to prevent none|none scenario pollution
   if (loaded.length > 0 && sessionId) {
     const plan = loadCachedPlanResult(sessionId, log);
-    const story = plan?.stories[0] ?? null;
-    for (const skill of loaded) {
-      appendSkillExposure({
-        id: `${sessionId}:${skill}:${Date.now()}`,
-        sessionId,
-        projectRoot: cwd,
-        storyId: story?.id ?? null,
-        storyKind: story?.kind ?? null,
-        route: story?.route ?? null,
+    const story = plan ? selectPrimaryStory(plan.stories ?? []) : null;
+    if (story) {
+      for (const skill of loaded) {
+        appendSkillExposure({
+          id: `${sessionId}:${skill}:${Date.now()}`,
+          sessionId,
+          projectRoot: cwd,
+          storyId: story.id ?? null,
+          storyKind: story.kind ?? null,
+          route: story.route ?? null,
+          hook: "PreToolUse",
+          toolName: toolName as RoutingToolName,
+          skill,
+          targetBoundary: (plan?.primaryNextAction?.targetBoundary as
+            | "uiRender"
+            | "clientRequest"
+            | "serverHandler"
+            | "environment"
+            | null) ?? null,
+          createdAt: new Date().toISOString(),
+          resolvedAt: null,
+          outcome: "pending",
+        });
+      }
+      log.summary("routing-policy-exposures-recorded", {
         hook: "PreToolUse",
-        toolName: toolName as RoutingToolName,
-        skill,
-        targetBoundary: (plan?.primaryNextAction?.targetBoundary as
-          | "uiRender"
-          | "clientRequest"
-          | "serverHandler"
-          | "environment"
-          | null) ?? null,
-        createdAt: new Date().toISOString(),
-        resolvedAt: null,
-        outcome: "pending",
+        skills: loaded,
+        storyId: story.id,
+        storyKind: story.kind ?? null,
+      });
+    } else {
+      log.debug("routing-policy-exposures-skipped", {
+        hook: "PreToolUse",
+        reason: "no active verification story",
+        skills: loaded,
       });
     }
-    log.summary("routing-policy-exposures-recorded", {
-      hook: "PreToolUse",
-      skills: loaded,
-      storyKind: story?.kind ?? null,
-    });
   }
 
   // Append review marker if tsx review was triggered and skill was loaded

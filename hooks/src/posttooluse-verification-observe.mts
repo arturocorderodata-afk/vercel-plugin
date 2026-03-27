@@ -27,6 +27,7 @@ import {
   type VerificationObservation,
 } from "./verification-ledger.mjs";
 import { resolveBoundaryOutcome } from "./routing-policy-ledger.mjs";
+import { selectPrimaryStory } from "./verification-plan.mjs";
 
 export { redactCommand };
 
@@ -345,18 +346,25 @@ export function run(rawInput?: string): string {
       blockedReasons: [...plan.blockedReasons],
     });
 
-    // Resolve routing policy exposures for this boundary
+    // Resolve routing policy exposures for this boundary, scoped to story + route
     if (boundaryEvent.boundary !== "unknown") {
+      const primaryStory = plan.stories.length > 0
+        ? selectPrimaryStory(plan.stories)
+        : null;
       const resolved = resolveBoundaryOutcome({
         sessionId,
         boundary: boundaryEvent.boundary as "uiRender" | "clientRequest" | "serverHandler" | "environment",
         matchedSuggestedAction: boundaryEvent.matchedSuggestedAction,
+        storyId: primaryStory?.id ?? null,
+        route: inferredRoute,
         now: boundaryEvent.timestamp,
       });
       if (resolved.length > 0) {
         log.summary("verification.routing-policy-resolved", {
           verificationId,
           boundary: boundaryEvent.boundary,
+          storyId: primaryStory?.id ?? null,
+          route: inferredRoute,
           resolvedCount: resolved.length,
           skills: resolved.map((e) => e.skill),
         });
