@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { explain, formatExplainResult } from "./explain.ts";
 import { doctor, formatDoctorResult } from "../commands/doctor.ts";
+import { runRoutingExplain } from "../commands/routing-explain.ts";
 import { createEmptyRoutingPolicy, type RoutingPolicyFile } from "../../hooks/src/routing-policy.mts";
 
 function validateProjectRoot(projectRoot: string): void {
@@ -29,6 +30,7 @@ function printUsage() {
 
 Commands:
   explain <target>    Show which skills match a file path or bash command
+  routing-explain     Show the latest routing decision trace
   doctor              Run self-diagnosis checks on the plugin setup
 
 Options for explain:
@@ -37,6 +39,11 @@ Options for explain:
   --likely-skills s1,s2  Simulate session-start profiler boost (+5 priority)
   --budget <bytes>    Override injection byte budget (default: 12000)
   --policy-file <path>  Load routing policy from a JSON file (default: project tmpdir)
+  --help, -h          Show this help message
+
+Options for routing-explain:
+  --json              Output machine-readable JSON
+  --session <id>      Session ID (reads traces from session trace dir)
   --help, -h          Show this help message
 
 Examples:
@@ -55,6 +62,8 @@ const command = args[0];
 
 if (command === "explain") {
   runExplain(args.slice(1));
+} else if (command === "routing-explain") {
+  runRoutingExplainCmd(args.slice(1));
 } else if (command === "doctor") {
   runDoctor(args.slice(1));
 } else {
@@ -191,6 +200,40 @@ function runDoctor(doctorArgs: string[]) {
 
     const hasErrors = result.issues.some((i) => i.severity === "error");
     process.exit(hasErrors ? 1 : 0);
+  } catch (err: any) {
+    console.error(`Error: ${err.message}`);
+    process.exit(2);
+  }
+}
+
+function runRoutingExplainCmd(cmdArgs: string[]) {
+  let jsonOutput = false;
+  let sessionId: string | null = null;
+
+  for (let i = 0; i < cmdArgs.length; i++) {
+    const arg = cmdArgs[i];
+    if (arg === "--json") {
+      jsonOutput = true;
+    } else if (arg === "--session") {
+      i++;
+      if (i >= cmdArgs.length) {
+        console.error("Error: --session requires a session ID argument");
+        process.exit(1);
+      }
+      sessionId = cmdArgs[i];
+    } else if (arg === "--help" || arg === "-h") {
+      printUsage();
+      process.exit(0);
+    } else {
+      console.error(`Error: unexpected argument "${arg}"`);
+      process.exit(1);
+    }
+  }
+
+  try {
+    const output = runRoutingExplain(sessionId, jsonOutput);
+    console.log(output);
+    process.exit(0);
   } catch (err: any) {
     console.error(`Error: ${err.message}`);
     process.exit(2);

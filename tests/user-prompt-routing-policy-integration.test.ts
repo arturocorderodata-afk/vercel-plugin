@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { writeFileSync, unlinkSync, readFileSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   createEmptyRoutingPolicy,
   applyPolicyBoosts,
@@ -19,6 +19,10 @@ import {
 import {
   statePath as verificationStatePath,
 } from "../hooks/src/verification-ledger.mts";
+import {
+  readRoutingDecisionTrace,
+  traceDir,
+} from "../hooks/src/routing-decision-trace.mts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -355,5 +359,179 @@ describe("user-prompt-submit routing-policy integration", () => {
       );
       expect(noneNone).toEqual([]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Routing decision trace integration tests (UserPromptSubmit)
+// ---------------------------------------------------------------------------
+
+const ROOT = resolve(import.meta.dirname, "..");
+const HOOK_SCRIPT = join(ROOT, "hooks", "user-prompt-submit-skill-inject.mjs");
+
+/** Run UserPromptSubmit hook as subprocess */
+async function runPromptHook(
+  prompt: string,
+  env?: Record<string, string>,
+  sessionId?: string,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const sid = sessionId ?? `trace-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const payload = JSON.stringify({
+    prompt,
+    session_id: sid,
+    cwd: ROOT,
+    hook_event_name: "UserPromptSubmit",
+  });
+  const proc = Bun.spawn(["node", HOOK_SCRIPT], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      VERCEL_PLUGIN_SEEN_SKILLS: "",
+      VERCEL_PLUGIN_LOG_LEVEL: "summary",
+      ...env,
+    },
+  });
+  proc.stdin.write(payload);
+  proc.stdin.end();
+  const code = await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  return { code, stdout, stderr };
+}
+
+describe("user-prompt-submit routing decision trace", () => {
+  let traceSession: string;
+
+  beforeEach(() => {
+    traceSession = `trace-ups-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  });
+
+  afterEach(() => {
+    try { rmSync(traceDir(traceSession), { recursive: true, force: true }); } catch {}
+    cleanupMockPlanState(traceSession);
+  });
+
+  test("emits exactly one trace per prompt injection attempt", async () => {
+    const { code } = await runPromptHook(
+      "I want to deploy my Next.js application to Vercel production",
+      {},
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+    expect(traces[0].hook).toBe("UserPromptSubmit");
+    expect(traces[0].version).toBe(1);
+    expect(traces[0].toolName).toBe("Prompt");
+    expect(traces[0].sessionId).toBe(traceSession);
+    expect(traces[0].decisionId).toMatch(/^[0-9a-f]{16}$/);
+    expect(Array.isArray(traces[0].matchedSkills)).toBe(true);
+    expect(Array.isArray(traces[0].injectedSkills)).toBe(true);
+    expect(Array.isArray(traces[0].ranked)).toBe(true);
+  });
+
+  test("records no_active_verification_story when no story exists", async () => {
+    const { code } = await runPromptHook(
+      "I want to deploy my Next.js application to Vercel production",
+      {},
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+    expect(traces[0].skippedReasons).toContain("no_active_verification_story");
+    expect(traces[0].policyScenario).toBeNull();
+  });
+
+  test("records primaryStory and policyScenario when story exists", async () => {
+    writeMockPlanState(traceSession, {
+      id: "prompt-trace-story",
+      kind: "feature-investigation",
+      route: "/settings",
+    });
+
+    const { code } = await runPromptHook(
+      "I want to deploy my Next.js application to Vercel production",
+      {},
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+    expect(traces[0].primaryStory.id).toBe("prompt-trace-story");
+    expect(traces[0].primaryStory.kind).toBe("feature-investigation");
+    expect(traces[0].policyScenario).toBe("UserPromptSubmit|feature-investigation|none|Prompt");
+    expect(traces[0].skippedReasons).not.toContain("no_active_verification_story");
+  });
+
+  test("does not emit synthetic none|none policyScenario without story", async () => {
+    const { code } = await runPromptHook(
+      "I want to deploy my Next.js application to Vercel production",
+      {},
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+    expect(traces[0].policyScenario).toBeNull();
+  });
+
+  test("emits routing.decision_trace_written summary log", async () => {
+    const { code, stderr } = await runPromptHook(
+      "I want to deploy my Next.js application to Vercel production",
+      { VERCEL_PLUGIN_LOG_LEVEL: "summary" },
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const logLines = stderr
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((o): o is Record<string, unknown> => o !== null);
+
+    const traceLog = logLines.find(
+      (l) => l.event === "routing.decision_trace_written",
+    );
+    expect(traceLog).toBeDefined();
+    expect(traceLog!.hook).toBe("UserPromptSubmit");
+    expect(traceLog!.decisionId).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  test("ranked entries surface cap/budget drops in both skippedReasons and droppedReason", async () => {
+    const { code } = await runPromptHook(
+      "I want to deploy my Next.js application to Vercel production",
+      {
+        VERCEL_PLUGIN_PROMPT_INJECTION_BUDGET: "200", // Very low budget
+      },
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+
+    for (const reason of traces[0].skippedReasons) {
+      if (reason.startsWith("cap_exceeded:")) {
+        const skill = reason.replace("cap_exceeded:", "");
+        const ranked = traces[0].ranked.find((r) => r.skill === skill);
+        if (ranked) {
+          expect(ranked.droppedReason).toBe("cap_exceeded");
+        }
+      }
+      if (reason.startsWith("budget_exhausted:")) {
+        const skill = reason.replace("budget_exhausted:", "");
+        const ranked = traces[0].ranked.find((r) => r.skill === skill);
+        if (ranked) {
+          expect(ranked.droppedReason).toBe("budget_exhausted");
+        }
+      }
+    }
   });
 });

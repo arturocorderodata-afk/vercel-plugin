@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { unlinkSync } from "node:fs";
+import { unlinkSync, rmSync } from "node:fs";
 import {
   projectPolicyPath,
   sessionExposurePath,
@@ -14,6 +14,10 @@ import {
   applyPolicyBoosts,
   derivePolicyBoost,
 } from "../hooks/src/routing-policy.mts";
+import {
+  readRoutingDecisionTrace,
+  traceDir,
+} from "../hooks/src/routing-decision-trace.mts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -353,6 +357,118 @@ describe("verification → routing-policy closure", () => {
       const stats = policy.scenarios["UserPromptSubmit|flow-verification|none|Prompt"]?.["agent-browser-verify"];
       expect(stats).toBeDefined();
       expect(stats!.staleMisses).toBe(1);
+    });
+  });
+
+  describe("PostToolUse closure traces", () => {
+    const TRACE_SESSION = "closure-trace-test-" + Date.now();
+
+    afterEach(() => {
+      try { rmSync(traceDir(TRACE_SESSION), { recursive: true, force: true }); } catch {}
+    });
+
+    test("boundary observation with session writes PostToolUse routing decision trace", async () => {
+      const { run } = await import("../hooks/src/posttooluse-verification-observe.mts");
+      const { recordStory, removeLedgerArtifacts } = await import("../hooks/src/verification-ledger.mts");
+
+      try {
+        recordStory(TRACE_SESSION, "flow-verification", "/settings", "test trace", []);
+
+        const input = JSON.stringify({
+          tool_name: "Bash",
+          tool_input: { command: "curl http://localhost:3000/settings" },
+          session_id: TRACE_SESSION,
+        });
+
+        run(input);
+
+        const traces = readRoutingDecisionTrace(TRACE_SESSION);
+        expect(traces.length).toBeGreaterThanOrEqual(1);
+
+        const postTrace = traces.find((t) => t.hook === "PostToolUse");
+        expect(postTrace).toBeDefined();
+        expect(postTrace!.version).toBe(1);
+        expect(postTrace!.hook).toBe("PostToolUse");
+        expect(postTrace!.toolName).toBe("Bash");
+        expect(postTrace!.verification).not.toBeNull();
+        expect(postTrace!.verification!.verificationId).toBeTruthy();
+        expect(postTrace!.verification!.observedBoundary).toBe("clientRequest");
+        expect(typeof postTrace!.verification!.matchedSuggestedAction).toBe("boolean");
+
+        // PostToolUse traces never fabricate ranking data
+        expect(postTrace!.matchedSkills).toEqual([]);
+        expect(postTrace!.injectedSkills).toEqual([]);
+        expect(postTrace!.ranked).toEqual([]);
+      } finally {
+        removeLedgerArtifacts(TRACE_SESSION);
+      }
+    });
+
+    test("closure trace and routing-policy-resolved share correlation data", async () => {
+      const { run } = await import("../hooks/src/posttooluse-verification-observe.mts");
+      const { recordStory, removeLedgerArtifacts } = await import("../hooks/src/verification-ledger.mts");
+
+      try {
+        recordStory(TRACE_SESSION, "flow-verification", "/dashboard", "correlation test", []);
+
+        // Add an exposure so routing-policy-resolved fires
+        appendSkillExposure(exposure("corr-1", {
+          sessionId: TRACE_SESSION,
+          targetBoundary: "uiRender",
+          route: "/dashboard",
+          createdAt: T0,
+        }));
+
+        const input = JSON.stringify({
+          tool_name: "Bash",
+          tool_input: { command: "open http://localhost:3000/dashboard" },
+          session_id: TRACE_SESSION,
+        });
+
+        run(input);
+
+        const traces = readRoutingDecisionTrace(TRACE_SESSION);
+        const postTrace = traces.find((t) => t.hook === "PostToolUse");
+        expect(postTrace).toBeDefined();
+
+        // Trace carries the same story identity as policy resolution
+        expect(postTrace!.primaryStory.kind).toBe("flow-verification");
+        expect(postTrace!.primaryStory.route).not.toBeNull();
+        expect(postTrace!.verification!.verificationId).toBeTruthy();
+        expect(postTrace!.verification!.observedBoundary).toBe("uiRender");
+
+        // policyScenario should be set when primary story exists
+        expect(postTrace!.policyScenario).toMatch(/^PostToolUse\|flow-verification\|/);
+      } finally {
+        removeLedgerArtifacts(TRACE_SESSION);
+      }
+    });
+
+    test("trace without active story includes no_active_verification_story skip reason", async () => {
+      const { run } = await import("../hooks/src/posttooluse-verification-observe.mts");
+      const { removeLedgerArtifacts } = await import("../hooks/src/verification-ledger.mts");
+
+      // Use a session with no stories recorded
+      const noStorySession = "no-story-trace-" + Date.now();
+      try {
+        const input = JSON.stringify({
+          tool_name: "Bash",
+          tool_input: { command: "curl http://localhost:3000/api/test" },
+          session_id: noStorySession,
+        });
+
+        run(input);
+
+        const traces = readRoutingDecisionTrace(noStorySession);
+        const postTrace = traces.find((t) => t.hook === "PostToolUse");
+        expect(postTrace).toBeDefined();
+        expect(postTrace!.skippedReasons).toContain("no_active_verification_story");
+        expect(postTrace!.policyScenario).toBeNull();
+        expect(postTrace!.primaryStory.id).toBeNull();
+      } finally {
+        removeLedgerArtifacts(noStorySession);
+        try { rmSync(traceDir(noStorySession), { recursive: true, force: true }); } catch {}
+      }
     });
   });
 });

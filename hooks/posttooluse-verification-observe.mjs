@@ -12,6 +12,10 @@ import {
 } from "./verification-ledger.mjs";
 import { resolveBoundaryOutcome } from "./routing-policy-ledger.mjs";
 import { selectPrimaryStory } from "./verification-plan.mjs";
+import {
+  appendRoutingDecisionTrace,
+  createDecisionId
+} from "./routing-decision-trace.mjs";
 function isVerificationReport(value) {
   if (typeof value !== "object" || value === null) return false;
   const obj = value;
@@ -175,8 +179,8 @@ function run(rawInput) {
       primaryNextAction: plan.primaryNextAction,
       blockedReasons: [...plan.blockedReasons]
     });
+    const primaryStory = plan.stories.length > 0 ? selectPrimaryStory(plan.stories) : null;
     if (boundaryEvent.boundary !== "unknown") {
-      const primaryStory = plan.stories.length > 0 ? selectPrimaryStory(plan.stories) : null;
       const resolved = resolveBoundaryOutcome({
         sessionId,
         boundary: boundaryEvent.boundary,
@@ -196,6 +200,45 @@ function run(rawInput) {
         });
       }
     }
+    const redactedTarget = redactCommand(command).slice(0, 200);
+    const decisionId = createDecisionId({
+      hook: "PostToolUse",
+      sessionId,
+      toolName: "Bash",
+      toolTarget: redactedTarget,
+      timestamp: boundaryEvent.timestamp
+    });
+    appendRoutingDecisionTrace({
+      version: 1,
+      decisionId,
+      sessionId,
+      hook: "PostToolUse",
+      toolName: "Bash",
+      toolTarget: redactedTarget,
+      timestamp: boundaryEvent.timestamp,
+      primaryStory: {
+        id: primaryStory?.id ?? null,
+        kind: primaryStory?.kind ?? null,
+        route: inferredRoute,
+        targetBoundary: boundaryEvent.boundary === "unknown" ? null : boundaryEvent.boundary
+      },
+      policyScenario: primaryStory ? `PostToolUse|${primaryStory.kind ?? "none"}|${boundaryEvent.boundary}|Bash` : null,
+      matchedSkills: [],
+      injectedSkills: [],
+      skippedReasons: primaryStory ? [] : ["no_active_verification_story"],
+      ranked: [],
+      verification: {
+        verificationId,
+        observedBoundary: boundaryEvent.boundary,
+        matchedSuggestedAction: boundaryEvent.matchedSuggestedAction
+      }
+    });
+    log.summary("routing.decision_trace_written", {
+      decisionId,
+      hook: "PostToolUse",
+      verificationId,
+      boundary: boundaryEvent.boundary
+    });
   }
   log.complete("verification-observe-done", {
     matchedCount: 1,

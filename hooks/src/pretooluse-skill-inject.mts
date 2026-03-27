@@ -67,6 +67,10 @@ import {
   appendSkillExposure,
   loadProjectRoutingPolicy,
 } from "./routing-policy-ledger.mjs";
+import {
+  appendRoutingDecisionTrace,
+  createDecisionId,
+} from "./routing-decision-trace.mjs";
 
 const MAX_SKILLS = 3;
 const DEFAULT_INJECTION_BUDGET_BYTES = 18_000;
@@ -1825,6 +1829,78 @@ function run(): string {
       }
       trackBaseEvents(sessionId, telemetryEntries).catch(() => {});
     }
+  }
+
+  // Stage 7: Emit routing decision trace
+  {
+    const tracePlan = sessionId ? loadCachedPlanResult(sessionId, log) : null;
+    const traceStory = tracePlan ? selectPrimaryStory(tracePlan.stories ?? []) : null;
+    const traceTimestamp = new Date().toISOString();
+    const traceToolTarget = toolName === "Bash" ? redactCommand(toolTarget) : toolTarget;
+    const decisionId = createDecisionId({
+      hook: "PreToolUse",
+      sessionId,
+      toolName,
+      toolTarget: traceToolTarget,
+      timestamp: traceTimestamp,
+    });
+    appendRoutingDecisionTrace({
+      version: 1,
+      decisionId,
+      sessionId,
+      hook: "PreToolUse",
+      toolName,
+      toolTarget: traceToolTarget,
+      timestamp: traceTimestamp,
+      primaryStory: {
+        id: traceStory?.id ?? null,
+        kind: traceStory?.kind ?? null,
+        route: traceStory?.route ?? null,
+        targetBoundary: tracePlan?.primaryNextAction?.targetBoundary ?? null,
+      },
+      policyScenario: traceStory
+        ? `PreToolUse|${traceStory.kind ?? "none"}|${tracePlan?.primaryNextAction?.targetBoundary ?? "none"}|${toolName}`
+        : null,
+      matchedSkills: [...matched],
+      injectedSkills: loaded,
+      skippedReasons: [
+        ...(traceStory ? [] : ["no_active_verification_story"]),
+        ...droppedByCap.map((skill) => `cap_exceeded:${skill}`),
+        ...droppedByBudget.map((skill) => `budget_exhausted:${skill}`),
+      ],
+      ranked: newEntries.map((entry) => {
+        const match = matchReasons?.[entry.skill];
+        const policy = policyBoosted.find((p) => p.skill === entry.skill);
+        return {
+          skill: entry.skill,
+          basePriority: entry.priority,
+          effectivePriority: typeof entry.effectivePriority === "number"
+            ? entry.effectivePriority
+            : entry.priority,
+          pattern: match ? { type: match.matchType, value: match.pattern } : null,
+          profilerBoost: profilerBoosted.includes(entry.skill) ? 5 : 0,
+          policyBoost: policy?.boost ?? 0,
+          policyReason: policy?.reason ?? null,
+          summaryOnly: summaryOnly.includes(entry.skill),
+          synthetic: false,
+          droppedReason: droppedByCap.includes(entry.skill)
+            ? "cap_exceeded"
+            : droppedByBudget.includes(entry.skill)
+              ? "budget_exhausted"
+              : null,
+        };
+      }),
+      verification: verificationId
+        ? { verificationId, observedBoundary: null, matchedSuggestedAction: null }
+        : null,
+    });
+    log.summary("routing.decision_trace_written", {
+      decisionId,
+      hook: "PreToolUse",
+      toolName,
+      matchedSkills: [...matched],
+      injectedSkills: loaded,
+    });
   }
 
   return result;

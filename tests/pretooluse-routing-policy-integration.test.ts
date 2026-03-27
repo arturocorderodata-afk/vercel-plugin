@@ -1,12 +1,16 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { writeFileSync, unlinkSync, existsSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
   deduplicateSkills,
   type DeduplicateResult,
 } from "../hooks/src/pretooluse-skill-inject.mts";
+import {
+  readRoutingDecisionTrace,
+  traceDir,
+} from "../hooks/src/routing-decision-trace.mts";
 import {
   createEmptyRoutingPolicy,
   recordExposure,
@@ -446,5 +450,186 @@ describe("pretooluse routing-policy integration", () => {
     expect(result.policyBoosted.length).toBe(1);
     expect(result.policyBoosted[0].skill).toBe("agent-browser-verify");
     expect(result.policyBoosted[0].boost).toBe(8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Routing decision trace integration tests (PreToolUse)
+// ---------------------------------------------------------------------------
+
+const ROOT = resolve(import.meta.dirname, "..");
+const HOOK_SCRIPT = join(ROOT, "hooks", "pretooluse-skill-inject.mjs");
+
+/** Run PreToolUse hook as subprocess */
+async function runPreToolUseHook(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  env?: Record<string, string>,
+  sessionId?: string,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const sid = sessionId ?? `trace-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const payload = JSON.stringify({
+    tool_name: toolName,
+    tool_input: toolInput,
+    session_id: sid,
+    cwd: ROOT,
+  });
+  const proc = Bun.spawn(["node", HOOK_SCRIPT], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      VERCEL_PLUGIN_SEEN_SKILLS: "",
+      VERCEL_PLUGIN_LOG_LEVEL: "summary",
+      ...env,
+    },
+  });
+  proc.stdin.write(payload);
+  proc.stdin.end();
+  const code = await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  return { code, stdout, stderr };
+}
+
+describe("pretooluse routing decision trace", () => {
+  let traceSession: string;
+
+  beforeEach(() => {
+    traceSession = `trace-ptu-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  });
+
+  afterEach(() => {
+    try { rmSync(traceDir(traceSession), { recursive: true, force: true }); } catch {}
+    cleanupMockPlanState(traceSession);
+  });
+
+  test("emits exactly one trace per ranking/injection attempt", async () => {
+    const { code } = await runPreToolUseHook(
+      "Bash",
+      { command: "npx next dev" },
+      {},
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+    expect(traces[0].hook).toBe("PreToolUse");
+    expect(traces[0].version).toBe(1);
+    expect(traces[0].toolName).toBe("Bash");
+    expect(traces[0].sessionId).toBe(traceSession);
+    expect(traces[0].decisionId).toMatch(/^[0-9a-f]{16}$/);
+    expect(Array.isArray(traces[0].matchedSkills)).toBe(true);
+    expect(Array.isArray(traces[0].injectedSkills)).toBe(true);
+    expect(Array.isArray(traces[0].ranked)).toBe(true);
+  });
+
+  test("records no_active_verification_story when no story exists", async () => {
+    const { code } = await runPreToolUseHook(
+      "Bash",
+      { command: "npx next dev" },
+      {},
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+    expect(traces[0].skippedReasons).toContain("no_active_verification_story");
+    expect(traces[0].policyScenario).toBeNull();
+  });
+
+  test("records primaryStory and policyScenario when verification story exists", async () => {
+    writeMockPlanState(traceSession, {
+      id: "trace-story-1",
+      kind: "deployment",
+      route: "/api/test",
+    });
+
+    const { code } = await runPreToolUseHook(
+      "Bash",
+      { command: "npx next dev" },
+      {},
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+    expect(traces[0].primaryStory.id).toBe("trace-story-1");
+    expect(traces[0].primaryStory.kind).toBe("deployment");
+    expect(traces[0].policyScenario).toMatch(/^PreToolUse\|deployment\|/);
+    expect(traces[0].skippedReasons).not.toContain("no_active_verification_story");
+  });
+
+  test("does not emit synthetic none|none policyScenario without story", async () => {
+    const { code } = await runPreToolUseHook(
+      "Bash",
+      { command: "npx next dev" },
+      {},
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+    expect(traces[0].policyScenario).toBeNull();
+  });
+
+  test("ranked entries include droppedReason for cap/budget drops", async () => {
+    const { code } = await runPreToolUseHook(
+      "Read",
+      { file_path: "next.config.mjs" },
+      {
+        VERCEL_PLUGIN_INJECTION_BUDGET: "500",
+      },
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const traces = readRoutingDecisionTrace(traceSession);
+    expect(traces).toHaveLength(1);
+
+    for (const reason of traces[0].skippedReasons) {
+      if (reason.startsWith("cap_exceeded:")) {
+        const skill = reason.replace("cap_exceeded:", "");
+        const ranked = traces[0].ranked.find((r) => r.skill === skill);
+        if (ranked) {
+          expect(ranked.droppedReason).toBe("cap_exceeded");
+        }
+      }
+      if (reason.startsWith("budget_exhausted:")) {
+        const skill = reason.replace("budget_exhausted:", "");
+        const ranked = traces[0].ranked.find((r) => r.skill === skill);
+        if (ranked) {
+          expect(ranked.droppedReason).toBe("budget_exhausted");
+        }
+      }
+    }
+  });
+
+  test("emits routing.decision_trace_written summary log", async () => {
+    const { code, stderr } = await runPreToolUseHook(
+      "Bash",
+      { command: "npx next dev" },
+      { VERCEL_PLUGIN_LOG_LEVEL: "summary" },
+      traceSession,
+    );
+    expect(code).toBe(0);
+
+    const logLines = stderr
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((o): o is Record<string, unknown> => o !== null);
+
+    const traceLog = logLines.find(
+      (l) => l.event === "routing.decision_trace_written",
+    );
+    expect(traceLog).toBeDefined();
+    expect(traceLog!.hook).toBe("PreToolUse");
+    expect(traceLog!.decisionId).toMatch(/^[0-9a-f]{16}$/);
   });
 });

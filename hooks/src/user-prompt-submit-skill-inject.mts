@@ -55,6 +55,10 @@ import {
   appendSkillExposure,
   loadProjectRoutingPolicy,
 } from "./routing-policy-ledger.mjs";
+import {
+  appendRoutingDecisionTrace,
+  createDecisionId,
+} from "./routing-decision-trace.mjs";
 
 const MAX_SKILLS = 2;
 const DEFAULT_INJECTION_BUDGET_BYTES = 8_000;
@@ -1251,7 +1255,75 @@ export function run(): string {
     }
     outputEnv = finalizePromptEnvUpdates(platform, promptEnvBefore);
   }
-  // Stage 5: formatOutput
+  // Stage 5a: Emit routing decision trace
+  {
+    const tracePlan = sessionId ? loadCachedPlanResult(sessionId, log) : null;
+    const traceStory = tracePlan ? selectPrimaryStory(tracePlan.stories ?? []) : null;
+    const traceTimestamp = new Date().toISOString();
+    const decisionId = createDecisionId({
+      hook: "UserPromptSubmit",
+      sessionId,
+      toolName: "Prompt",
+      toolTarget: normalizedPrompt,
+      timestamp: traceTimestamp,
+    });
+    appendRoutingDecisionTrace({
+      version: 1,
+      decisionId,
+      sessionId,
+      hook: "UserPromptSubmit",
+      toolName: "Prompt",
+      toolTarget: normalizedPrompt,
+      timestamp: traceTimestamp,
+      primaryStory: {
+        id: traceStory?.id ?? null,
+        kind: traceStory?.kind ?? null,
+        route: traceStory?.route ?? null,
+        targetBoundary: null,
+      },
+      policyScenario: traceStory
+        ? `UserPromptSubmit|${traceStory.kind ?? "none"}|none|Prompt`
+        : null,
+      matchedSkills,
+      injectedSkills: loaded,
+      skippedReasons: [
+        ...(traceStory ? [] : ["no_active_verification_story"]),
+        ...droppedByCap.map((skill) => `cap_exceeded:${skill}`),
+        ...droppedByBudget.map((skill) => `budget_exhausted:${skill}`),
+      ],
+      ranked: report.selectedSkills.map((skill) => {
+        const result = report.perSkillResults[skill];
+        const policy = promptPolicyBoosted.find((p) => p.skill === skill);
+        return {
+          skill,
+          basePriority: result?.score ?? 0,
+          effectivePriority: (result?.score ?? 0) + (policy?.boost ?? 0),
+          pattern: result?.reason
+            ? { type: "prompt-signal", value: result.reason }
+            : null,
+          profilerBoost: 0,
+          policyBoost: policy?.boost ?? 0,
+          policyReason: policy?.reason ?? null,
+          summaryOnly: summaryOnly.includes(skill),
+          synthetic: false,
+          droppedReason: droppedByCap.includes(skill)
+            ? "cap_exceeded"
+            : droppedByBudget.includes(skill)
+              ? "budget_exhausted"
+              : null,
+        };
+      }),
+      verification: null,
+    });
+    log.summary("routing.decision_trace_written", {
+      decisionId,
+      hook: "UserPromptSubmit",
+      matchedSkills,
+      injectedSkills: loaded,
+    });
+  }
+
+  // Stage 5b: formatOutput
   // Build prompt match reasons for the banner
   const promptMatchReasons: Record<string, string> = {};
   for (const skill of loaded) {
