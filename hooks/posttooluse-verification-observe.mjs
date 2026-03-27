@@ -6,6 +6,7 @@ import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { generateVerificationId } from "./hook-env.mjs";
 import { createLogger } from "./logger.mjs";
+import { redactCommand } from "./pretooluse-skill-inject.mjs";
 function isVerificationReport(value) {
   if (typeof value !== "object" || value === null) return false;
   const obj = value;
@@ -151,5 +152,6 @@ export {
   inferRoute,
   isVerificationReport,
   parseInput,
+  redactCommand,
   run
 };

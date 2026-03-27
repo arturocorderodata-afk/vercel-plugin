@@ -1,0 +1,440 @@
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  type VerificationBoundary,
+  type VerificationObservation,
+  type VerificationStoryKind,
+  derivePlan,
+  recordObservation,
+  recordStory,
+  storyId,
+} from "../hooks/src/verification-ledger.mts";
+import {
+  computePlan,
+  planToResult,
+  loadCachedPlanResult,
+  formatVerificationBanner,
+  formatPlanHuman,
+  type VerificationPlanResult,
+} from "../hooks/src/verification-plan.mts";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const T0 = "2026-03-26T12:00:00.000Z";
+const T1 = "2026-03-26T12:01:00.000Z";
+
+function makeObs(
+  id: string,
+  boundary: VerificationBoundary | null,
+  opts?: Partial<VerificationObservation>,
+): VerificationObservation {
+  return {
+    id,
+    timestamp: T0,
+    source: "bash",
+    boundary,
+    route: null,
+    summary: `obs-${id}`,
+    ...opts,
+  };
+}
+
+let testSessionId: string;
+
+beforeEach(() => {
+  testSessionId = `test-plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+});
+
+afterEach(() => {
+  try {
+    rmSync(join(tmpdir(), `vercel-plugin-${testSessionId}-ledger`), { recursive: true, force: true });
+  } catch { /* ignore */ }
+});
+
+// ---------------------------------------------------------------------------
+// computePlan
+// ---------------------------------------------------------------------------
+
+describe("computePlan", () => {
+  test("returns empty result for new session", () => {
+    const result = computePlan(testSessionId);
+    expect(result.hasStories).toBe(false);
+    expect(result.stories).toHaveLength(0);
+    expect(result.observationCount).toBe(0);
+    expect(result.primaryNextAction).toBeNull();
+  });
+
+  test("returns plan with story and observations", () => {
+    recordStory(testSessionId, "flow-verification", "/settings", "settings page loads but save fails", ["verification"]);
+    recordObservation(testSessionId, makeObs("obs-1", "clientRequest", { route: "/settings" }));
+    recordObservation(testSessionId, makeObs("obs-2", "serverHandler", { route: "/settings" }));
+
+    const result = computePlan(testSessionId);
+    expect(result.hasStories).toBe(true);
+    expect(result.stories).toHaveLength(1);
+    expect(result.stories[0].kind).toBe("flow-verification");
+    expect(result.observationCount).toBe(2);
+    expect(result.satisfiedBoundaries).toContain("clientRequest");
+    expect(result.satisfiedBoundaries).toContain("serverHandler");
+    expect(result.missingBoundaries).toContain("uiRender");
+    expect(result.missingBoundaries).toContain("environment");
+  });
+
+  test("next action is first missing boundary in priority order", () => {
+    recordStory(testSessionId, "flow-verification", null, "test", []);
+    const result = computePlan(testSessionId);
+    expect(result.primaryNextAction).not.toBeNull();
+    expect(result.primaryNextAction!.targetBoundary).toBe("clientRequest");
+  });
+
+  test("suppresses browser action when agent-browser unavailable", () => {
+    recordStory(testSessionId, "flow-verification", null, "test", []);
+    recordObservation(testSessionId, makeObs("a", "clientRequest"));
+    recordObservation(testSessionId, makeObs("b", "serverHandler"));
+    recordObservation(testSessionId, makeObs("c", "environment"));
+
+    const result = computePlan(testSessionId, { agentBrowserAvailable: false });
+    expect(result.primaryNextAction).toBeNull();
+    expect(result.blockedReasons.some((r) => r.includes("agent-browser"))).toBe(true);
+  });
+
+  test("suppresses browser action when loop guard hit", () => {
+    recordStory(testSessionId, "flow-verification", null, "test", []);
+    recordObservation(testSessionId, makeObs("a", "clientRequest"));
+    recordObservation(testSessionId, makeObs("b", "serverHandler"));
+    recordObservation(testSessionId, makeObs("c", "environment"));
+
+    const result = computePlan(testSessionId, { devServerLoopGuardHit: true });
+    expect(result.primaryNextAction).toBeNull();
+    expect(result.blockedReasons.some((r) => r.includes("loop guard"))).toBe(true);
+  });
+
+  test("deterministic for same fixture state", () => {
+    recordStory(testSessionId, "flow-verification", "/settings", "settings page loads but save fails", ["verification"]);
+    recordObservation(testSessionId, makeObs("obs-1", "clientRequest", { route: "/settings" }));
+
+    const result1 = computePlan(testSessionId);
+    const result2 = computePlan(testSessionId);
+    expect(JSON.stringify(result1)).toBe(JSON.stringify(result2));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planToResult
+// ---------------------------------------------------------------------------
+
+describe("planToResult", () => {
+  test("converts plan to serializable result", () => {
+    const plan = derivePlan(
+      [makeObs("a", "clientRequest", { route: "/settings" })],
+      [{ id: storyId("flow-verification", "/settings"), kind: "flow-verification", route: "/settings", promptExcerpt: "test", createdAt: T0, updatedAt: T0, requestedSkills: [] }],
+    );
+    const result = planToResult(plan);
+    expect(result.hasStories).toBe(true);
+    expect(result.observationCount).toBe(1);
+    expect(result.satisfiedBoundaries).toContain("clientRequest");
+    expect(Array.isArray(result.missingBoundaries)).toBe(true);
+    expect(Array.isArray(result.recentRoutes)).toBe(true);
+  });
+
+  test("sorts boundaries in result", () => {
+    const plan = derivePlan(
+      [
+        makeObs("a", "serverHandler"),
+        makeObs("b", "clientRequest"),
+      ],
+      [{ id: storyId("flow-verification", null), kind: "flow-verification", route: null, promptExcerpt: "test", createdAt: T0, updatedAt: T0, requestedSkills: [] }],
+    );
+    const result = planToResult(plan);
+    // satisfiedBoundaries should be sorted
+    expect(result.satisfiedBoundaries).toEqual([...result.satisfiedBoundaries].sort());
+    expect(result.missingBoundaries).toEqual([...result.missingBoundaries].sort());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadCachedPlanResult
+// ---------------------------------------------------------------------------
+
+describe("loadCachedPlanResult", () => {
+  test("returns null for nonexistent session", () => {
+    expect(loadCachedPlanResult("nonexistent-session-xyz")).toBeNull();
+  });
+
+  test("returns cached result after recordObservation", () => {
+    recordStory(testSessionId, "flow-verification", null, "test", []);
+    recordObservation(testSessionId, makeObs("cached-1", "clientRequest"));
+
+    const result = loadCachedPlanResult(testSessionId);
+    expect(result).not.toBeNull();
+    expect(result!.hasStories).toBe(true);
+    expect(result!.observationCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatVerificationBanner
+// ---------------------------------------------------------------------------
+
+describe("formatVerificationBanner", () => {
+  test("returns null when no stories", () => {
+    const result: VerificationPlanResult = {
+      hasStories: false,
+      stories: [],
+      observationCount: 0,
+      satisfiedBoundaries: [],
+      missingBoundaries: [],
+      recentRoutes: [],
+      primaryNextAction: null,
+      blockedReasons: [],
+    };
+    expect(formatVerificationBanner(result)).toBeNull();
+  });
+
+  test("returns null when all boundaries satisfied and no next action", () => {
+    const result: VerificationPlanResult = {
+      hasStories: true,
+      stories: [{ id: "abc", kind: "flow-verification", route: "/settings", promptExcerpt: "test" }],
+      observationCount: 4,
+      satisfiedBoundaries: ["clientRequest", "environment", "serverHandler", "uiRender"],
+      missingBoundaries: [],
+      recentRoutes: ["/settings"],
+      primaryNextAction: null,
+      blockedReasons: [],
+    };
+    expect(formatVerificationBanner(result)).toBeNull();
+  });
+
+  test("includes story, evidence, and next action", () => {
+    const result: VerificationPlanResult = {
+      hasStories: true,
+      stories: [{ id: "abc", kind: "flow-verification", route: "/settings", promptExcerpt: "save fails" }],
+      observationCount: 1,
+      satisfiedBoundaries: ["clientRequest"],
+      missingBoundaries: ["environment", "serverHandler", "uiRender"],
+      recentRoutes: ["/settings"],
+      primaryNextAction: {
+        action: "tail server logs /settings",
+        targetBoundary: "serverHandler",
+        reason: "No server-side observation yet — check logs for errors",
+      },
+      blockedReasons: [],
+    };
+    const banner = formatVerificationBanner(result);
+    expect(banner).not.toBeNull();
+    expect(banner).toContain("<!-- verification-plan -->");
+    expect(banner).toContain("flow-verification");
+    expect(banner).toContain("/settings");
+    expect(banner).toContain("save fails");
+    expect(banner).toContain("1/4 boundaries satisfied");
+    expect(banner).toContain("tail server logs");
+    expect(banner).toContain("<!-- /verification-plan -->");
+  });
+
+  test("shows blocked reason when no next action possible", () => {
+    const result: VerificationPlanResult = {
+      hasStories: true,
+      stories: [{ id: "abc", kind: "browser-only", route: null, promptExcerpt: "blank page" }],
+      observationCount: 3,
+      satisfiedBoundaries: ["clientRequest", "environment", "serverHandler"],
+      missingBoundaries: ["uiRender"],
+      recentRoutes: [],
+      primaryNextAction: null,
+      blockedReasons: ["agent-browser unavailable — cannot emit browser-only action"],
+    };
+    const banner = formatVerificationBanner(result);
+    expect(banner).not.toBeNull();
+    expect(banner).toContain("Blocked:");
+    expect(banner).toContain("agent-browser unavailable");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatPlanHuman
+// ---------------------------------------------------------------------------
+
+describe("formatPlanHuman", () => {
+  test("shows no stories message", () => {
+    const result: VerificationPlanResult = {
+      hasStories: false,
+      stories: [],
+      observationCount: 0,
+      satisfiedBoundaries: [],
+      missingBoundaries: [],
+      recentRoutes: [],
+      primaryNextAction: null,
+      blockedReasons: [],
+    };
+    const output = formatPlanHuman(result);
+    expect(output).toContain("No verification stories");
+  });
+
+  test("shows full plan details", () => {
+    const result: VerificationPlanResult = {
+      hasStories: true,
+      stories: [{ id: "abc", kind: "flow-verification", route: "/settings", promptExcerpt: "save fails" }],
+      observationCount: 2,
+      satisfiedBoundaries: ["clientRequest", "serverHandler"],
+      missingBoundaries: ["environment", "uiRender"],
+      recentRoutes: ["/settings"],
+      primaryNextAction: {
+        action: "open /settings in agent-browser",
+        targetBoundary: "uiRender",
+        reason: "No UI render observation yet",
+      },
+      blockedReasons: [],
+    };
+    const output = formatPlanHuman(result);
+    expect(output).toContain("Stories:");
+    expect(output).toContain("flow-verification");
+    expect(output).toContain("/settings");
+    expect(output).toContain("Observations: 2");
+    expect(output).toContain("clientRequest, serverHandler");
+    expect(output).toContain("Next action:");
+    expect(output).toContain("open /settings in agent-browser");
+  });
+
+  test("shows blocked reasons", () => {
+    const result: VerificationPlanResult = {
+      hasStories: true,
+      stories: [{ id: "abc", kind: "stuck-investigation", route: null, promptExcerpt: "hangs" }],
+      observationCount: 3,
+      satisfiedBoundaries: ["clientRequest", "environment", "serverHandler"],
+      missingBoundaries: ["uiRender"],
+      recentRoutes: [],
+      primaryNextAction: null,
+      blockedReasons: ["agent-browser unavailable", "dev-server loop guard hit"],
+    };
+    const output = formatPlanHuman(result);
+    expect(output).toContain("Next action: blocked");
+    expect(output).toContain("agent-browser unavailable");
+    expect(output).toContain("dev-server loop guard hit");
+  });
+
+  test("shows all satisfied message", () => {
+    const result: VerificationPlanResult = {
+      hasStories: true,
+      stories: [{ id: "abc", kind: "flow-verification", route: null, promptExcerpt: "test" }],
+      observationCount: 4,
+      satisfiedBoundaries: ["clientRequest", "environment", "serverHandler", "uiRender"],
+      missingBoundaries: [],
+      recentRoutes: [],
+      primaryNextAction: null,
+      blockedReasons: [],
+    };
+    const output = formatPlanHuman(result);
+    expect(output).toContain("All verification boundaries satisfied");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fixture-based deterministic snapshots
+// ---------------------------------------------------------------------------
+
+describe("deterministic fixture snapshots", () => {
+  test("settings page loads but save fails", () => {
+    recordStory(testSessionId, "flow-verification", "/settings", "settings page loads but save fails", ["verification"]);
+    recordObservation(testSessionId, makeObs("f1-1", "clientRequest", { route: "/settings", summary: "curl http://localhost:3000/settings" }));
+    recordObservation(testSessionId, makeObs("f1-2", "serverHandler", { route: "/settings", summary: "vercel logs" }));
+
+    const result1 = computePlan(testSessionId);
+    const result2 = computePlan(testSessionId);
+    expect(JSON.stringify(result1, null, 2)).toBe(JSON.stringify(result2, null, 2));
+
+    expect(result1.primaryNextAction).not.toBeNull();
+    expect(result1.missingBoundaries).toContain("uiRender");
+    expect(result1.missingBoundaries).toContain("environment");
+  });
+
+  test("blank page on dashboard", () => {
+    recordStory(testSessionId, "browser-only", "/dashboard", "blank page on dashboard", ["agent-browser-verify"]);
+
+    const result = computePlan(testSessionId);
+    expect(result.hasStories).toBe(true);
+    expect(result.missingBoundaries).toHaveLength(4);
+    expect(result.primaryNextAction!.targetBoundary).toBe("clientRequest");
+  });
+
+  test("bash trace: pnpm dev -> curl -> vercel logs", () => {
+    recordStory(testSessionId, "flow-verification", "/settings", "test", []);
+    recordObservation(testSessionId, makeObs("t1", "environment", { summary: "pnpm dev" }));
+    recordObservation(testSessionId, makeObs("t2", "clientRequest", { route: "/settings", summary: "curl /settings" }));
+    recordObservation(testSessionId, makeObs("t3", "serverHandler", { route: "/settings", summary: "vercel logs" }));
+
+    const result = computePlan(testSessionId);
+    expect(result.satisfiedBoundaries).toContain("environment");
+    expect(result.satisfiedBoundaries).toContain("clientRequest");
+    expect(result.satisfiedBoundaries).toContain("serverHandler");
+    expect(result.missingBoundaries).toEqual(["uiRender"]);
+  });
+
+  test("env trace: vercel env pull / printenv", () => {
+    recordStory(testSessionId, "stuck-investigation", null, "env vars missing", []);
+    recordObservation(testSessionId, makeObs("e1", "environment", { summary: "vercel env pull" }));
+    recordObservation(testSessionId, makeObs("e2", "environment", { summary: "printenv" }));
+
+    const result = computePlan(testSessionId);
+    expect(result.satisfiedBoundaries).toContain("environment");
+    expect(result.missingBoundaries).not.toContain("environment");
+  });
+
+  test("unavailable browser case", () => {
+    recordStory(testSessionId, "flow-verification", null, "test", []);
+    recordObservation(testSessionId, makeObs("b1", "clientRequest"));
+    recordObservation(testSessionId, makeObs("b2", "serverHandler"));
+    recordObservation(testSessionId, makeObs("b3", "environment"));
+
+    const result = computePlan(testSessionId, { agentBrowserAvailable: false });
+    expect(result.primaryNextAction).toBeNull();
+    expect(result.blockedReasons).toHaveLength(1);
+    expect(result.blockedReasons[0]).toContain("agent-browser unavailable");
+  });
+
+  test("repeated launch hitting loop guard", () => {
+    recordStory(testSessionId, "flow-verification", null, "test", []);
+    recordObservation(testSessionId, makeObs("lg1", "clientRequest"));
+    recordObservation(testSessionId, makeObs("lg2", "serverHandler"));
+    recordObservation(testSessionId, makeObs("lg3", "environment"));
+
+    const result = computePlan(testSessionId, { devServerLoopGuardHit: true });
+    expect(result.primaryNextAction).toBeNull();
+    expect(result.blockedReasons.some((r) => r.includes("loop guard"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// No regressions to troubleshooting routing
+// ---------------------------------------------------------------------------
+
+describe("no regressions", () => {
+  test("computePlan does not throw on missing session", () => {
+    expect(() => computePlan("nonexistent-session")).not.toThrow();
+  });
+
+  test("planToResult handles empty plan", () => {
+    const plan = derivePlan([], []);
+    const result = planToResult(plan);
+    expect(result.hasStories).toBe(false);
+    expect(result.primaryNextAction).toBeNull();
+  });
+
+  test("formatVerificationBanner handles result with empty stories gracefully", () => {
+    const result: VerificationPlanResult = {
+      hasStories: true,
+      stories: [],
+      observationCount: 0,
+      satisfiedBoundaries: [],
+      missingBoundaries: ["clientRequest"],
+      recentRoutes: [],
+      primaryNextAction: { action: "curl /", targetBoundary: "clientRequest", reason: "test" },
+      blockedReasons: [],
+    };
+    const banner = formatVerificationBanner(result);
+    expect(banner).not.toBeNull();
+    expect(banner).toContain("Next action:");
+  });
+});

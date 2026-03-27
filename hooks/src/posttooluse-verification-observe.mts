@@ -21,6 +21,9 @@ import { fileURLToPath } from "node:url";
 import { pluginRoot as resolvePluginRoot, generateVerificationId } from "./hook-env.mjs";
 import { createLogger } from "./logger.mjs";
 import type { Logger } from "./logger.mjs";
+import { redactCommand } from "./pretooluse-skill-inject.mjs";
+
+export { redactCommand };
 
 // ---------------------------------------------------------------------------
 // Types
