@@ -793,6 +793,51 @@ function injectSkills(rankedSkills, options) {
   l.debug("skills-injected", { injected: loaded, summaryOnly, skippedByConcurrentClaim, totalParts: parts.length, usedBytes, budgetBytes: budget });
   return { parts, loaded, summaryOnly, droppedByCap, droppedByBudget, skippedByConcurrentClaim };
 }
+function applyVerifiedPlaybookInsertion(params) {
+  const rankedSkills = [...params.rankedSkills];
+  const matched = new Set(params.matched);
+  const forceSummarySkills = new Set(params.forceSummarySkills);
+  const reasons = {};
+  const selection = params.selection;
+  if (!selection) {
+    return { rankedSkills, matched, forceSummarySkills, reasons, banner: null };
+  }
+  const anchorIdx = rankedSkills.indexOf(selection.anchorSkill);
+  if (anchorIdx === -1) {
+    return { rankedSkills, matched, forceSummarySkills, reasons, banner: selection.banner };
+  }
+  let insertOffset = 1;
+  for (const skill of selection.insertedSkills) {
+    if (rankedSkills.includes(skill)) continue;
+    rankedSkills.splice(anchorIdx + insertOffset, 0, skill);
+    matched.add(skill);
+    if (!params.dedupOff && params.injectedSkills.has(skill)) {
+      forceSummarySkills.add(skill);
+    }
+    reasons[skill] = {
+      trigger: "verified-playbook",
+      reasonCode: "scenario-playbook-rulebook"
+    };
+    insertOffset += 1;
+  }
+  return { rankedSkills, matched, forceSummarySkills, reasons, banner: selection.banner };
+}
+function buildPlaybookExposureRoles(orderedSkills) {
+  const [anchorSkill, ...rest] = orderedSkills.filter(Boolean);
+  if (!anchorSkill) return [];
+  return [
+    {
+      skill: anchorSkill,
+      attributionRole: "candidate",
+      candidateSkill: anchorSkill
+    },
+    ...rest.map((skill) => ({
+      skill,
+      attributionRole: "context",
+      candidateSkill: anchorSkill
+    }))
+  ];
+}
 function formatPlatformOutput(platform, additionalContext, env) {
   if (platform === "cursor") {
     const output2 = {};
@@ -1287,6 +1332,7 @@ function run() {
   }
   const playbookRecallReasons = {};
   let playbookBanner = null;
+  const playbookExposureRoles = /* @__PURE__ */ new Map();
   if (cwd && sessionId) {
     const playbookPlan = loadCachedPlanResult(sessionId, log);
     const playbookStory = playbookPlan ? selectActiveStory(playbookPlan) : null;
@@ -1305,45 +1351,63 @@ function run() {
         excludeSkills: /* @__PURE__ */ new Set([...rankedSkills, ...injectedSkills]),
         maxInsertedSkills: 2
       });
+      const playbookApply = applyVerifiedPlaybookInsertion({
+        rankedSkills,
+        matched,
+        injectedSkills,
+        dedupOff,
+        forceSummarySkills,
+        selection: playbookRecall.selected ? {
+          anchorSkill: playbookRecall.selected.anchorSkill,
+          insertedSkills: playbookRecall.selected.insertedSkills,
+          banner: playbookRecall.banner
+        } : null
+      });
+      rankedSkills.length = 0;
+      rankedSkills.push(...playbookApply.rankedSkills);
+      matched.clear();
+      for (const skill of playbookApply.matched) matched.add(skill);
+      forceSummarySkills.clear();
+      for (const skill of playbookApply.forceSummarySkills) {
+        forceSummarySkills.add(skill);
+      }
+      Object.assign(playbookRecallReasons, playbookApply.reasons);
+      if (playbookApply.banner) {
+        playbookBanner = playbookApply.banner;
+      }
       if (playbookRecall.selected) {
-        playbookBanner = playbookRecall.banner;
-        const anchorIdx = rankedSkills.indexOf(playbookRecall.selected.anchorSkill);
-        let insertOffset = 1;
+        for (const role of buildPlaybookExposureRoles(playbookRecall.selected.orderedSkills)) {
+          playbookExposureRoles.set(role.skill, role);
+        }
+      }
+      if (playbookRecall.selected) {
         for (const skill of playbookRecall.selected.insertedSkills) {
-          rankedSkills.splice(anchorIdx + insertOffset, 0, skill);
-          matched.add(skill);
-          if (!dedupOff && injectedSkills.has(skill)) {
-            forceSummarySkills.add(skill);
+          if (playbookApply.reasons[skill]) {
+            addCause(causality, {
+              code: "verified-playbook",
+              stage: "rank",
+              skill,
+              synthetic: true,
+              scoreDelta: 0,
+              message: `Inserted verified playbook step after ${playbookRecall.selected.anchorSkill}`,
+              detail: {
+                ruleId: playbookRecall.selected.ruleId,
+                orderedSkills: playbookRecall.selected.orderedSkills,
+                support: playbookRecall.selected.support,
+                precision: playbookRecall.selected.precision,
+                lift: playbookRecall.selected.lift
+              }
+            });
+            addEdge(causality, {
+              fromSkill: playbookRecall.selected.anchorSkill,
+              toSkill: skill,
+              relation: "playbook-step",
+              code: "verified-playbook",
+              detail: {
+                ruleId: playbookRecall.selected.ruleId
+              }
+            });
           }
-          playbookRecallReasons[skill] = {
-            trigger: "verified-playbook",
-            reasonCode: "scenario-playbook-rulebook"
-          };
-          addCause(causality, {
-            code: "verified-playbook",
-            stage: "rank",
-            skill,
-            synthetic: true,
-            scoreDelta: 0,
-            message: `Inserted verified playbook step after ${playbookRecall.selected.anchorSkill}`,
-            detail: {
-              ruleId: playbookRecall.selected.ruleId,
-              orderedSkills: playbookRecall.selected.orderedSkills,
-              support: playbookRecall.selected.support,
-              precision: playbookRecall.selected.precision,
-              lift: playbookRecall.selected.lift
-            }
-          });
-          addEdge(causality, {
-            fromSkill: playbookRecall.selected.anchorSkill,
-            toSkill: skill,
-            relation: "playbook-step",
-            code: "verified-playbook",
-            detail: {
-              ruleId: playbookRecall.selected.ruleId
-            }
-          });
-          insertOffset += 1;
         }
         log.debug("playbook-recall-injected", {
           ruleId: playbookRecall.selected.ruleId,
@@ -1442,6 +1506,7 @@ function run() {
         preferredSkills: policyRecallSynthetic
       });
       for (const skill of loaded) {
+        const playbookRole = playbookExposureRoles.get(skill);
         appendSkillExposure({
           id: `${sessionId}:${skill}:${Date.now()}`,
           sessionId,
@@ -1454,8 +1519,8 @@ function run() {
           skill,
           targetBoundary,
           exposureGroupId: attribution.exposureGroupId,
-          attributionRole: skill === attribution.candidateSkill ? "candidate" : "context",
-          candidateSkill: attribution.candidateSkill,
+          attributionRole: playbookRole?.attributionRole ?? (skill === attribution.candidateSkill ? "candidate" : "context"),
+          candidateSkill: playbookRole?.candidateSkill ?? attribution.candidateSkill,
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
           resolvedAt: null,
           outcome: "pending"
@@ -1907,6 +1972,8 @@ export {
   DEV_SERVER_VERIFY_SKILL,
   REVIEW_MARKER,
   TSX_REVIEW_SKILL,
+  applyVerifiedPlaybookInsertion,
+  buildPlaybookExposureRoles,
   captureRuntimeEnvSnapshot,
   checkDevServerVerify,
   checkTsxReviewTrigger,

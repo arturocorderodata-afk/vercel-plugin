@@ -1249,6 +1249,98 @@ export interface SkillInjectionReason {
   reasonCode: string;
 }
 
+export interface VerifiedPlaybookSelection {
+  anchorSkill: string;
+  insertedSkills: string[];
+  banner: string | null;
+}
+
+export function applyVerifiedPlaybookInsertion(params: {
+  rankedSkills: string[];
+  matched: Set<string>;
+  injectedSkills: Set<string>;
+  dedupOff: boolean;
+  forceSummarySkills: Set<string>;
+  selection: VerifiedPlaybookSelection | null;
+}): {
+  rankedSkills: string[];
+  matched: Set<string>;
+  forceSummarySkills: Set<string>;
+  reasons: Record<string, SkillInjectionReason>;
+  banner: string | null;
+} {
+  const rankedSkills = [...params.rankedSkills];
+  const matched = new Set(params.matched);
+  const forceSummarySkills = new Set(params.forceSummarySkills);
+  const reasons: Record<string, SkillInjectionReason> = {};
+  const selection = params.selection;
+
+  if (!selection) {
+    return { rankedSkills, matched, forceSummarySkills, reasons, banner: null };
+  }
+
+  const anchorIdx = rankedSkills.indexOf(selection.anchorSkill);
+  if (anchorIdx === -1) {
+    return { rankedSkills, matched, forceSummarySkills, reasons, banner: selection.banner };
+  }
+
+  let insertOffset = 1;
+  for (const skill of selection.insertedSkills) {
+    if (rankedSkills.includes(skill)) continue;
+    rankedSkills.splice(anchorIdx + insertOffset, 0, skill);
+    matched.add(skill);
+    if (!params.dedupOff && params.injectedSkills.has(skill)) {
+      forceSummarySkills.add(skill);
+    }
+    reasons[skill] = {
+      trigger: "verified-playbook",
+      reasonCode: "scenario-playbook-rulebook",
+    };
+    insertOffset += 1;
+  }
+
+  return { rankedSkills, matched, forceSummarySkills, reasons, banner: selection.banner };
+}
+
+// ---------------------------------------------------------------------------
+// Playbook exposure role assignment (credit-safe attribution)
+// ---------------------------------------------------------------------------
+
+export type ExposureRole = "candidate" | "context";
+
+export interface PlaybookExposureRole {
+  skill: string;
+  attributionRole: ExposureRole;
+  candidateSkill: string | null;
+}
+
+/**
+ * Deterministically marks the anchor skill as `candidate` and every inserted
+ * playbook step as `context`, all sharing the anchor as `candidateSkill`.
+ *
+ * Only the anchor exposure affects project policy counters; inserted context
+ * steps remain inspectable in the session exposure ledger but never
+ * accumulate policy wins.
+ */
+export function buildPlaybookExposureRoles(
+  orderedSkills: string[],
+): PlaybookExposureRole[] {
+  const [anchorSkill, ...rest] = orderedSkills.filter(Boolean);
+  if (!anchorSkill) return [];
+  return [
+    {
+      skill: anchorSkill,
+      attributionRole: "candidate",
+      candidateSkill: anchorSkill,
+    },
+    ...rest.map((skill) => ({
+      skill,
+      attributionRole: "context" as const,
+      candidateSkill: anchorSkill,
+    })),
+  ];
+}
+
 export interface FormatOutputParams {
   parts: string[];
   matched: Set<string>;
@@ -1901,6 +1993,7 @@ function run(): string {
   // to proven procedural strategies.
   const playbookRecallReasons: Record<string, { trigger: string; reasonCode: string }> = {};
   let playbookBanner: string | null = null;
+  const playbookExposureRoles = new Map<string, PlaybookExposureRole>();
   if (cwd && sessionId) {
     const playbookPlan = loadCachedPlanResult(sessionId, log);
     const playbookStory = playbookPlan ? selectActiveStory(playbookPlan) : null;
@@ -1926,45 +2019,68 @@ function run(): string {
         maxInsertedSkills: 2,
       });
 
+      const playbookApply = applyVerifiedPlaybookInsertion({
+        rankedSkills,
+        matched,
+        injectedSkills,
+        dedupOff,
+        forceSummarySkills,
+        selection: playbookRecall.selected
+          ? {
+              anchorSkill: playbookRecall.selected.anchorSkill,
+              insertedSkills: playbookRecall.selected.insertedSkills,
+              banner: playbookRecall.banner,
+            }
+          : null,
+      });
+
+      rankedSkills.length = 0;
+      rankedSkills.push(...playbookApply.rankedSkills);
+      matched.clear();
+      for (const skill of playbookApply.matched) matched.add(skill);
+      forceSummarySkills.clear();
+      for (const skill of playbookApply.forceSummarySkills) {
+        forceSummarySkills.add(skill);
+      }
+      Object.assign(playbookRecallReasons, playbookApply.reasons);
+      if (playbookApply.banner) {
+        playbookBanner = playbookApply.banner;
+      }
       if (playbookRecall.selected) {
-        playbookBanner = playbookRecall.banner;
-        const anchorIdx = rankedSkills.indexOf(playbookRecall.selected.anchorSkill);
-        let insertOffset = 1;
+        for (const role of buildPlaybookExposureRoles(playbookRecall.selected.orderedSkills)) {
+          playbookExposureRoles.set(role.skill, role);
+        }
+      }
+
+      // Preserve causality annotations for inserted playbook steps
+      if (playbookRecall.selected) {
         for (const skill of playbookRecall.selected.insertedSkills) {
-          rankedSkills.splice(anchorIdx + insertOffset, 0, skill);
-          matched.add(skill);
-          if (!dedupOff && injectedSkills.has(skill)) {
-            forceSummarySkills.add(skill);
+          if (playbookApply.reasons[skill]) {
+            addCause(causality, {
+              code: "verified-playbook",
+              stage: "rank",
+              skill,
+              synthetic: true,
+              scoreDelta: 0,
+              message: `Inserted verified playbook step after ${playbookRecall.selected.anchorSkill}`,
+              detail: {
+                ruleId: playbookRecall.selected.ruleId,
+                orderedSkills: playbookRecall.selected.orderedSkills,
+                support: playbookRecall.selected.support,
+                precision: playbookRecall.selected.precision,
+                lift: playbookRecall.selected.lift,
+              },
+            });
+            addEdge(causality, {
+              fromSkill: playbookRecall.selected.anchorSkill,
+              toSkill: skill,
+              relation: "playbook-step",
+              code: "verified-playbook",
+              detail: {
+                ruleId: playbookRecall.selected.ruleId,
+              },
+            });
           }
-          playbookRecallReasons[skill] = {
-            trigger: "verified-playbook",
-            reasonCode: "scenario-playbook-rulebook",
-          };
-          addCause(causality, {
-            code: "verified-playbook",
-            stage: "rank",
-            skill,
-            synthetic: true,
-            scoreDelta: 0,
-            message: `Inserted verified playbook step after ${playbookRecall.selected.anchorSkill}`,
-            detail: {
-              ruleId: playbookRecall.selected.ruleId,
-              orderedSkills: playbookRecall.selected.orderedSkills,
-              support: playbookRecall.selected.support,
-              precision: playbookRecall.selected.precision,
-              lift: playbookRecall.selected.lift,
-            },
-          });
-          addEdge(causality, {
-            fromSkill: playbookRecall.selected.anchorSkill,
-            toSkill: skill,
-            relation: "playbook-step",
-            code: "verified-playbook",
-            detail: {
-              ruleId: playbookRecall.selected.ruleId,
-            },
-          });
-          insertOffset += 1;
         }
         log.debug("playbook-recall-injected", {
           ruleId: playbookRecall.selected.ruleId,
@@ -2079,6 +2195,7 @@ function run(): string {
       });
 
       for (const skill of loaded) {
+        const playbookRole = playbookExposureRoles.get(skill);
         appendSkillExposure({
           id: `${sessionId}:${skill}:${Date.now()}`,
           sessionId,
@@ -2091,8 +2208,9 @@ function run(): string {
           skill,
           targetBoundary,
           exposureGroupId: attribution.exposureGroupId,
-          attributionRole: skill === attribution.candidateSkill ? "candidate" : "context",
-          candidateSkill: attribution.candidateSkill,
+          attributionRole: playbookRole?.attributionRole
+            ?? (skill === attribution.candidateSkill ? "candidate" : "context"),
+          candidateSkill: playbookRole?.candidateSkill ?? attribution.candidateSkill,
           createdAt: new Date().toISOString(),
           resolvedAt: null,
           outcome: "pending",

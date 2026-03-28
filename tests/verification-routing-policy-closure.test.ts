@@ -1299,4 +1299,159 @@ describe("verification → routing-policy closure", () => {
       expect(policy.scenarios[key]?.["verification"]).toBeUndefined();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Playbook credit-safety: only anchor skill accumulates policy wins
+  // ---------------------------------------------------------------------------
+
+  describe("playbook credit-safe exposure attribution", () => {
+    const PLAYBOOK_SESSION = "playbook-policy-test-" + Date.now();
+
+    afterEach(() => {
+      try { unlinkSync(projectPolicyPath(PROJECT_ROOT)); } catch {}
+      try { unlinkSync(sessionExposurePath(PLAYBOOK_SESSION)); } catch {}
+    });
+
+    test("verified playbook credits only the anchor skill to project policy", () => {
+      // Anchor skill: "verification" (candidate)
+      appendSkillExposure(exposure("pb-anchor", {
+        sessionId: PLAYBOOK_SESSION,
+        skill: "verification",
+        attributionRole: "candidate",
+        candidateSkill: "verification",
+        exposureGroupId: "playbook-group-1",
+        targetBoundary: "clientRequest",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T0,
+      }));
+
+      // Inserted playbook step 1: "workflow" (context)
+      appendSkillExposure(exposure("pb-step1", {
+        sessionId: PLAYBOOK_SESSION,
+        skill: "workflow",
+        attributionRole: "context",
+        candidateSkill: "verification",
+        exposureGroupId: "playbook-group-1",
+        targetBoundary: "clientRequest",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T1,
+      }));
+
+      // Inserted playbook step 2: "agent-browser-verify" (context)
+      appendSkillExposure(exposure("pb-step2", {
+        sessionId: PLAYBOOK_SESSION,
+        skill: "agent-browser-verify",
+        attributionRole: "context",
+        candidateSkill: "verification",
+        exposureGroupId: "playbook-group-1",
+        targetBoundary: "clientRequest",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T2,
+      }));
+
+      // Resolve the boundary — all three exposures match
+      const resolved = resolveBoundaryOutcome({
+        sessionId: PLAYBOOK_SESSION,
+        boundary: "clientRequest",
+        matchedSuggestedAction: false,
+        storyId: "story-1",
+        route: "/settings",
+        now: T3,
+      });
+
+      expect(resolved).toHaveLength(3);
+      expect(resolved.every((e) => e.outcome === "win")).toBe(true);
+
+      // Project policy: only the anchor skill ("verification") gets policy credit
+      const policy = loadProjectRoutingPolicy(PROJECT_ROOT);
+      const scenarioKey = "PreToolUse|flow-verification|clientRequest|Bash|/settings";
+      const anchorStats = policy.scenarios[scenarioKey]?.["verification"];
+      expect(anchorStats).toBeDefined();
+      expect(anchorStats!.wins).toBe(1);
+
+      // Inserted playbook steps must NOT appear in project policy
+      const step1Stats = policy.scenarios[scenarioKey]?.["workflow"];
+      expect(step1Stats).toBeUndefined();
+
+      const step2Stats = policy.scenarios[scenarioKey]?.["agent-browser-verify"];
+      // agent-browser-verify should have no wins from this playbook batch
+      // (it may have exposure count from appendSkillExposure but no wins)
+      if (step2Stats) {
+        expect(step2Stats.wins).toBe(0);
+      }
+    });
+
+    test("playbook context steps are persisted in session ledger for inspection", () => {
+      appendSkillExposure(exposure("pb-ledger-anchor", {
+        sessionId: PLAYBOOK_SESSION,
+        skill: "verification",
+        attributionRole: "candidate",
+        candidateSkill: "verification",
+        exposureGroupId: "playbook-group-2",
+        targetBoundary: "clientRequest",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T0,
+      }));
+
+      appendSkillExposure(exposure("pb-ledger-step", {
+        sessionId: PLAYBOOK_SESSION,
+        skill: "workflow",
+        attributionRole: "context",
+        candidateSkill: "verification",
+        exposureGroupId: "playbook-group-2",
+        targetBoundary: "clientRequest",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T1,
+      }));
+
+      // Both are in the session ledger
+      const all = loadSessionExposures(PLAYBOOK_SESSION);
+      expect(all).toHaveLength(2);
+      expect(all.find((e) => e.id === "pb-ledger-anchor")!.attributionRole).toBe("candidate");
+      expect(all.find((e) => e.id === "pb-ledger-step")!.attributionRole).toBe("context");
+      expect(all.find((e) => e.id === "pb-ledger-step")!.candidateSkill).toBe("verification");
+    });
+
+    test("stale-miss finalization for playbook batch credits only anchor", () => {
+      appendSkillExposure(exposure("pb-stale-anchor", {
+        sessionId: PLAYBOOK_SESSION,
+        skill: "verification",
+        attributionRole: "candidate",
+        candidateSkill: "verification",
+        exposureGroupId: "playbook-group-3",
+        targetBoundary: "clientRequest",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T0,
+      }));
+
+      appendSkillExposure(exposure("pb-stale-step", {
+        sessionId: PLAYBOOK_SESSION,
+        skill: "workflow",
+        attributionRole: "context",
+        candidateSkill: "verification",
+        exposureGroupId: "playbook-group-3",
+        targetBoundary: "clientRequest",
+        storyId: "story-1",
+        route: "/settings",
+        createdAt: T1,
+      }));
+
+      // Session end — no boundary resolution
+      const stale = finalizeStaleExposures(PLAYBOOK_SESSION, T_END);
+      expect(stale).toHaveLength(2);
+      expect(stale.every((e) => e.outcome === "stale-miss")).toBe(true);
+
+      // Only anchor's stale-miss affects project policy
+      const policy = loadProjectRoutingPolicy(PROJECT_ROOT);
+      const key = "PreToolUse|flow-verification|clientRequest|Bash|/settings";
+      expect(policy.scenarios[key]?.["verification"]?.staleMisses).toBe(1);
+      expect(policy.scenarios[key]?.["workflow"]).toBeUndefined();
+    });
+  });
 });
