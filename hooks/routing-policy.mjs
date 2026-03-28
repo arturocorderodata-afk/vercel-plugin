@@ -104,13 +104,53 @@ function applyPolicyBoosts(entries, policy, scenarioInput) {
     };
   });
 }
+function matchRulebookRule(rulebook, scenarioInput, skill) {
+  if (rulebook.rules.length === 0) return null;
+  for (const key of scenarioKeyCandidates(scenarioInput)) {
+    const rule = rulebook.rules.find(
+      (r) => r.scenario === key && r.skill === skill
+    );
+    if (rule) return { rule, matchedScenario: key };
+  }
+  return null;
+}
+function applyRulebookBoosts(entries, rulebook, scenarioInput, rulebookFilePath) {
+  return entries.map((entry) => {
+    const match = matchRulebookRule(rulebook, scenarioInput, entry.skill);
+    if (!match) {
+      return {
+        ...entry,
+        matchedRuleId: null,
+        ruleBoost: 0,
+        ruleReason: null,
+        rulebookPath: null
+      };
+    }
+    const { rule } = match;
+    const ruleBoost = rule.action === "promote" ? rule.boost : -rule.boost;
+    const base = (typeof entry.effectivePriority === "number" ? entry.effectivePriority : entry.priority) - entry.policyBoost;
+    return {
+      ...entry,
+      effectivePriority: base + ruleBoost,
+      policyBoost: 0,
+      // suppressed — rulebook takes precedence
+      policyReason: null,
+      matchedRuleId: rule.id,
+      ruleBoost,
+      ruleReason: rule.reason,
+      rulebookPath: rulebookFilePath
+    };
+  });
+}
 export {
   applyPolicyBoosts,
+  applyRulebookBoosts,
   computePolicySuccessRate,
   createEmptyRoutingPolicy,
   derivePolicyBoost,
   ensureScenario,
   lookupPolicyStats,
+  matchRulebookRule,
   recordExposure,
   recordOutcome,
   scenarioKey,

@@ -151,6 +151,7 @@ export async function runLearnCommand(options: LearnCommandOptions): Promise<num
       projectRoot,
       rules: [],
       replay: { baselineWins: 0, baselineDirectiveWins: 0, learnedWins: 0, learnedDirectiveWins: 0, deltaWins: 0, deltaDirectiveWins: 0, regressions: [] },
+      promotion: { accepted: true, errorCode: null, reason: "No traces to evaluate" },
     };
     if (jsonOutput) {
       console.log(JSON.stringify(result, null, 2));
@@ -226,6 +227,13 @@ export async function runLearnCommand(options: LearnCommandOptions): Promise<num
       `  delta directive:         ${result.replay.deltaDirectiveWins > 0 ? "+" : ""}${result.replay.deltaDirectiveWins}`,
       `  regressions:             ${result.replay.regressions.length}`,
     ];
+
+    lines.push("");
+    lines.push(`Promotion: ${result.promotion.accepted ? "ACCEPTED" : "REJECTED"}`);
+    if (result.promotion.errorCode) {
+      lines.push(`  error code: ${result.promotion.errorCode}`);
+    }
+    lines.push(`  reason: ${result.promotion.reason}`);
 
     if (result.replay.regressions.length > 0) {
       lines.push("");

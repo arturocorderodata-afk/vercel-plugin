@@ -4,9 +4,17 @@ import { join, resolve } from "node:path";
 import {
   createEmptyRoutingPolicy,
   applyPolicyBoosts,
+  applyRulebookBoosts,
   type RoutingPolicyFile,
   type RoutingPolicyScenario,
 } from "../hooks/src/routing-policy.mts";
+import {
+  saveRulebook,
+  rulebookPath,
+  createRule,
+  createEmptyRulebook,
+  type LearnedRoutingRulebook,
+} from "../hooks/src/learned-routing-rulebook.mts";
 import {
   projectPolicyPath,
   sessionExposurePath,
@@ -40,6 +48,10 @@ function cleanupPolicyFile(): void {
 
 function cleanupExposureFile(): void {
   try { unlinkSync(sessionExposurePath(TEST_SESSION)); } catch {}
+}
+
+function cleanupRulebookFile(): void {
+  try { unlinkSync(rulebookPath(TEST_PROJECT)); } catch {}
 }
 
 /** Write a minimal mock verification plan state for the session. */
@@ -108,11 +120,13 @@ function buildPromptPolicy(
 beforeEach(() => {
   cleanupPolicyFile();
   cleanupExposureFile();
+  cleanupRulebookFile();
 });
 
 afterEach(() => {
   cleanupPolicyFile();
   cleanupExposureFile();
+  cleanupRulebookFile();
   cleanupMockPlanState(TEST_SESSION);
 });
 
@@ -541,5 +555,183 @@ describe("user-prompt-submit routing decision trace", () => {
         }
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Learned-routing-rulebook precedence tests for UserPromptSubmit
+// ---------------------------------------------------------------------------
+
+describe("user-prompt-submit rulebook precedence", () => {
+  const PROMPT_SCENARIO: RoutingPolicyScenario = {
+    hook: "UserPromptSubmit",
+    storyKind: null,
+    targetBoundary: null,
+    toolName: "Prompt",
+  };
+
+  function makeRulebook(rules: Array<{
+    scenario: string;
+    skill: string;
+    boost: number;
+    action?: "promote" | "demote";
+  }>): LearnedRoutingRulebook {
+    const rb = createEmptyRulebook("test-sess", T0);
+    for (const r of rules) {
+      rb.rules.push(createRule({
+        scenario: r.scenario,
+        skill: r.skill,
+        action: r.action ?? "promote",
+        boost: r.boost,
+        confidence: 0.9,
+        reason: "replay verified: no regressions",
+        sourceSessionId: "test-sess",
+        promotedAt: T0,
+        evidence: {
+          baselineWins: 4,
+          baselineDirectiveWins: 2,
+          learnedWins: 4,
+          learnedDirectiveWins: 2,
+          regressionCount: 0,
+        },
+      }));
+    }
+    return rb;
+  }
+
+  test("rulebook boost replaces stats-policy boost for matching skill", () => {
+    // Stats-policy: +8 for next-config
+    const policy = buildPromptPolicy("next-config", 5, 4, 2, 0);
+    saveProjectRoutingPolicy(TEST_PROJECT, policy);
+    const loaded = loadProjectRoutingPolicy(TEST_PROJECT);
+
+    // First apply stats-policy
+    const entries = [
+      { skill: "next-config", priority: 8, effectivePriority: 8 },
+      { skill: "deployment", priority: 10, effectivePriority: 10 },
+    ];
+    const boosted = applyPolicyBoosts(entries, loaded, PROMPT_SCENARIO);
+
+    // Verify stats-policy gave +8
+    const nextConfigStats = boosted.find((b) => b.skill === "next-config")!;
+    expect(nextConfigStats.policyBoost).toBe(8);
+
+    // Now apply rulebook — rule gives +5
+    const rulebook = makeRulebook([{
+      scenario: "UserPromptSubmit|none|none|Prompt",
+      skill: "next-config",
+      boost: 5,
+    }]);
+
+    const withRulebook = applyRulebookBoosts(
+      boosted,
+      rulebook,
+      PROMPT_SCENARIO,
+      "/tmp/test-rulebook.json",
+    );
+
+    const nextConfigRule = withRulebook.find((b) => b.skill === "next-config")!;
+    // Rulebook should replace stats-policy: base=8, ruleBoost=5, policyBoost suppressed
+    expect(nextConfigRule.matchedRuleId).toBe("UserPromptSubmit|none|none|Prompt|next-config");
+    expect(nextConfigRule.ruleBoost).toBe(5);
+    expect(nextConfigRule.policyBoost).toBe(0); // suppressed
+    expect(nextConfigRule.effectivePriority).toBe(13); // 8 + 5 (not 8 + 8 + 5)
+
+    // deployment should be unchanged
+    const deployment = withRulebook.find((b) => b.skill === "deployment")!;
+    expect(deployment.matchedRuleId).toBeNull();
+    expect(deployment.ruleBoost).toBe(0);
+    expect(deployment.policyBoost).toBe(0); // no stats-policy either
+  });
+
+  test("route-scoped rulebook rule does not leak to other routes", () => {
+    const rulebook = makeRulebook([{
+      scenario: "UserPromptSubmit|deployment|clientRequest|Prompt",
+      skill: "next-config",
+      boost: 10,
+    }]);
+
+    // Scenario with different storyKind — should NOT match
+    const differentScenario: RoutingPolicyScenario = {
+      hook: "UserPromptSubmit",
+      storyKind: "feature",
+      targetBoundary: "uiRender",
+      toolName: "Prompt",
+    };
+
+    const entries = [
+      {
+        skill: "next-config",
+        priority: 8,
+        effectivePriority: 8,
+        policyBoost: 0,
+        policyReason: null,
+      },
+    ];
+
+    const withRulebook = applyRulebookBoosts(
+      entries,
+      rulebook,
+      differentScenario,
+      "/tmp/test-rulebook.json",
+    );
+
+    expect(withRulebook[0].matchedRuleId).toBeNull();
+    expect(withRulebook[0].ruleBoost).toBe(0);
+    expect(withRulebook[0].effectivePriority).toBe(8); // unchanged
+  });
+
+  test("demote action produces negative boost", () => {
+    const rulebook = makeRulebook([{
+      scenario: "UserPromptSubmit|none|none|Prompt",
+      skill: "next-config",
+      boost: 3,
+      action: "demote",
+    }]);
+
+    const entries = [
+      {
+        skill: "next-config",
+        priority: 8,
+        effectivePriority: 8,
+        policyBoost: 0,
+        policyReason: null,
+      },
+    ];
+
+    const withRulebook = applyRulebookBoosts(
+      entries,
+      rulebook,
+      PROMPT_SCENARIO,
+      "/tmp/test-rulebook.json",
+    );
+
+    expect(withRulebook[0].ruleBoost).toBe(-3);
+    expect(withRulebook[0].effectivePriority).toBe(5); // 8 - 3
+  });
+
+  test("trace ranked entries include rulebook fields with null defaults", () => {
+    const entries = [
+      {
+        skill: "next-config",
+        priority: 8,
+        effectivePriority: 8,
+        policyBoost: 0,
+        policyReason: null,
+      },
+    ];
+
+    const rulebook = createEmptyRulebook("test-sess", T0);
+    const withRulebook = applyRulebookBoosts(
+      entries,
+      rulebook,
+      PROMPT_SCENARIO,
+      "/tmp/test-rulebook.json",
+    );
+
+    expect(withRulebook[0].matchedRuleId).toBeNull();
+    expect(withRulebook[0].ruleBoost).toBe(0);
+    expect(withRulebook[0].ruleReason).toBeNull();
+    expect(withRulebook[0].rulebookPath).toBeNull();
   });
 });

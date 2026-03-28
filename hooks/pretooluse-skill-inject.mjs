@@ -38,11 +38,12 @@ import { createLogger, logDecision } from "./logger.mjs";
 import { trackBaseEvents } from "./telemetry.mjs";
 import { loadCachedPlanResult, selectActiveStory } from "./verification-plan.mjs";
 import { resolveVerificationRuntimeState, buildVerificationEnv } from "./verification-directive.mjs";
-import { applyPolicyBoosts } from "./routing-policy.mjs";
+import { applyPolicyBoosts, applyRulebookBoosts } from "./routing-policy.mjs";
 import {
   appendSkillExposure,
   loadProjectRoutingPolicy
 } from "./routing-policy-ledger.mjs";
+import { loadRulebook, rulebookPath } from "./learned-routing-rulebook.mjs";
 import { buildAttributionDecision } from "./routing-attribution.mjs";
 import { explainPolicyRecall } from "./routing-diagnosis.mjs";
 import {
@@ -608,11 +609,66 @@ function deduplicateSkills({ matchedEntries, matched, toolName, toolInput, injec
       l.debug("policy-boost-skipped", { reason: "no active verification story" });
     }
   }
+  const rulebookBoosted = [];
+  if (cwd) {
+    const rbResult = loadRulebook(cwd);
+    if (rbResult.ok && rbResult.rulebook.rules.length > 0) {
+      const plan = sessionId ? loadCachedPlanResult(sessionId, l) : null;
+      const primaryStory = plan ? selectActiveStory(plan) : null;
+      if (primaryStory) {
+        const rbScenario = {
+          hook: "PreToolUse",
+          storyKind: primaryStory.kind ?? null,
+          targetBoundary: plan?.primaryNextAction?.targetBoundary ?? null,
+          toolName
+        };
+        const rbPath = rulebookPath(cwd);
+        const withRulebook = applyRulebookBoosts(
+          newEntries.map((e) => ({
+            ...e,
+            skill: e.skill,
+            priority: e.priority,
+            effectivePriority: typeof e.effectivePriority === "number" ? e.effectivePriority : e.priority,
+            policyBoost: policyBoosted.find((p) => p.skill === e.skill)?.boost ?? 0,
+            policyReason: policyBoosted.find((p) => p.skill === e.skill)?.reason ?? null
+          })),
+          rbResult.rulebook,
+          rbScenario,
+          rbPath
+        );
+        for (let i = 0; i < newEntries.length; i++) {
+          const rb = withRulebook[i];
+          newEntries[i].effectivePriority = rb.effectivePriority;
+          if (rb.matchedRuleId) {
+            rulebookBoosted.push({
+              skill: rb.skill,
+              matchedRuleId: rb.matchedRuleId,
+              ruleBoost: rb.ruleBoost,
+              ruleReason: rb.ruleReason ?? "",
+              rulebookPath: rb.rulebookPath ?? ""
+            });
+            const pIdx = policyBoosted.findIndex((p) => p.skill === rb.skill);
+            if (pIdx !== -1) {
+              policyBoosted.splice(pIdx, 1);
+            }
+          }
+        }
+        if (rulebookBoosted.length > 0) {
+          l.debug("rulebook-boosted", {
+            scenario: `${rbScenario.hook}|${rbScenario.storyKind ?? "none"}|${rbScenario.targetBoundary ?? "none"}|${rbScenario.toolName}`,
+            boostedSkills: rulebookBoosted
+          });
+        }
+      }
+    } else if (!rbResult.ok) {
+      l.debug("rulebook-load-error", { code: rbResult.error.code, message: rbResult.error.message });
+    }
+  }
   newEntries = rankEntries(newEntries);
   const rankedSkills = newEntries.map((e) => e.skill);
   for (const entry of newEntries) {
     const eff = typeof entry.effectivePriority === "number" ? entry.effectivePriority : entry.priority;
-    const reason = policyBoosted.some((p) => p.skill === entry.skill) ? "policy_boosted" : profilerBoosted.includes(entry.skill) ? "profiler_boosted" : "pattern_match";
+    const reason = rulebookBoosted.some((r) => r.skill === entry.skill) ? "rulebook_boosted" : policyBoosted.some((p) => p.skill === entry.skill) ? "policy_boosted" : profilerBoosted.includes(entry.skill) ? "profiler_boosted" : "pattern_match";
     logDecision(l, {
       hook: "PreToolUse",
       event: "skill_ranked",
@@ -625,7 +681,7 @@ function deduplicateSkills({ matchedEntries, matched, toolName, toolInput, injec
     rankedSkills,
     previouslyInjected: [...injectedSkills]
   });
-  return { newEntries, rankedSkills, vercelJsonRouting, profilerBoosted, setupModeRouting, policyBoosted };
+  return { newEntries, rankedSkills, vercelJsonRouting, profilerBoosted, setupModeRouting, policyBoosted, rulebookBoosted };
 }
 function skillInvocationMessage(skill, platform) {
   return platform === "cursor" ? `Load the /${skill} skill.` : `You must run the Skill(${skill}) tool.`;
@@ -912,7 +968,7 @@ function run() {
     cwd,
     sessionId
   }, log);
-  const { newEntries, rankedSkills, profilerBoosted, policyBoosted } = dedupResult;
+  const { newEntries, rankedSkills, profilerBoosted, policyBoosted, rulebookBoosted } = dedupResult;
   let tsxReviewInjected = false;
   if (tsxReview.triggered && !rankedSkills.includes(TSX_REVIEW_SKILL)) {
     const reviewTemplate = compiledSkills.find((e) => e.skill === TSX_REVIEW_SKILL);
@@ -1393,6 +1449,7 @@ function run() {
     for (const entry of newEntries) {
       const match = matchReasons?.[entry.skill];
       const policy = policyBoosted.find((p) => p.skill === entry.skill);
+      const rb = rulebookBoosted.find((r) => r.skill === entry.skill);
       trackedSkills.add(entry.skill);
       traceRanked.push({
         skill: entry.skill,
@@ -1402,6 +1459,10 @@ function run() {
         profilerBoost: profilerBoosted.includes(entry.skill) ? 5 : 0,
         policyBoost: policy?.boost ?? 0,
         policyReason: policy?.reason ?? null,
+        matchedRuleId: rb?.matchedRuleId ?? null,
+        ruleBoost: rb?.ruleBoost ?? 0,
+        ruleReason: rb?.ruleReason ?? null,
+        rulebookPath: rb?.rulebookPath ?? null,
         summaryOnly: summaryOnly.includes(entry.skill),
         synthetic: syntheticSkills.has(entry.skill),
         droppedReason: droppedByCap.includes(entry.skill) ? "cap_exceeded" : droppedByBudget.includes(entry.skill) ? "budget_exhausted" : null
@@ -1419,6 +1480,10 @@ function run() {
         profilerBoost: 0,
         policyBoost: 0,
         policyReason: null,
+        matchedRuleId: null,
+        ruleBoost: 0,
+        ruleReason: null,
+        rulebookPath: null,
         summaryOnly: summaryOnly.includes(skill),
         synthetic: true,
         droppedReason: droppedByCap.includes(skill) ? "cap_exceeded" : droppedByBudget.includes(skill) ? "budget_exhausted" : null
@@ -1437,6 +1502,10 @@ function run() {
         profilerBoost: profilerBoosted.includes(entry.skill) ? 5 : 0,
         policyBoost: 0,
         policyReason: null,
+        matchedRuleId: null,
+        ruleBoost: 0,
+        ruleReason: null,
+        rulebookPath: null,
         summaryOnly: false,
         synthetic: false,
         droppedReason: "deduped"

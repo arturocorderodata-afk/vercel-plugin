@@ -196,38 +196,70 @@ function distillRulesFromTrace(params) {
     candidate: rules.filter((r) => r.confidence === "candidate").length,
     holdoutFail: rules.filter((r) => r.confidence === "holdout-fail").length
   });
-  const confidenceOrder = {
-    promote: 0,
-    candidate: 1,
-    "holdout-fail": 2
-  };
   rules.sort((a, b) => {
-    const co = (confidenceOrder[a.confidence] ?? 9) - (confidenceOrder[b.confidence] ?? 9);
-    if (co !== 0) return co;
+    const scenarioA = [a.scenario.hook, a.scenario.storyKind ?? "_", a.scenario.targetBoundary ?? "_", a.scenario.toolName, a.scenario.routeScope ?? "_"].join("|");
+    const scenarioB = [b.scenario.hook, b.scenario.storyKind ?? "_", b.scenario.targetBoundary ?? "_", b.scenario.toolName, b.scenario.routeScope ?? "_"].join("|");
+    const sc = scenarioA.localeCompare(scenarioB);
+    if (sc !== 0) return sc;
     const sk = a.skill.localeCompare(b.skill);
     if (sk !== 0) return sk;
     return a.id.localeCompare(b.id);
   });
   const replay = replayLearnedRules({ traces, rules });
-  if (replay.regressions.length > 0) {
+  let promotion;
+  const rejected = replay.regressions.length > 0 || replay.learnedWins < replay.baselineWins;
+  if (rejected) {
     for (const rule of rules) {
       if (rule.confidence === "promote") {
         rule.confidence = "holdout-fail";
         rule.promotedAt = null;
       }
     }
+    const reasons = [];
+    if (replay.regressions.length > 0) {
+      reasons.push(`${replay.regressions.length} regression(s) detected`);
+    }
+    if (replay.learnedWins < replay.baselineWins) {
+      reasons.push(`learned wins (${replay.learnedWins}) < baseline wins (${replay.baselineWins})`);
+    }
+    promotion = {
+      accepted: false,
+      errorCode: "RULEBOOK_PROMOTION_REJECTED_REGRESSION",
+      reason: `Promotion rejected: ${reasons.join("; ")}`
+    };
+    logger.summary("distill_promotion_rejected", {
+      errorCode: promotion.errorCode,
+      reason: promotion.reason,
+      regressions: replay.regressions.length,
+      learnedWins: replay.learnedWins,
+      baselineWins: replay.baselineWins
+    });
+  } else {
+    const promotedCount = rules.filter((r) => r.confidence === "promote").length;
+    promotion = {
+      accepted: true,
+      errorCode: null,
+      reason: `Promotion accepted: ${promotedCount} rule(s) promoted, ${replay.learnedWins} learned wins, 0 regressions`
+    };
+    logger.summary("distill_promotion_accepted", {
+      promotedCount,
+      learnedWins: replay.learnedWins,
+      baselineWins: replay.baselineWins
+    });
   }
   logger.summary("distill_complete", {
     ruleCount: rules.length,
     replayDelta: replay.deltaWins,
-    regressions: replay.regressions.length
+    regressions: replay.regressions.length,
+    promotionAccepted: promotion.accepted
   });
   return {
     version: 1,
     generatedAt,
     projectRoot,
     rules,
-    replay
+    replay,
+    promotion
   };
 }
 export {

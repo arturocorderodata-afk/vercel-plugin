@@ -46,7 +46,7 @@ function replayLearnedRules(params) {
   for (const trace of traces) {
     const sKey = scenarioKeyFromTrace(trace);
     const promotedSkills = promotedByScenario.get(sKey);
-    const verifiedSuccess = trace.verification !== null && trace.injectedSkills.length > 0;
+    const verifiedSuccess = trace.verification?.observedBoundary != null && trace.injectedSkills.length > 0;
     const directiveAdherent = verifiedSuccess && trace.verification?.matchedSuggestedAction === true;
     if (verifiedSuccess) baselineWins++;
     if (directiveAdherent) baselineDirectiveWins++;

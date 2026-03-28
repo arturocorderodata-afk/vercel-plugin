@@ -31,6 +31,17 @@ export interface DecisionCapsuleAttribution {
   loadedSkills: string[];
 }
 
+export interface DecisionCapsuleRulebookProvenance {
+  /** The rule ID that matched, e.g. "PreToolUse|flow-verification|uiRender|Bash|agent-browser-verify" */
+  matchedRuleId: string;
+  /** Boost applied by the matched rule */
+  ruleBoost: number;
+  /** Human-readable reason from the rule */
+  ruleReason: string;
+  /** Absolute path to the rulebook JSON file on disk */
+  rulebookPath: string;
+}
+
 export interface DecisionCapsuleIssue {
   code: string;
   severity: "info" | "warning" | "error";
@@ -61,6 +72,7 @@ export interface DecisionCapsuleV1 {
   injectedSkills: string[];
   ranked: RankedSkillTrace[];
   attribution: DecisionCapsuleAttribution | null;
+  rulebookProvenance: DecisionCapsuleRulebookProvenance | null;
   verification: RoutingDecisionTrace["verification"];
   reasons: Record<string, DecisionCapsuleReason>;
   skippedReasons: string[];
@@ -154,6 +166,26 @@ function deriveIssues(input: {
   return issues;
 }
 
+/**
+ * Extract the first rulebook-matched entry from ranked traces.
+ * Returns null when no rule fired for any ranked skill.
+ */
+function deriveRulebookProvenance(
+  trace: RoutingDecisionTrace,
+): DecisionCapsuleRulebookProvenance | null {
+  for (const entry of trace.ranked) {
+    if (entry.matchedRuleId && entry.rulebookPath) {
+      return {
+        matchedRuleId: entry.matchedRuleId,
+        ruleBoost: entry.ruleBoost,
+        ruleReason: entry.ruleReason ?? "",
+        rulebookPath: entry.rulebookPath,
+      };
+    }
+  }
+  return null;
+}
+
 export function buildDecisionCapsule(input: {
   sessionId: string | null;
   hook: DecisionHook;
@@ -195,6 +227,7 @@ export function buildDecisionCapsule(input: {
     injectedSkills: [...input.trace.injectedSkills],
     ranked: [...input.trace.ranked],
     attribution: input.attribution ?? null,
+    rulebookProvenance: deriveRulebookProvenance(input.trace),
     verification: input.trace.verification,
     reasons: { ...(input.reasons ?? {}) },
     skippedReasons: [...input.trace.skippedReasons],

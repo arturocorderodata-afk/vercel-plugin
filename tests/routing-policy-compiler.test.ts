@@ -2,21 +2,25 @@ import { describe, test, expect } from "bun:test";
 import {
   compilePolicyPatch,
   applyPolicyPatch,
+  evaluatePromotionGate,
   type PolicyPatchReport,
   type PolicyPatchEntry,
   type PromotionArtifact,
+  type PromotionGateResult,
 } from "../hooks/src/routing-policy-compiler.mts";
 import {
   createEmptyRoutingPolicy,
   recordExposure,
   recordOutcome,
   derivePolicyBoost,
+  applyRulebookBoosts,
   type RoutingPolicyFile,
 } from "../hooks/src/routing-policy.mts";
 import type {
   RoutingReplayReport,
   RoutingRecommendation,
 } from "../hooks/src/routing-replay.mts";
+import type { ReplayResult } from "../hooks/src/rule-distillation.mts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -516,7 +520,7 @@ describe("routing-policy-compiler", () => {
       expect(artifact.rules[0].scenario).toBe(SCENARIO_A);
     });
 
-    test("demote: produces PromotionArtifact with boost -2", () => {
+    test("demote: produces PromotionArtifact with positive boost magnitude", () => {
       const patch: PolicyPatchReport = {
         version: 1,
         sessionId: "apply-test",
@@ -539,7 +543,65 @@ describe("routing-policy-compiler", () => {
       expect(artifact.applied).toBe(1);
       expect(artifact.rules).toHaveLength(1);
       expect(artifact.rules[0].action).toBe("demote");
-      expect(artifact.rules[0].boost).toBe(-2);
+      expect(artifact.rules[0].boost).toBe(2);
+    });
+
+    test("compiler-produced demote rule lowers runtime priority", () => {
+      const patch: PolicyPatchReport = {
+        version: 1,
+        sessionId: "apply-test",
+        patchCount: 1,
+        entries: [
+          {
+            scenario: SCENARIO_A,
+            skill: "skill-b",
+            action: "demote",
+            currentBoost: 0,
+            proposedBoost: -2,
+            delta: -2,
+            confidence: 1.0,
+            reason: "test",
+          },
+        ],
+      };
+
+      const artifact = applyPolicyPatch(patch, T1);
+      const gate = evaluatePromotionGate({
+        artifact,
+        replay: {
+          baselineWins: 1,
+          baselineDirectiveWins: 1,
+          learnedWins: 1,
+          learnedDirectiveWins: 1,
+          deltaWins: 0,
+          deltaDirectiveWins: 0,
+          regressions: [],
+        },
+      });
+
+      expect(gate.accepted).toBe(true);
+      if (!gate.rulebook) return;
+
+      const boosted = applyRulebookBoosts(
+        [{
+          skill: "skill-b",
+          priority: 8,
+          effectivePriority: 8,
+          policyBoost: 0,
+          policyReason: null,
+        }],
+        gate.rulebook,
+        {
+          hook: "PreToolUse",
+          storyKind: "flow-verification",
+          targetBoundary: "uiRender",
+          toolName: "Bash",
+        },
+        "/tmp/test-rulebook.json",
+      );
+
+      expect(boosted[0].ruleBoost).toBe(-2);
+      expect(boosted[0].effectivePriority).toBe(6);
     });
 
     test("investigate: skipped, not included in rules", () => {
@@ -783,5 +845,249 @@ describe("routing-policy-compiler", () => {
     );
 
     expect(patch.entries[0].reason).toBe(reason);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Promotion gate
+// ---------------------------------------------------------------------------
+
+describe("evaluatePromotionGate", () => {
+  function makeArtifact(
+    overrides: Partial<PromotionArtifact> = {},
+  ): PromotionArtifact {
+    return {
+      version: 1,
+      sessionId: "gate-test",
+      promotedAt: T1,
+      applied: 1,
+      rules: [
+        {
+          scenario: SCENARIO_A,
+          skill: "agent-browser-verify",
+          action: "promote",
+          boost: 8,
+          confidence: 0.95,
+          reason: "4/4 wins",
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  function makeReplay(overrides: Partial<ReplayResult> = {}): ReplayResult {
+    return {
+      baselineWins: 4,
+      baselineDirectiveWins: 2,
+      learnedWins: 4,
+      learnedDirectiveWins: 2,
+      deltaWins: 0,
+      deltaDirectiveWins: 0,
+      regressions: [],
+      ...overrides,
+    };
+  }
+
+  // -----------------------------------------------------------------------
+  // Acceptance
+  // -----------------------------------------------------------------------
+
+  test("accepts when no regressions and learnedWins >= baselineWins", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay: makeReplay(),
+    });
+    expect(result.accepted).toBe(true);
+    expect(result.errorCode).toBeNull();
+    expect(result.rulebook).not.toBeNull();
+    expect(result.rulebook!.rules).toHaveLength(1);
+    expect(result.rulebook!.rules[0].skill).toBe("agent-browser-verify");
+    expect(result.rulebook!.rules[0].action).toBe("promote");
+  });
+
+  test("accepted rulebook has deterministic rule IDs", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay: makeReplay(),
+    });
+    expect(result.rulebook!.rules[0].id).toBe(
+      `${SCENARIO_A}|agent-browser-verify`,
+    );
+  });
+
+  test("accepted rulebook evidence matches replay", () => {
+    const replay = makeReplay({
+      baselineWins: 6,
+      baselineDirectiveWins: 3,
+      learnedWins: 7,
+      learnedDirectiveWins: 4,
+    });
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay,
+    });
+    const evidence = result.rulebook!.rules[0].evidence;
+    expect(evidence.baselineWins).toBe(6);
+    expect(evidence.baselineDirectiveWins).toBe(3);
+    expect(evidence.learnedWins).toBe(7);
+    expect(evidence.learnedDirectiveWins).toBe(4);
+    expect(evidence.regressionCount).toBe(0);
+  });
+
+  test("accepted rulebook sessionId and createdAt from artifact", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact({ sessionId: "my-session", promotedAt: T0 }),
+      replay: makeReplay(),
+    });
+    expect(result.rulebook!.sessionId).toBe("my-session");
+    expect(result.rulebook!.createdAt).toBe(T0);
+  });
+
+  test("accepts when learnedWins > baselineWins (improvement)", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay: makeReplay({ learnedWins: 6, baselineWins: 4, deltaWins: 2 }),
+    });
+    expect(result.accepted).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // Rejection: regressions
+  // -----------------------------------------------------------------------
+
+  test("rejects when regressions > 0", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay: makeReplay({ regressions: ["d1", "d2"] }),
+    });
+    expect(result.accepted).toBe(false);
+    expect(result.errorCode).toBe("RULEBOOK_PROMOTION_REJECTED_REGRESSION");
+    expect(result.rulebook).toBeNull();
+    expect(result.reason).toContain("regression");
+  });
+
+  test("rejects with single regression", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay: makeReplay({ regressions: ["d1"] }),
+    });
+    expect(result.accepted).toBe(false);
+    expect(result.errorCode).toBe("RULEBOOK_PROMOTION_REJECTED_REGRESSION");
+  });
+
+  // -----------------------------------------------------------------------
+  // Rejection: learnedWins < baselineWins
+  // -----------------------------------------------------------------------
+
+  test("rejects when learnedWins < baselineWins", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay: makeReplay({
+        baselineWins: 5,
+        learnedWins: 3,
+        deltaWins: -2,
+        regressions: [],
+      }),
+    });
+    expect(result.accepted).toBe(false);
+    expect(result.errorCode).toBe("RULEBOOK_PROMOTION_REJECTED_REGRESSION");
+    expect(result.rulebook).toBeNull();
+    expect(result.reason).toContain("learned wins");
+    expect(result.reason).toContain("baseline wins");
+  });
+
+  // -----------------------------------------------------------------------
+  // Pure function / determinism
+  // -----------------------------------------------------------------------
+
+  test("same inputs produce identical output", () => {
+    const artifact = makeArtifact();
+    const replay = makeReplay();
+    const r1 = evaluatePromotionGate({ artifact, replay });
+    const r2 = evaluatePromotionGate({ artifact, replay });
+    expect(JSON.stringify(r1)).toBe(JSON.stringify(r2));
+  });
+
+  test("does not mutate the input artifact", () => {
+    const artifact = makeArtifact();
+    const snapshot = JSON.stringify(artifact);
+    evaluatePromotionGate({ artifact, replay: makeReplay() });
+    expect(JSON.stringify(artifact)).toBe(snapshot);
+  });
+
+  // -----------------------------------------------------------------------
+  // Deterministic ordering
+  // -----------------------------------------------------------------------
+
+  test("multi-rule accepted rulebook has deterministic ordering", () => {
+    const artifact = makeArtifact({
+      rules: [
+        { scenario: SCENARIO_B, skill: "z-skill", action: "promote", boost: 8, confidence: 0.9, reason: "test" },
+        { scenario: SCENARIO_A, skill: "b-skill", action: "promote", boost: 8, confidence: 0.9, reason: "test" },
+        { scenario: SCENARIO_A, skill: "a-skill", action: "promote", boost: 8, confidence: 0.9, reason: "test" },
+      ],
+      applied: 3,
+    });
+    const result = evaluatePromotionGate({
+      artifact,
+      replay: makeReplay(),
+    });
+    // Rules should be in the order they came from the artifact;
+    // serialization via serializeRulebook handles final ordering
+    expect(result.rulebook!.rules).toHaveLength(3);
+  });
+
+  // -----------------------------------------------------------------------
+  // replay is always returned
+  // -----------------------------------------------------------------------
+
+  test("replay is returned in both accepted and rejected results", () => {
+    const replay = makeReplay({ baselineWins: 10, learnedWins: 10 });
+    const accepted = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay,
+    });
+    expect(accepted.replay).toBe(replay);
+
+    const rejectedReplay = makeReplay({ regressions: ["d1"] });
+    const rejected = evaluatePromotionGate({
+      artifact: makeArtifact(),
+      replay: rejectedReplay,
+    });
+    expect(rejected.replay).toBe(rejectedReplay);
+  });
+
+  // -----------------------------------------------------------------------
+  // Empty artifact
+  // -----------------------------------------------------------------------
+
+  test("empty artifact accepted produces empty rulebook", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact({ rules: [], applied: 0 }),
+      replay: makeReplay({ baselineWins: 0, learnedWins: 0 }),
+    });
+    expect(result.accepted).toBe(true);
+    expect(result.rulebook!.rules).toHaveLength(0);
+  });
+
+  test("accepted demote rulebook preserves positive stored magnitude", () => {
+    const result = evaluatePromotionGate({
+      artifact: makeArtifact({
+        applied: 1,
+        rules: [{
+          scenario: SCENARIO_A,
+          skill: "agent-browser-verify",
+          action: "demote",
+          boost: 2,
+          confidence: 0.95,
+          reason: "1/10 wins",
+        }],
+      }),
+      replay: makeReplay(),
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.rulebook!.rules[0].action).toBe("demote");
+    expect(result.rulebook!.rules[0].boost).toBe(2);
   });
 });

@@ -419,6 +419,36 @@ describe("replayLearnedRules — regressions", () => {
     });
     expect(result.regressions).toEqual([]);
   });
+
+  test("learnedWins < baselineWins when promoted rules miss verified wins", () => {
+    // 3 baseline wins, but promoted rule covers a different skill → 0 learned wins
+    const result = replayLearnedRules({
+      traces: [
+        verifiedTrace("d1", ["skill-a"]),
+        verifiedTrace("d2", ["skill-a"]),
+        verifiedTrace("d3", ["skill-a"]),
+      ],
+      rules: [makeRule({ id: "r1", skill: "skill-b" })],
+    });
+    expect(result.baselineWins).toBe(3);
+    expect(result.learnedWins).toBe(0);
+    expect(result.learnedWins).toBeLessThan(result.baselineWins);
+    expect(result.regressions.length).toBe(3);
+  });
+
+  test("learnedWins equals baselineWins when promoted rules cover all wins", () => {
+    const result = replayLearnedRules({
+      traces: [
+        verifiedTrace("d1", ["skill-a"]),
+        verifiedTrace("d2", ["skill-a"]),
+      ],
+      rules: [makeRule({ id: "r1", skill: "skill-a" })],
+    });
+    expect(result.baselineWins).toBe(2);
+    expect(result.learnedWins).toBe(2);
+    expect(result.learnedWins).toBeGreaterThanOrEqual(result.baselineWins);
+    expect(result.regressions).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

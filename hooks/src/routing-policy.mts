@@ -3,7 +3,17 @@
  *
  * Records skill exposures, resolves them against verification-boundary
  * outcomes, and applies bounded policy boosts during skill ranking.
+ *
+ * Precedence rule: when a learned-routing-rulebook exists and contains a
+ * matching rule for a (scenario, skill) pair, the rulebook boost is used
+ * and the stats-policy boost is suppressed for that skill. This prevents
+ * double-boosting from both systems.
  */
+
+import type {
+  LearnedRoutingRulebook,
+  LearnedRoutingRule,
+} from "./learned-routing-rulebook.mjs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -239,6 +249,106 @@ export function applyPolicyBoosts<T extends RankableSkill>(
       policyReason: stats && scenario
         ? `${scenario}: ${stats.wins} wins / ${stats.exposures} exposures, ${stats.directiveWins} directive wins, ${stats.staleMisses} stale misses`
         : null,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Rulebook match — find a matching learned rule for a (scenario, skill) pair
+// ---------------------------------------------------------------------------
+
+export interface RulebookMatchResult {
+  rule: LearnedRoutingRule;
+  matchedScenario: string;
+}
+
+/**
+ * Look up a matching rulebook rule for a skill in a given scenario.
+ * Checks scenario key candidates in precedence order (route-scoped first,
+ * then wildcard, then legacy). Only "promote" rules contribute positive
+ * boosts; "demote" rules contribute negative boosts.
+ */
+export function matchRulebookRule(
+  rulebook: LearnedRoutingRulebook,
+  scenarioInput: RoutingPolicyScenario,
+  skill: string,
+): RulebookMatchResult | null {
+  if (rulebook.rules.length === 0) return null;
+
+  for (const key of scenarioKeyCandidates(scenarioInput)) {
+    const rule = rulebook.rules.find(
+      (r) => r.scenario === key && r.skill === skill,
+    );
+    if (rule) return { rule, matchedScenario: key };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Apply rulebook boosts with precedence over stats-policy
+// ---------------------------------------------------------------------------
+
+export interface RulebookBoostExplanation {
+  skill: string;
+  matchedRuleId: string;
+  ruleBoost: number;
+  ruleReason: string;
+  rulebookPath: string;
+}
+
+/**
+ * Apply learned-rulebook boosts with explicit precedence over stats-policy.
+ *
+ * Precedence rule: when a rulebook rule matches a (scenario, skill) pair,
+ * the rulebook boost replaces the stats-policy boost. The stats-policy
+ * boost is zeroed out for that skill to prevent double-boosting.
+ *
+ * Skills without a matching rule keep their stats-policy boost unchanged.
+ */
+export function applyRulebookBoosts<
+  T extends RankableSkill & { policyBoost: number; policyReason: string | null },
+>(
+  entries: T[],
+  rulebook: LearnedRoutingRulebook,
+  scenarioInput: RoutingPolicyScenario,
+  rulebookFilePath: string,
+): Array<
+  T & {
+    matchedRuleId: string | null;
+    ruleBoost: number;
+    ruleReason: string | null;
+    rulebookPath: string | null;
+  }
+> {
+  return entries.map((entry) => {
+    const match = matchRulebookRule(rulebook, scenarioInput, entry.skill);
+    if (!match) {
+      return {
+        ...entry,
+        matchedRuleId: null,
+        ruleBoost: 0,
+        ruleReason: null,
+        rulebookPath: null,
+      };
+    }
+
+    const { rule } = match;
+    const ruleBoost = rule.action === "promote" ? rule.boost : -rule.boost;
+
+    // Precedence: subtract old stats-policy boost, apply rulebook boost instead
+    const base = (typeof entry.effectivePriority === "number"
+      ? entry.effectivePriority
+      : entry.priority) - entry.policyBoost;
+
+    return {
+      ...entry,
+      effectivePriority: base + ruleBoost,
+      policyBoost: 0, // suppressed — rulebook takes precedence
+      policyReason: null,
+      matchedRuleId: rule.id,
+      ruleBoost,
+      ruleReason: rule.reason,
+      rulebookPath: rulebookFilePath,
     };
   });
 }

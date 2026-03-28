@@ -63,12 +63,19 @@ export interface ReplayResult {
   regressions: string[];
 }
 
+export interface PromotionStatus {
+  accepted: boolean;
+  errorCode: string | null;
+  reason: string;
+}
+
 export interface LearnedRoutingRulesFile {
   version: 1;
   generatedAt: string;
   projectRoot: string;
   rules: LearnedRoutingRule[];
   replay: ReplayResult;
+  promotion: PromotionStatus;
 }
 
 // ---------------------------------------------------------------------------
@@ -376,15 +383,12 @@ export function distillRulesFromTrace(params: DistillRulesParams): LearnedRoutin
     holdoutFail: rules.filter((r) => r.confidence === "holdout-fail").length,
   });
 
-  // Phase 3: Sort deterministically — by confidence (promote first), then skill, then id
-  const confidenceOrder: Record<string, number> = {
-    promote: 0,
-    candidate: 1,
-    "holdout-fail": 2,
-  };
+  // Phase 3: Sort deterministically — by scenario key, then skill, then rule id
   rules.sort((a, b) => {
-    const co = (confidenceOrder[a.confidence] ?? 9) - (confidenceOrder[b.confidence] ?? 9);
-    if (co !== 0) return co;
+    const scenarioA = [a.scenario.hook, a.scenario.storyKind ?? "_", a.scenario.targetBoundary ?? "_", a.scenario.toolName, a.scenario.routeScope ?? "_"].join("|");
+    const scenarioB = [b.scenario.hook, b.scenario.storyKind ?? "_", b.scenario.targetBoundary ?? "_", b.scenario.toolName, b.scenario.routeScope ?? "_"].join("|");
+    const sc = scenarioA.localeCompare(scenarioB);
+    if (sc !== 0) return sc;
     const sk = a.skill.localeCompare(b.skill);
     if (sk !== 0) return sk;
     return a.id.localeCompare(b.id);
@@ -393,20 +397,60 @@ export function distillRulesFromTrace(params: DistillRulesParams): LearnedRoutin
   // Phase 4: Replay gate
   const replay = replayLearnedRules({ traces, rules });
 
-  // Downgrade promoted rules that caused regressions
-  if (replay.regressions.length > 0) {
+  // Determine promotion status
+  let promotion: PromotionStatus;
+  const rejected = replay.regressions.length > 0 || replay.learnedWins < replay.baselineWins;
+
+  if (rejected) {
+    // Downgrade promoted rules
     for (const rule of rules) {
       if (rule.confidence === "promote") {
         rule.confidence = "holdout-fail";
         rule.promotedAt = null;
       }
     }
+
+    const reasons: string[] = [];
+    if (replay.regressions.length > 0) {
+      reasons.push(`${replay.regressions.length} regression(s) detected`);
+    }
+    if (replay.learnedWins < replay.baselineWins) {
+      reasons.push(`learned wins (${replay.learnedWins}) < baseline wins (${replay.baselineWins})`);
+    }
+
+    promotion = {
+      accepted: false,
+      errorCode: "RULEBOOK_PROMOTION_REJECTED_REGRESSION",
+      reason: `Promotion rejected: ${reasons.join("; ")}`,
+    };
+
+    logger.summary("distill_promotion_rejected", {
+      errorCode: promotion.errorCode,
+      reason: promotion.reason,
+      regressions: replay.regressions.length,
+      learnedWins: replay.learnedWins,
+      baselineWins: replay.baselineWins,
+    });
+  } else {
+    const promotedCount = rules.filter((r) => r.confidence === "promote").length;
+    promotion = {
+      accepted: true,
+      errorCode: null,
+      reason: `Promotion accepted: ${promotedCount} rule(s) promoted, ${replay.learnedWins} learned wins, 0 regressions`,
+    };
+
+    logger.summary("distill_promotion_accepted", {
+      promotedCount,
+      learnedWins: replay.learnedWins,
+      baselineWins: replay.baselineWins,
+    });
   }
 
   logger.summary("distill_complete", {
     ruleCount: rules.length,
     replayDelta: replay.deltaWins,
     regressions: replay.regressions.length,
+    promotionAccepted: promotion.accepted,
   });
 
   return {
@@ -415,6 +459,7 @@ export function distillRulesFromTrace(params: DistillRulesParams): LearnedRoutin
     projectRoot,
     rules,
     replay,
+    promotion,
   };
 }
 

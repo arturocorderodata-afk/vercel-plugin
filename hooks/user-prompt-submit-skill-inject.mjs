@@ -28,11 +28,12 @@ import { createLogger, logDecision } from "./logger.mjs";
 import { trackBaseEvents } from "./telemetry.mjs";
 import { loadCachedPlanResult } from "./verification-plan.mjs";
 import { resolvePromptVerificationBinding } from "./prompt-verification-binding.mjs";
-import { applyPolicyBoosts } from "./routing-policy.mjs";
+import { applyPolicyBoosts, applyRulebookBoosts } from "./routing-policy.mjs";
 import {
   appendSkillExposure,
   loadProjectRoutingPolicy
 } from "./routing-policy-ledger.mjs";
+import { loadRulebook, rulebookPath } from "./learned-routing-rulebook.mjs";
 import { applyPromptPolicyRecall } from "./prompt-policy-recall.mjs";
 import { buildAttributionDecision } from "./routing-attribution.mjs";
 import {
@@ -829,6 +830,59 @@ function run() {
       reason: !promptBinding.storyId ? "no_active_verification_story" : "no_target_boundary"
     });
   }
+  const promptRulebookBoosted = [];
+  if (cwd && report.selectedSkills.length > 0 && promptBinding.storyId && promptBinding.targetBoundary) {
+    const rbResult = loadRulebook(cwd);
+    if (rbResult.ok && rbResult.rulebook.rules.length > 0) {
+      const rbScenario = {
+        hook: "UserPromptSubmit",
+        storyKind: promptBinding.storyKind,
+        targetBoundary: promptBinding.targetBoundary,
+        toolName: "Prompt"
+      };
+      const rbPath = rulebookPath(cwd);
+      const rankable = report.selectedSkills.map((skill) => {
+        const r = report.perSkillResults[skill];
+        const pb = promptPolicyBoosted.find((p) => p.skill === skill);
+        return {
+          skill,
+          priority: r?.score ?? 0,
+          effectivePriority: (r?.score ?? 0) + (pb?.boost ?? 0),
+          policyBoost: pb?.boost ?? 0,
+          policyReason: pb?.reason ?? null
+        };
+      });
+      const withRulebook = applyRulebookBoosts(rankable, rbResult.rulebook, rbScenario, rbPath);
+      withRulebook.sort(
+        (a, b) => b.effectivePriority - a.effectivePriority || a.skill.localeCompare(b.skill)
+      );
+      report.selectedSkills.length = 0;
+      report.selectedSkills.push(...withRulebook.map((r) => r.skill));
+      for (const rb of withRulebook) {
+        if (rb.matchedRuleId) {
+          promptRulebookBoosted.push({
+            skill: rb.skill,
+            matchedRuleId: rb.matchedRuleId,
+            ruleBoost: rb.ruleBoost,
+            ruleReason: rb.ruleReason ?? "",
+            rulebookPath: rb.rulebookPath ?? ""
+          });
+          const pIdx = promptPolicyBoosted.findIndex((p) => p.skill === rb.skill);
+          if (pIdx !== -1) {
+            promptPolicyBoosted.splice(pIdx, 1);
+          }
+        }
+      }
+      if (promptRulebookBoosted.length > 0) {
+        log.debug("prompt-rulebook-boosted", {
+          scenario: `${rbScenario.hook}|${rbScenario.storyKind ?? "none"}|${rbScenario.targetBoundary}|Prompt`,
+          boostedSkills: promptRulebookBoosted
+        });
+      }
+    } else if (!rbResult.ok) {
+      log.debug("prompt-rulebook-load-error", { code: rbResult.error.code, message: rbResult.error.message });
+    }
+  }
   const tInject = log.active ? log.now() : 0;
   const injectedSkills = dedupOff ? /* @__PURE__ */ new Set() : parseSeenSkills(seenState);
   const injectResult = injectSkills(report.selectedSkills, {
@@ -981,15 +1035,22 @@ function run() {
       ranked: report.selectedSkills.map((skill) => {
         const result = report.perSkillResults[skill];
         const policy = promptPolicyBoosted.find((p) => p.skill === skill);
+        const rb = promptRulebookBoosted.find((r) => r.skill === skill);
         const synthetic = promptPolicyRecallSynthetic.has(skill);
+        const baseScore = result?.score ?? 0;
+        const effectiveBoost = rb ? rb.ruleBoost : policy?.boost ?? 0;
         return {
           skill,
-          basePriority: result?.score ?? 0,
-          effectivePriority: (result?.score ?? 0) + (policy?.boost ?? 0),
+          basePriority: baseScore,
+          effectivePriority: baseScore + effectiveBoost,
           pattern: synthetic ? { type: "policy-recall", value: promptPolicyRecallReasons[skill] } : result?.reason ? { type: "prompt-signal", value: result.reason } : null,
           profilerBoost: 0,
           policyBoost: policy?.boost ?? 0,
           policyReason: policy?.reason ?? null,
+          matchedRuleId: rb?.matchedRuleId ?? null,
+          ruleBoost: rb?.ruleBoost ?? 0,
+          ruleReason: rb?.ruleReason ?? null,
+          rulebookPath: rb?.rulebookPath ?? null,
           summaryOnly: summaryOnly.includes(skill),
           synthetic,
           droppedReason: droppedByCap.includes(skill) ? "cap_exceeded" : droppedByBudget.includes(skill) ? "budget_exhausted" : null

@@ -49,6 +49,14 @@ export interface RankedSkillTrace {
   profilerBoost: number;
   policyBoost: number;
   policyReason: string | null;
+  /** Matched learned-rulebook rule ID, or null when no rule applies. */
+  matchedRuleId: string | null;
+  /** Boost applied from a learned-rulebook rule (0 when no rule matches). */
+  ruleBoost: number;
+  /** Human-readable reason from the matched rulebook rule. */
+  ruleReason: string | null;
+  /** Path to the rulebook file that provided the matched rule. */
+  rulebookPath: string | null;
   summaryOnly: boolean;
   synthetic: boolean;
   droppedReason:

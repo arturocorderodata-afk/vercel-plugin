@@ -43,6 +43,14 @@ export function formatDecisionCapsule(capsule: DecisionCapsuleV1): string {
     `Story: ${capsule.activeStory.kind ?? "none"}${capsule.activeStory.route ? ` (${capsule.activeStory.route})` : ""}`,
     `Injected: ${capsule.injectedSkills.join(", ") || "none"}`,
     `Candidate: ${capsule.attribution?.candidateSkill ?? "none"}`,
+    `Rule: ${capsule.rulebookProvenance?.matchedRuleId ?? "none"}`,
+    ...(capsule.rulebookProvenance
+      ? [
+          `Rule Boost: ${capsule.rulebookProvenance.ruleBoost}`,
+          `Rule Reason: ${capsule.rulebookProvenance.ruleReason}`,
+          `Rulebook: ${capsule.rulebookProvenance.rulebookPath}`,
+        ]
+      : []),
     `SHA256: ${capsule.sha256}`,
   ];
 

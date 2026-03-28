@@ -68,6 +68,19 @@ function deriveIssues(input) {
   }
   return issues;
 }
+function deriveRulebookProvenance(trace) {
+  for (const entry of trace.ranked) {
+    if (entry.matchedRuleId && entry.rulebookPath) {
+      return {
+        matchedRuleId: entry.matchedRuleId,
+        ruleBoost: entry.ruleBoost,
+        ruleReason: entry.ruleReason ?? "",
+        rulebookPath: entry.rulebookPath
+      };
+    }
+  }
+  return null;
+}
 function buildDecisionCapsule(input) {
   const platform = input.platform === "cursor" || input.platform === "claude-code" ? input.platform : "unknown";
   const base = {
@@ -93,6 +106,7 @@ function buildDecisionCapsule(input) {
     injectedSkills: [...input.trace.injectedSkills],
     ranked: [...input.trace.ranked],
     attribution: input.attribution ?? null,
+    rulebookProvenance: deriveRulebookProvenance(input.trace),
     verification: input.trace.verification,
     reasons: { ...input.reasons ?? {} },
     skippedReasons: [...input.trace.skippedReasons],

@@ -48,6 +48,10 @@ function makeTrace(
         profilerBoost: 5,
         policyBoost: 0,
         policyReason: null,
+        matchedRuleId: null,
+        ruleBoost: 0,
+        ruleReason: null,
+        rulebookPath: null,
         summaryOnly: false,
         synthetic: false,
         droppedReason: null,
@@ -311,6 +315,98 @@ describe("routing decision capsule", () => {
     });
     const codes = capsule.issues.map((i) => i.code);
     expect(codes).toContain("verification_blocked");
+  });
+
+  test("rulebookProvenance is null when no rule fires", () => {
+    const trace = makeTrace();
+    const capsule = buildDecisionCapsule({
+      sessionId: SESSION_ID,
+      hook: "PreToolUse",
+      createdAt: trace.timestamp,
+      toolName: "Read",
+      toolTarget: "app/page.tsx",
+      trace,
+      directive: null,
+    });
+    expect(capsule.rulebookProvenance).toBeNull();
+  });
+
+  test("rulebookProvenance is populated when a ranked entry has a matched rule", () => {
+    const trace = makeTrace({
+      ranked: [
+        {
+          skill: "agent-browser-verify",
+          basePriority: 6,
+          effectivePriority: 14,
+          pattern: { type: "bash", value: "vercel dev" },
+          profilerBoost: 0,
+          policyBoost: 0,
+          policyReason: null,
+          matchedRuleId: "PreToolUse|flow-verification|uiRender|Bash|agent-browser-verify",
+          ruleBoost: 8,
+          ruleReason: "replay verified: no regressions, learned routing matched winning skill",
+          rulebookPath: "/tmp/vercel-plugin-routing-policy-abc-rulebook.json",
+          summaryOnly: false,
+          synthetic: false,
+          droppedReason: null,
+        },
+      ],
+    });
+    const capsule = buildDecisionCapsule({
+      sessionId: SESSION_ID,
+      hook: "PreToolUse",
+      createdAt: trace.timestamp,
+      toolName: "Bash",
+      toolTarget: "vercel dev",
+      trace,
+      directive: makeDirective(),
+    });
+    expect(capsule.rulebookProvenance).not.toBeNull();
+    expect(capsule.rulebookProvenance!.matchedRuleId).toBe(
+      "PreToolUse|flow-verification|uiRender|Bash|agent-browser-verify",
+    );
+    expect(capsule.rulebookProvenance!.ruleBoost).toBe(8);
+    expect(capsule.rulebookProvenance!.ruleReason).toBe(
+      "replay verified: no regressions, learned routing matched winning skill",
+    );
+    expect(capsule.rulebookProvenance!.rulebookPath).toBe(
+      "/tmp/vercel-plugin-routing-policy-abc-rulebook.json",
+    );
+  });
+
+  test("rulebookProvenance round-trips through persist and read", () => {
+    const trace = makeTrace({
+      ranked: [
+        {
+          skill: "agent-browser-verify",
+          basePriority: 6,
+          effectivePriority: 14,
+          pattern: { type: "bash", value: "vercel dev" },
+          profilerBoost: 0,
+          policyBoost: 0,
+          policyReason: null,
+          matchedRuleId: "PreToolUse|flow-verification|uiRender|Bash|agent-browser-verify",
+          ruleBoost: 8,
+          ruleReason: "replay verified",
+          rulebookPath: "/tmp/rulebook.json",
+          summaryOnly: false,
+          synthetic: false,
+          droppedReason: null,
+        },
+      ],
+    });
+    const capsule = buildDecisionCapsule({
+      sessionId: SESSION_ID,
+      hook: "PreToolUse",
+      createdAt: trace.timestamp,
+      toolName: "Bash",
+      toolTarget: "vercel dev",
+      trace,
+      directive: null,
+    });
+    const artifactPath = persistDecisionCapsule(capsule);
+    const loaded = readDecisionCapsule(artifactPath);
+    expect(loaded!.rulebookProvenance).toEqual(capsule.rulebookProvenance);
   });
 
   test("PostToolUse hook omits machine_output_hidden_in_html_comment issue", () => {

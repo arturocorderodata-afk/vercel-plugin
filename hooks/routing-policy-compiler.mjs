@@ -2,6 +2,9 @@
 import {
   derivePolicyBoost
 } from "./routing-policy.mjs";
+import {
+  createRule as createRulebookRule
+} from "./learned-routing-rulebook.mjs";
 import { createLogger } from "./logger.mjs";
 function boostForAction(rec) {
   switch (rec.action) {
@@ -93,7 +96,7 @@ function applyPolicyPatch(patch, now) {
       scenario: entry.scenario,
       skill: entry.skill,
       action: entry.action,
-      boost: entry.proposedBoost,
+      boost: Math.abs(entry.proposedBoost),
       confidence: entry.confidence,
       reason: entry.reason
     });
@@ -118,7 +121,80 @@ function applyPolicyPatch(patch, now) {
     rules
   };
 }
+function evaluatePromotionGate(params) {
+  const { artifact, replay, now = artifact.promotedAt } = params;
+  const log = createLogger();
+  if (replay.regressions.length > 0) {
+    const result = {
+      accepted: false,
+      errorCode: "RULEBOOK_PROMOTION_REJECTED_REGRESSION",
+      reason: `Promotion rejected: ${replay.regressions.length} regression(s) detected`,
+      replay,
+      rulebook: null
+    };
+    log.summary("promotion_gate_rejected", {
+      errorCode: result.errorCode,
+      regressionCount: replay.regressions.length,
+      regressions: replay.regressions
+    });
+    return result;
+  }
+  if (replay.learnedWins < replay.baselineWins) {
+    const result = {
+      accepted: false,
+      errorCode: "RULEBOOK_PROMOTION_REJECTED_REGRESSION",
+      reason: `Promotion rejected: learned wins (${replay.learnedWins}) < baseline wins (${replay.baselineWins})`,
+      replay,
+      rulebook: null
+    };
+    log.summary("promotion_gate_rejected", {
+      errorCode: result.errorCode,
+      learnedWins: replay.learnedWins,
+      baselineWins: replay.baselineWins
+    });
+    return result;
+  }
+  const rulebookRules = artifact.rules.map(
+    (r) => createRulebookRule({
+      scenario: r.scenario,
+      skill: r.skill,
+      action: r.action,
+      boost: r.boost,
+      confidence: r.confidence,
+      reason: r.reason,
+      sourceSessionId: artifact.sessionId,
+      promotedAt: now,
+      evidence: {
+        baselineWins: replay.baselineWins,
+        baselineDirectiveWins: replay.baselineDirectiveWins,
+        learnedWins: replay.learnedWins,
+        learnedDirectiveWins: replay.learnedDirectiveWins,
+        regressionCount: replay.regressions.length
+      }
+    })
+  );
+  const rulebook = {
+    version: 1,
+    createdAt: now,
+    sessionId: artifact.sessionId,
+    rules: rulebookRules
+  };
+  log.summary("promotion_gate_accepted", {
+    sessionId: artifact.sessionId,
+    ruleCount: rulebookRules.length,
+    learnedWins: replay.learnedWins,
+    baselineWins: replay.baselineWins
+  });
+  return {
+    accepted: true,
+    errorCode: null,
+    reason: `Promotion accepted: ${rulebookRules.length} rule(s), ${replay.learnedWins} learned wins, 0 regressions`,
+    replay,
+    rulebook
+  };
+}
 export {
   applyPolicyPatch,
-  compilePolicyPatch
+  compilePolicyPatch,
+  evaluatePromotionGate
 };

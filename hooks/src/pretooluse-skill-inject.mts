@@ -62,12 +62,13 @@ import type { Logger } from "./logger.mjs";
 import { trackBaseEvents } from "./telemetry.mjs";
 import { loadCachedPlanResult, selectActiveStory } from "./verification-plan.mjs";
 import { resolveVerificationRuntimeState, buildVerificationEnv } from "./verification-directive.mjs";
-import { applyPolicyBoosts } from "./routing-policy.mjs";
-import type { RoutingHookName, RoutingToolName } from "./routing-policy.mjs";
+import { applyPolicyBoosts, applyRulebookBoosts } from "./routing-policy.mjs";
+import type { RoutingHookName, RoutingToolName, RulebookBoostExplanation } from "./routing-policy.mjs";
 import {
   appendSkillExposure,
   loadProjectRoutingPolicy,
 } from "./routing-policy-ledger.mjs";
+import { loadRulebook, rulebookPath } from "./learned-routing-rulebook.mjs";
 import { buildAttributionDecision } from "./routing-attribution.mjs";
 import { explainPolicyRecall } from "./routing-diagnosis.mjs";
 import {
@@ -808,6 +809,7 @@ export interface DeduplicateResult {
   profilerBoosted: string[];
   setupModeRouting: SetupModeRouting | null;
   policyBoosted: Array<{ skill: string; boost: number; reason: string | null }>;
+  rulebookBoosted: RulebookBoostExplanation[];
 }
 
 /**
@@ -974,6 +976,73 @@ export function deduplicateSkills(
     }
   }
 
+  // Rulebook boost: when a learned-routing-rulebook exists, apply rulebook rules
+  // with explicit precedence — rulebook replaces stats-policy for matching skills
+  const rulebookBoosted: RulebookBoostExplanation[] = [];
+  if (cwd) {
+    const rbResult = loadRulebook(cwd);
+    if (rbResult.ok && rbResult.rulebook.rules.length > 0) {
+      const plan = sessionId ? loadCachedPlanResult(sessionId, l) : null;
+      const primaryStory = plan ? selectActiveStory(plan) : null;
+
+      if (primaryStory) {
+        const rbScenario = {
+          hook: "PreToolUse" as RoutingHookName,
+          storyKind: primaryStory.kind ?? null,
+          targetBoundary: (plan?.primaryNextAction?.targetBoundary as
+            | "uiRender"
+            | "clientRequest"
+            | "serverHandler"
+            | "environment"
+            | null) ?? null,
+          toolName: toolName as RoutingToolName,
+        };
+        const rbPath = rulebookPath(cwd);
+        const withRulebook = applyRulebookBoosts(
+          newEntries.map((e) => ({
+            ...e,
+            skill: e.skill,
+            priority: e.priority,
+            effectivePriority: typeof e.effectivePriority === "number" ? e.effectivePriority : e.priority,
+            policyBoost: policyBoosted.find((p) => p.skill === e.skill)?.boost ?? 0,
+            policyReason: policyBoosted.find((p) => p.skill === e.skill)?.reason ?? null,
+          })),
+          rbResult.rulebook,
+          rbScenario,
+          rbPath,
+        );
+
+        for (let i = 0; i < newEntries.length; i++) {
+          const rb = withRulebook[i];
+          newEntries[i].effectivePriority = rb.effectivePriority;
+          if (rb.matchedRuleId) {
+            rulebookBoosted.push({
+              skill: rb.skill,
+              matchedRuleId: rb.matchedRuleId,
+              ruleBoost: rb.ruleBoost,
+              ruleReason: rb.ruleReason ?? "",
+              rulebookPath: rb.rulebookPath ?? "",
+            });
+            // Suppress stats-policy boost for skills where rulebook takes precedence
+            const pIdx = policyBoosted.findIndex((p) => p.skill === rb.skill);
+            if (pIdx !== -1) {
+              policyBoosted.splice(pIdx, 1);
+            }
+          }
+        }
+
+        if (rulebookBoosted.length > 0) {
+          l.debug("rulebook-boosted", {
+            scenario: `${rbScenario.hook}|${rbScenario.storyKind ?? "none"}|${rbScenario.targetBoundary ?? "none"}|${rbScenario.toolName}`,
+            boostedSkills: rulebookBoosted,
+          });
+        }
+      }
+    } else if (!rbResult.ok) {
+      l.debug("rulebook-load-error", { code: rbResult.error.code, message: rbResult.error.message });
+    }
+  }
+
   // Sort by effectivePriority (if set) or priority DESC, then skill name ASC
   newEntries = rankEntries(newEntries);
 
@@ -982,9 +1051,11 @@ export function deduplicateSkills(
   // Emit skill_ranked for each candidate in priority order
   for (const entry of newEntries) {
     const eff = typeof entry.effectivePriority === "number" ? entry.effectivePriority : entry.priority;
-    const reason = policyBoosted.some((p) => p.skill === entry.skill)
-      ? "policy_boosted"
-      : profilerBoosted.includes(entry.skill) ? "profiler_boosted" : "pattern_match";
+    const reason = rulebookBoosted.some((r) => r.skill === entry.skill)
+      ? "rulebook_boosted"
+      : policyBoosted.some((p) => p.skill === entry.skill)
+        ? "policy_boosted"
+        : profilerBoosted.includes(entry.skill) ? "profiler_boosted" : "pattern_match";
     logDecision(l, {
       hook: "PreToolUse",
       event: "skill_ranked",
@@ -999,7 +1070,7 @@ export function deduplicateSkills(
     previouslyInjected: [...injectedSkills],
   });
 
-  return { newEntries, rankedSkills, vercelJsonRouting, profilerBoosted, setupModeRouting, policyBoosted };
+  return { newEntries, rankedSkills, vercelJsonRouting, profilerBoosted, setupModeRouting, policyBoosted, rulebookBoosted };
 }
 
 // ---------------------------------------------------------------------------
@@ -1436,7 +1507,7 @@ function run(): string {
     sessionId,
   }, log);
 
-  const { newEntries, rankedSkills, profilerBoosted, policyBoosted } = dedupResult;
+  const { newEntries, rankedSkills, profilerBoosted, policyBoosted, rulebookBoosted } = dedupResult;
 
   // Stage 4.5: Synthetically inject react-best-practices if TSX review triggered
   let tsxReviewInjected = false;
@@ -2006,6 +2077,10 @@ function run(): string {
       profilerBoost: number;
       policyBoost: number;
       policyReason: string | null;
+      matchedRuleId: string | null;
+      ruleBoost: number;
+      ruleReason: string | null;
+      rulebookPath: string | null;
       summaryOnly: boolean;
       synthetic: boolean;
       droppedReason: "deduped" | "cap_exceeded" | "budget_exhausted" | "concurrent_claim" | null;
@@ -2016,6 +2091,7 @@ function run(): string {
     for (const entry of newEntries) {
       const match = matchReasons?.[entry.skill];
       const policy = policyBoosted.find((p) => p.skill === entry.skill);
+      const rb = rulebookBoosted.find((r) => r.skill === entry.skill);
       trackedSkills.add(entry.skill);
       traceRanked.push({
         skill: entry.skill,
@@ -2027,6 +2103,10 @@ function run(): string {
         profilerBoost: profilerBoosted.includes(entry.skill) ? 5 : 0,
         policyBoost: policy?.boost ?? 0,
         policyReason: policy?.reason ?? null,
+        matchedRuleId: rb?.matchedRuleId ?? null,
+        ruleBoost: rb?.ruleBoost ?? 0,
+        ruleReason: rb?.ruleReason ?? null,
+        rulebookPath: rb?.rulebookPath ?? null,
         summaryOnly: summaryOnly.includes(entry.skill),
         synthetic: syntheticSkills.has(entry.skill),
         droppedReason: droppedByCap.includes(entry.skill)
@@ -2050,6 +2130,10 @@ function run(): string {
         profilerBoost: 0,
         policyBoost: 0,
         policyReason: null,
+        matchedRuleId: null,
+        ruleBoost: 0,
+        ruleReason: null,
+        rulebookPath: null,
         summaryOnly: summaryOnly.includes(skill),
         synthetic: true,
         droppedReason: droppedByCap.includes(skill)
@@ -2076,6 +2160,10 @@ function run(): string {
         profilerBoost: profilerBoosted.includes(entry.skill) ? 5 : 0,
         policyBoost: 0,
         policyReason: null,
+        matchedRuleId: null,
+        ruleBoost: 0,
+        ruleReason: null,
+        rulebookPath: null,
         summaryOnly: false,
         synthetic: false,
         droppedReason: "deduped",

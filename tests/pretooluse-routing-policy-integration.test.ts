@@ -26,6 +26,13 @@ import {
 import {
   statePath as verificationStatePath,
 } from "../hooks/src/verification-ledger.mts";
+import {
+  saveRulebook,
+  rulebookPath,
+  createRule,
+  createEmptyRulebook,
+  type LearnedRoutingRulebook,
+} from "../hooks/src/learned-routing-rulebook.mts";
 import type { CompiledSkillEntry } from "../hooks/src/patterns.mts";
 
 // ---------------------------------------------------------------------------
@@ -57,6 +64,11 @@ function cleanupPolicyFile(): void {
 
 function cleanupExposureFile(): void {
   const path = sessionExposurePath(TEST_SESSION);
+  try { unlinkSync(path); } catch {}
+}
+
+function cleanupRulebookFile(): void {
+  const path = rulebookPath(TEST_PROJECT);
   try { unlinkSync(path); } catch {}
 }
 
@@ -124,12 +136,14 @@ function buildPolicyWithHistory(
 beforeEach(() => {
   cleanupPolicyFile();
   cleanupExposureFile();
+  cleanupRulebookFile();
   writeMockPlanState(TEST_SESSION);
 });
 
 afterEach(() => {
   cleanupPolicyFile();
   cleanupExposureFile();
+  cleanupRulebookFile();
   cleanupMockPlanState(TEST_SESSION);
 });
 
@@ -785,6 +799,194 @@ describe("manifest vs live-scan parity", () => {
     }
 
     try { rmSync(traceDir(sid1), { recursive: true, force: true }); } catch {}
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Learned-routing-rulebook precedence tests
+// ---------------------------------------------------------------------------
+
+describe("pretooluse rulebook precedence", () => {
+  function makeRulebook(rules: Array<{
+    scenario: string;
+    skill: string;
+    boost: number;
+    action?: "promote" | "demote";
+    reason?: string;
+  }>): LearnedRoutingRulebook {
+    const rb = createEmptyRulebook("test-sess", T0);
+    for (const r of rules) {
+      rb.rules.push(createRule({
+        scenario: r.scenario,
+        skill: r.skill,
+        action: r.action ?? "promote",
+        boost: r.boost,
+        confidence: 0.9,
+        reason: r.reason ?? "replay verified: no regressions",
+        sourceSessionId: "test-sess",
+        promotedAt: T0,
+        evidence: {
+          baselineWins: 4,
+          baselineDirectiveWins: 2,
+          learnedWins: 4,
+          learnedDirectiveWins: 2,
+          regressionCount: 0,
+        },
+      }));
+    }
+    return rb;
+  }
+
+  test("DeduplicateResult includes rulebookBoosted array", () => {
+    const entries = [makeEntry("agent-browser-verify", 7)];
+    const result = deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["agent-browser-verify"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    expect(result).toHaveProperty("rulebookBoosted");
+    expect(Array.isArray(result.rulebookBoosted)).toBe(true);
+  });
+
+  test("rulebookBoosted is empty when no rulebook exists", () => {
+    const entries = [makeEntry("agent-browser-verify", 7)];
+    const result = deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["agent-browser-verify"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    expect(result.rulebookBoosted).toEqual([]);
+  });
+
+  test("rulebook boost takes precedence over stats-policy boost", () => {
+    // Set up stats-policy that would give +8
+    const policy = buildPolicyWithHistory("agent-browser-verify", 5, 4, 3, 0);
+    saveProjectRoutingPolicy(TEST_PROJECT, policy);
+
+    // Set up rulebook that gives +10
+    const rulebook = makeRulebook([{
+      scenario: "PreToolUse|deployment|clientRequest|Bash",
+      skill: "agent-browser-verify",
+      boost: 10,
+    }]);
+    saveRulebook(TEST_PROJECT, rulebook);
+
+    const entries = [makeEntry("agent-browser-verify", 5), makeEntry("next-config", 8)];
+    const result = deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["agent-browser-verify", "next-config"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    // Rulebook match should be present
+    expect(result.rulebookBoosted.length).toBe(1);
+    expect(result.rulebookBoosted[0].skill).toBe("agent-browser-verify");
+    expect(result.rulebookBoosted[0].ruleBoost).toBe(10);
+    expect(result.rulebookBoosted[0].matchedRuleId).toBe(
+      "PreToolUse|deployment|clientRequest|Bash|agent-browser-verify",
+    );
+
+    // Stats-policy should be suppressed for that skill (not double-boosted)
+    expect(result.policyBoosted.find((p) => p.skill === "agent-browser-verify")).toBeUndefined();
+
+    // Effective priority: 5 (base) + 10 (rule) = 15 > next-config's 8
+    expect(result.rankedSkills[0]).toBe("agent-browser-verify");
+  });
+
+  test("stats-policy boost still applies for skills without rulebook match", () => {
+    // Stats-policy for next-config: +8
+    const policy = buildPolicyWithHistory("next-config", 5, 4, 3, 0);
+    saveProjectRoutingPolicy(TEST_PROJECT, policy);
+
+    // Rulebook only has a rule for agent-browser-verify
+    const rulebook = makeRulebook([{
+      scenario: "PreToolUse|deployment|clientRequest|Bash",
+      skill: "agent-browser-verify",
+      boost: 3,
+    }]);
+    saveRulebook(TEST_PROJECT, rulebook);
+
+    const entries = [makeEntry("agent-browser-verify", 5), makeEntry("next-config", 5)];
+    const result = deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["agent-browser-verify", "next-config"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    // next-config should still get stats-policy boost (+8)
+    expect(result.policyBoosted.find((p) => p.skill === "next-config")?.boost).toBe(8);
+    // next-config: 5 + 8 = 13 > agent-browser-verify: 5 + 3 = 8
+    expect(result.rankedSkills[0]).toBe("next-config");
+  });
+
+  test("route-scoped rule only affects its intended scenario", () => {
+    // Rulebook rule scoped to deployment|clientRequest
+    const rulebook = makeRulebook([{
+      scenario: "PreToolUse|deployment|clientRequest|Bash",
+      skill: "agent-browser-verify",
+      boost: 10,
+    }]);
+    saveRulebook(TEST_PROJECT, rulebook);
+
+    // Test with a different story kind (uiRender boundary)
+    cleanupMockPlanState(TEST_SESSION);
+    writeMockPlanState(TEST_SESSION, { kind: "feature" });
+
+    const entries = [makeEntry("agent-browser-verify", 5), makeEntry("next-config", 5)];
+    const result = deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["agent-browser-verify", "next-config"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    // No rulebook match — the rule is for deployment|clientRequest, not feature|clientRequest
+    expect(result.rulebookBoosted).toEqual([]);
+  });
+
+  test("empty rulebook has no effect", () => {
+    const rulebook = createEmptyRulebook("test-sess", T0);
+    saveRulebook(TEST_PROJECT, rulebook);
+
+    const entries = [makeEntry("agent-browser-verify", 7)];
+    const result = deduplicateSkills({
+      matchedEntries: entries,
+      matched: new Set(["agent-browser-verify"]),
+      toolName: "Bash",
+      toolInput: { command: "next dev" },
+      injectedSkills: new Set(),
+      dedupOff: false,
+      cwd: TEST_PROJECT,
+      sessionId: TEST_SESSION,
+    });
+
+    expect(result.rulebookBoosted).toEqual([]);
   });
 });
 

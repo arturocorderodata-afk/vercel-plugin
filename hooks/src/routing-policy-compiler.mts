@@ -20,6 +20,12 @@ import type {
   RoutingReplayReport,
   RoutingRecommendation,
 } from "./routing-replay.mjs";
+import type { ReplayResult } from "./rule-distillation.mjs";
+import {
+  type LearnedRoutingRulebook,
+  type RulebookErrorCode,
+  createRule as createRulebookRule,
+} from "./learned-routing-rulebook.mjs";
 import { createLogger } from "./logger.mjs";
 
 // ---------------------------------------------------------------------------
@@ -226,7 +232,7 @@ export function applyPolicyPatch(
       scenario: entry.scenario,
       skill: entry.skill,
       action: entry.action as "promote" | "demote",
-      boost: entry.proposedBoost,
+      boost: Math.abs(entry.proposedBoost),
       confidence: entry.confidence,
       reason: entry.reason,
     });
@@ -252,5 +258,113 @@ export function applyPolicyPatch(
     promotedAt: timestamp,
     applied: rules.length,
     rules,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Promotion gate — bridges PromotionArtifact + ReplayResult → Rulebook
+// ---------------------------------------------------------------------------
+
+export interface PromotionGateResult {
+  accepted: boolean;
+  errorCode: RulebookErrorCode | null;
+  reason: string;
+  replay: ReplayResult;
+  rulebook: LearnedRoutingRulebook | null;
+}
+
+/**
+ * Evaluate whether a promotion artifact should be accepted or rejected based
+ * on replay evidence. Produces a LearnedRoutingRulebook on acceptance.
+ *
+ * Rejection criteria:
+ * - `regressions.length > 0`: any historical win would regress under learned rules.
+ * - `learnedWins < baselineWins`: net reduction in verified wins.
+ *
+ * Pure function: same inputs always produce the same result.
+ */
+export function evaluatePromotionGate(params: {
+  artifact: PromotionArtifact;
+  replay: ReplayResult;
+  now?: string;
+}): PromotionGateResult {
+  const { artifact, replay, now = artifact.promotedAt } = params;
+  const log = createLogger();
+
+  // Rejection: regressions detected
+  if (replay.regressions.length > 0) {
+    const result: PromotionGateResult = {
+      accepted: false,
+      errorCode: "RULEBOOK_PROMOTION_REJECTED_REGRESSION",
+      reason: `Promotion rejected: ${replay.regressions.length} regression(s) detected`,
+      replay,
+      rulebook: null,
+    };
+    log.summary("promotion_gate_rejected", {
+      errorCode: result.errorCode,
+      regressionCount: replay.regressions.length,
+      regressions: replay.regressions,
+    });
+    return result;
+  }
+
+  // Rejection: learned wins worse than baseline
+  if (replay.learnedWins < replay.baselineWins) {
+    const result: PromotionGateResult = {
+      accepted: false,
+      errorCode: "RULEBOOK_PROMOTION_REJECTED_REGRESSION",
+      reason: `Promotion rejected: learned wins (${replay.learnedWins}) < baseline wins (${replay.baselineWins})`,
+      replay,
+      rulebook: null,
+    };
+    log.summary("promotion_gate_rejected", {
+      errorCode: result.errorCode,
+      learnedWins: replay.learnedWins,
+      baselineWins: replay.baselineWins,
+    });
+    return result;
+  }
+
+  // Accepted: build rulebook from artifact
+  const rulebookRules = artifact.rules.map((r) =>
+    createRulebookRule({
+      scenario: r.scenario,
+      skill: r.skill,
+      action: r.action,
+      boost: r.boost,
+      confidence: r.confidence,
+      reason: r.reason,
+      sourceSessionId: artifact.sessionId,
+      promotedAt: now,
+      evidence: {
+        baselineWins: replay.baselineWins,
+        baselineDirectiveWins: replay.baselineDirectiveWins,
+        learnedWins: replay.learnedWins,
+        learnedDirectiveWins: replay.learnedDirectiveWins,
+        regressionCount: replay.regressions.length,
+      },
+    }),
+  );
+
+  const rulebook: LearnedRoutingRulebook = {
+    version: 1,
+    createdAt: now,
+    sessionId: artifact.sessionId,
+    rules: rulebookRules,
+  };
+
+  log.summary("promotion_gate_accepted", {
+    sessionId: artifact.sessionId,
+    ruleCount: rulebookRules.length,
+    learnedWins: replay.learnedWins,
+    baselineWins: replay.baselineWins,
+  });
+
+  return {
+    accepted: true,
+    errorCode: null,
+    reason: `Promotion accepted: ${rulebookRules.length} rule(s), ${replay.learnedWins} learned wins, 0 regressions`,
+    replay,
+    rulebook,
   };
 }
