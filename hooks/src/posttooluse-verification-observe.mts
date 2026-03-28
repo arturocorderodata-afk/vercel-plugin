@@ -112,17 +112,94 @@ export function isVerificationReport(value: unknown): value is VerificationRepor
 }
 
 // ---------------------------------------------------------------------------
+// Local verification URL gating
+// ---------------------------------------------------------------------------
+
+const LOCAL_DEV_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "[::1]",
+]);
+
+/**
+ * Returns true when rawUrl targets a local development server.
+ * Recognizes well-known loopback hosts and the user-configured
+ * VERCEL_PLUGIN_LOCAL_DEV_ORIGIN.
+ */
+export function isLocalVerificationUrl(
+  rawUrl: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const hostname = url.hostname.toLowerCase();
+    if (LOCAL_DEV_HOSTS.has(hostname)) return true;
+    const configuredOrigin = envString(env, "VERCEL_PLUGIN_LOCAL_DEV_ORIGIN");
+    if (!configuredOrigin) return false;
+    const configured = new URL(configuredOrigin);
+    return configured.host.toLowerCase() === url.host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Story-ID resolution from observed route
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the story ID that owns the observed route.
+ *
+ * Priority:
+ * 1. Explicit env override (VERCEL_PLUGIN_VERIFICATION_STORY_ID)
+ * 2. Unique exact-match story whose route === observedRoute
+ * 3. Fallback to plan.activeStoryId
+ */
+export function resolveObservedStoryId(
+  plan: {
+    stories: Array<{ id: string; route: string | null }>;
+    activeStoryId: string | null;
+  },
+  observedRoute: string | null,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const explicit = envString(env, "VERCEL_PLUGIN_VERIFICATION_STORY_ID");
+  if (explicit) return explicit;
+
+  if (!observedRoute) return plan.activeStoryId ?? null;
+
+  const exact = plan.stories.filter((story) => story.route === observedRoute);
+  if (exact.length === 1) return exact[0]!.id;
+
+  return plan.activeStoryId ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Signal strength gating
 // ---------------------------------------------------------------------------
 
 /**
  * Determine whether a verification event should resolve long-term routing
  * policy outcomes. Only strong signals on known boundaries qualify.
+ * WebFetch is additionally gated to local-dev-origin URLs to prevent
+ * external fetches from poisoning routing policy.
  */
 export function shouldResolveRoutingOutcome(
-  event: Pick<VerificationBoundaryEvent, "boundary" | "signalStrength">,
+  event: Pick<VerificationBoundaryEvent, "boundary" | "signalStrength" | "toolName" | "command">,
+  env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  return event.boundary !== "unknown" && event.signalStrength === "strong";
+  if (event.boundary === "unknown") return false;
+  if (event.signalStrength !== "strong") return false;
+
+  // WebFetch should only train policy when it targets local verification.
+  if (event.toolName === "WebFetch") {
+    return isLocalVerificationUrl(event.command, env);
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -638,15 +715,24 @@ export function run(rawInput?: string): string {
       blockedReasons: [...plan.blockedReasons],
     });
 
-    // Resolve routing policy only for strong signals on known boundaries
+    // Resolve story ID from observed route, preferring exact match over active story
     const primaryStory = plan.stories.length > 0
       ? selectActiveStory(plan)
       : null;
 
-    const resolvedStoryId =
-      primaryStory?.id ?? envString(env, "VERCEL_PLUGIN_VERIFICATION_STORY_ID") ?? null;
+    const resolvedStoryId = resolveObservedStoryId(
+      {
+        stories: plan.stories.map((s) => ({ id: s.id, route: s.route })),
+        activeStoryId: primaryStory?.id ?? null,
+      },
+      inferredRoute,
+      env,
+    );
 
-    if (shouldResolveRoutingOutcome(boundaryEvent)) {
+    // Gate routing policy resolution: provenance + locality + strength
+    const resolutionEligible = shouldResolveRoutingOutcome(boundaryEvent, env);
+
+    if (resolutionEligible) {
       const resolved = resolveBoundaryOutcome({
         sessionId,
         boundary: boundaryEvent.boundary as "uiRender" | "clientRequest" | "serverHandler" | "environment",
@@ -654,6 +740,15 @@ export function run(rawInput?: string): string {
         storyId: resolvedStoryId,
         route: inferredRoute,
         now: boundaryEvent.timestamp,
+      });
+
+      log.summary("verification.routing-policy-resolution-gate", {
+        verificationId,
+        toolName,
+        boundary: boundaryEvent.boundary,
+        inferredRoute,
+        resolvedStoryId,
+        resolutionEligible: true,
       });
 
       if (resolved.length > 0) {
@@ -669,12 +764,16 @@ export function run(rawInput?: string): string {
         });
       }
     } else {
-      log.debug("verification.routing-policy-skipped", {
+      log.summary("verification.routing-policy-resolution-gate", {
         verificationId,
-        reason: "soft_signal_or_unknown_boundary",
-        signalStrength,
-        boundary,
         toolName,
+        boundary: boundaryEvent.boundary,
+        inferredRoute,
+        resolvedStoryId,
+        resolutionEligible: false,
+        reason: boundaryEvent.toolName === "WebFetch"
+          ? "non_local_webfetch"
+          : "soft_signal_or_unknown_boundary",
       });
     }
 

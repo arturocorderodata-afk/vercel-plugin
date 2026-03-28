@@ -4,7 +4,9 @@ import {
   buildBoundaryEvent,
   buildLedgerObservation,
   classifyToolSignal,
+  isLocalVerificationUrl,
   parseInput,
+  resolveObservedStoryId,
   shouldResolveRoutingOutcome,
   type VerificationBoundaryEvent,
 } from "../hooks/src/posttooluse-verification-observe.mts";
@@ -386,24 +388,155 @@ describe("classifyToolSignal", () => {
 // ---------------------------------------------------------------------------
 
 describe("shouldResolveRoutingOutcome", () => {
-  test("strong + known boundary → true", () => {
-    expect(shouldResolveRoutingOutcome({ boundary: "clientRequest", signalStrength: "strong" })).toBe(true);
-    expect(shouldResolveRoutingOutcome({ boundary: "uiRender", signalStrength: "strong" })).toBe(true);
-    expect(shouldResolveRoutingOutcome({ boundary: "serverHandler", signalStrength: "strong" })).toBe(true);
-    expect(shouldResolveRoutingOutcome({ boundary: "environment", signalStrength: "strong" })).toBe(true);
+  test("strong + known boundary + Bash → true", () => {
+    expect(shouldResolveRoutingOutcome({ boundary: "clientRequest", signalStrength: "strong", toolName: "Bash", command: "curl http://localhost:3000" })).toBe(true);
+    expect(shouldResolveRoutingOutcome({ boundary: "uiRender", signalStrength: "strong", toolName: "Bash", command: "open http://localhost:3000" })).toBe(true);
+    expect(shouldResolveRoutingOutcome({ boundary: "serverHandler", signalStrength: "strong", toolName: "Bash", command: "tail -f server.log" })).toBe(true);
+    expect(shouldResolveRoutingOutcome({ boundary: "environment", signalStrength: "strong", toolName: "Bash", command: "printenv" })).toBe(true);
   });
 
   test("soft + known boundary → false", () => {
-    expect(shouldResolveRoutingOutcome({ boundary: "environment", signalStrength: "soft" })).toBe(false);
-    expect(shouldResolveRoutingOutcome({ boundary: "serverHandler", signalStrength: "soft" })).toBe(false);
+    expect(shouldResolveRoutingOutcome({ boundary: "environment", signalStrength: "soft", toolName: "Read", command: ".env" })).toBe(false);
+    expect(shouldResolveRoutingOutcome({ boundary: "serverHandler", signalStrength: "soft", toolName: "Grep", command: "grep ERROR app.log" })).toBe(false);
   });
 
   test("strong + unknown boundary → false", () => {
-    expect(shouldResolveRoutingOutcome({ boundary: "unknown", signalStrength: "strong" })).toBe(false);
+    expect(shouldResolveRoutingOutcome({ boundary: "unknown", signalStrength: "strong", toolName: "Bash", command: "ls" })).toBe(false);
   });
 
   test("soft + unknown boundary → false", () => {
-    expect(shouldResolveRoutingOutcome({ boundary: "unknown", signalStrength: "soft" })).toBe(false);
+    expect(shouldResolveRoutingOutcome({ boundary: "unknown", signalStrength: "soft", toolName: "Bash", command: "ls" })).toBe(false);
+  });
+
+  test("WebFetch strong signal does not resolve policy for external origin", () => {
+    expect(shouldResolveRoutingOutcome({
+      boundary: "clientRequest",
+      signalStrength: "strong",
+      toolName: "WebFetch",
+      command: "https://example.com/settings",
+    })).toBe(false);
+  });
+
+  test("WebFetch strong signal resolves policy for localhost", () => {
+    expect(shouldResolveRoutingOutcome({
+      boundary: "clientRequest",
+      signalStrength: "strong",
+      toolName: "WebFetch",
+      command: "http://localhost:3000/settings",
+    })).toBe(true);
+  });
+
+  test("WebFetch resolves for configured VERCEL_PLUGIN_LOCAL_DEV_ORIGIN", () => {
+    const env = { VERCEL_PLUGIN_LOCAL_DEV_ORIGIN: "http://myapp.test:4000" };
+    expect(shouldResolveRoutingOutcome({
+      boundary: "clientRequest",
+      signalStrength: "strong",
+      toolName: "WebFetch",
+      command: "http://myapp.test:4000/dashboard",
+    }, env)).toBe(true);
+  });
+
+  test("Bash curl strong signal still resolves policy regardless of URL", () => {
+    expect(shouldResolveRoutingOutcome({
+      boundary: "clientRequest",
+      signalStrength: "strong",
+      toolName: "Bash",
+      command: "curl https://example.com/settings",
+    })).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isLocalVerificationUrl
+// ---------------------------------------------------------------------------
+
+describe("isLocalVerificationUrl", () => {
+  test("localhost is local", () => {
+    expect(isLocalVerificationUrl("http://localhost:3000/settings")).toBe(true);
+  });
+
+  test("127.0.0.1 is local", () => {
+    expect(isLocalVerificationUrl("http://127.0.0.1:3000/api")).toBe(true);
+  });
+
+  test("::1 is local", () => {
+    expect(isLocalVerificationUrl("http://[::1]:3000/")).toBe(true);
+  });
+
+  test("0.0.0.0 is local", () => {
+    expect(isLocalVerificationUrl("http://0.0.0.0:5173/dashboard")).toBe(true);
+  });
+
+  test("external host is not local", () => {
+    expect(isLocalVerificationUrl("https://example.com/settings")).toBe(false);
+  });
+
+  test("configured origin matches", () => {
+    const env = { VERCEL_PLUGIN_LOCAL_DEV_ORIGIN: "http://myapp.local:4000" };
+    expect(isLocalVerificationUrl("http://myapp.local:4000/settings", env)).toBe(true);
+  });
+
+  test("configured origin mismatch", () => {
+    const env = { VERCEL_PLUGIN_LOCAL_DEV_ORIGIN: "http://myapp.local:4000" };
+    expect(isLocalVerificationUrl("http://other.local:4000/settings", env)).toBe(false);
+  });
+
+  test("non-http protocol returns false", () => {
+    expect(isLocalVerificationUrl("ftp://localhost:3000/")).toBe(false);
+  });
+
+  test("invalid URL returns false", () => {
+    expect(isLocalVerificationUrl("not-a-url")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveObservedStoryId
+// ---------------------------------------------------------------------------
+
+describe("resolveObservedStoryId", () => {
+  const plan = {
+    activeStoryId: "story-settings",
+    stories: [
+      { id: "story-settings", route: "/settings" },
+      { id: "story-dashboard", route: "/dashboard" },
+    ],
+  };
+
+  test("observed route selects matching story instead of active story", () => {
+    expect(resolveObservedStoryId(plan, "/dashboard")).toBe("story-dashboard");
+  });
+
+  test("observed route matching active story returns that story", () => {
+    expect(resolveObservedStoryId(plan, "/settings")).toBe("story-settings");
+  });
+
+  test("null observed route falls back to activeStoryId", () => {
+    expect(resolveObservedStoryId(plan, null)).toBe("story-settings");
+  });
+
+  test("unmatched observed route falls back to activeStoryId", () => {
+    expect(resolveObservedStoryId(plan, "/unknown")).toBe("story-settings");
+  });
+
+  test("explicit env override takes precedence", () => {
+    const env = { VERCEL_PLUGIN_VERIFICATION_STORY_ID: "story-override" };
+    expect(resolveObservedStoryId(plan, "/dashboard", env)).toBe("story-override");
+  });
+
+  test("ambiguous route (multiple matches) falls back to activeStoryId", () => {
+    const ambiguousPlan = {
+      activeStoryId: "story-a",
+      stories: [
+        { id: "story-a", route: "/shared" },
+        { id: "story-b", route: "/shared" },
+      ],
+    };
+    expect(resolveObservedStoryId(ambiguousPlan, "/shared")).toBe("story-a");
+  });
+
+  test("no stories and no active story returns null", () => {
+    expect(resolveObservedStoryId({ stories: [], activeStoryId: null }, "/dashboard")).toBeNull();
   });
 });
 

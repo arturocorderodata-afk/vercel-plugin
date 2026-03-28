@@ -29,6 +29,35 @@ import {
 import { scenarioKey } from "../hooks/src/routing-policy.mts";
 
 // ---------------------------------------------------------------------------
+// Stderr capture helper for structured log assertions
+// ---------------------------------------------------------------------------
+
+interface CapturedLogLine {
+  event: string;
+  [key: string]: unknown;
+}
+
+function captureStderr(fn: () => void): CapturedLogLine[] {
+  const lines: CapturedLogLine[] = [];
+  const origWrite = process.stderr.write;
+  process.stderr.write = function (chunk: string | Uint8Array, ...args: unknown[]): boolean {
+    const text = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+    for (const line of text.split("\n").filter(Boolean)) {
+      try {
+        lines.push(JSON.parse(line));
+      } catch { /* ignore non-JSON */ }
+    }
+    return true;
+  } as typeof process.stderr.write;
+  try {
+    fn();
+  } finally {
+    process.stderr.write = origWrite;
+  }
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -708,5 +737,159 @@ describe("story-scoped observation isolation", () => {
         else process.env[key] = val;
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Resolution-gate telemetry: structured log assertions
+// ---------------------------------------------------------------------------
+
+describe("verification.routing-policy-resolution-gate telemetry", () => {
+  const ENV_KEYS = [
+    "VERCEL_PLUGIN_VERIFICATION_STORY_ID",
+    "VERCEL_PLUGIN_VERIFICATION_ROUTE",
+    "VERCEL_PLUGIN_VERIFICATION_BOUNDARY",
+    "VERCEL_PLUGIN_VERIFICATION_ACTION",
+    "VERCEL_PLUGIN_LOG_LEVEL",
+    "VERCEL_PLUGIN_LOCAL_DEV_ORIGIN",
+  ] as const;
+
+  let savedEnv: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    savedEnv = {};
+    for (const key of ENV_KEYS) {
+      savedEnv[key] = process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const [key, val] of Object.entries(savedEnv)) {
+      if (val === undefined) delete process.env[key];
+      else process.env[key] = val;
+    }
+    try {
+      rmSync(join(tmpdir(), `vercel-plugin-${testSessionId}-ledger`), { recursive: true, force: true });
+    } catch { /* ignore */ }
+  });
+
+  function makeToolPayload(
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    sessionId?: string,
+  ): string {
+    return JSON.stringify({
+      tool_name: toolName,
+      tool_input: toolInput,
+      session_id: sessionId ?? testSessionId,
+      cwd: ROOT,
+    });
+  }
+
+  test("eligible Bash curl emits resolution-gate with resolutionEligible: true and full payload shape", () => {
+    process.env.VERCEL_PLUGIN_LOG_LEVEL = "summary";
+    process.env.VERCEL_PLUGIN_VERIFICATION_STORY_ID = "story-settings";
+    process.env.VERCEL_PLUGIN_VERIFICATION_ROUTE = "/settings";
+    process.env.VERCEL_PLUGIN_VERIFICATION_BOUNDARY = "clientRequest";
+
+    recordStory(testSessionId, "flow-verification", "/settings", "test gate telemetry", []);
+
+    const payload = makeStdinPayload("curl http://localhost:3000/settings", testSessionId);
+    const logs = captureStderr(() => run(payload));
+
+    const gate = logs.find((l) => l.event === "verification.routing-policy-resolution-gate");
+    expect(gate).toBeDefined();
+
+    // Required fields per acceptance criteria
+    expect(gate!.verificationId).toBeString();
+    expect((gate!.verificationId as string).length).toBeGreaterThan(0);
+    expect(gate!.toolName).toBe("Bash");
+    expect(gate!.boundary).toBe("clientRequest");
+    expect(gate!.inferredRoute).toBe("/settings");
+    expect(gate!.resolvedStoryId).toBe("story-settings");
+    expect(gate!.resolutionEligible).toBe(true);
+
+    // Eligible path must NOT include a reason field
+    expect(gate!.reason).toBeUndefined();
+  });
+
+  test("external WebFetch emits resolution-gate with resolutionEligible: false and reason: non_local_webfetch", () => {
+    process.env.VERCEL_PLUGIN_LOG_LEVEL = "summary";
+    delete process.env.VERCEL_PLUGIN_VERIFICATION_STORY_ID;
+    delete process.env.VERCEL_PLUGIN_VERIFICATION_ROUTE;
+    delete process.env.VERCEL_PLUGIN_VERIFICATION_BOUNDARY;
+
+    recordStory(testSessionId, "flow-verification", "/settings", "test external webfetch gate", []);
+
+    const payload = makeToolPayload("WebFetch", { url: "https://example.com/settings" });
+    const logs = captureStderr(() => run(payload));
+
+    const gate = logs.find((l) => l.event === "verification.routing-policy-resolution-gate");
+    expect(gate).toBeDefined();
+
+    expect(gate!.verificationId).toBeString();
+    expect(gate!.toolName).toBe("WebFetch");
+    expect(gate!.boundary).toBe("clientRequest");
+    expect(gate!.inferredRoute).toBe("/settings");
+    expect(gate!.resolutionEligible).toBe(false);
+    expect(gate!.reason).toBe("non_local_webfetch");
+  });
+
+  test("local WebFetch emits resolution-gate with resolutionEligible: true", () => {
+    process.env.VERCEL_PLUGIN_LOG_LEVEL = "summary";
+    process.env.VERCEL_PLUGIN_VERIFICATION_STORY_ID = "story-dashboard";
+
+    recordStory(testSessionId, "flow-verification", "/dashboard", "test local webfetch gate", []);
+
+    const payload = makeToolPayload("WebFetch", { url: "http://localhost:3000/dashboard" });
+    const logs = captureStderr(() => run(payload));
+
+    const gate = logs.find((l) => l.event === "verification.routing-policy-resolution-gate");
+    expect(gate).toBeDefined();
+
+    expect(gate!.toolName).toBe("WebFetch");
+    expect(gate!.boundary).toBe("clientRequest");
+    expect(gate!.inferredRoute).toBe("/dashboard");
+    expect(gate!.resolvedStoryId).toBe("story-dashboard");
+    expect(gate!.resolutionEligible).toBe(true);
+    expect(gate!.reason).toBeUndefined();
+  });
+
+  test("soft signal (Read .env) emits resolution-gate with resolutionEligible: false and reason: soft_signal_or_unknown_boundary", () => {
+    process.env.VERCEL_PLUGIN_LOG_LEVEL = "summary";
+    delete process.env.VERCEL_PLUGIN_VERIFICATION_STORY_ID;
+
+    recordStory(testSessionId, "flow-verification", null, "test soft signal gate", []);
+
+    const payload = makeToolPayload("Read", { file_path: "/repo/.env.local" });
+    const logs = captureStderr(() => run(payload));
+
+    const gate = logs.find((l) => l.event === "verification.routing-policy-resolution-gate");
+    expect(gate).toBeDefined();
+
+    expect(gate!.toolName).toBe("Read");
+    expect(gate!.boundary).toBe("environment");
+    expect(gate!.resolutionEligible).toBe(false);
+    expect(gate!.reason).toBe("soft_signal_or_unknown_boundary");
+  });
+
+  test("resolvedStoryId reflects route-matched story, not merely active story", () => {
+    process.env.VERCEL_PLUGIN_LOG_LEVEL = "summary";
+    delete process.env.VERCEL_PLUGIN_VERIFICATION_STORY_ID;
+
+    // Create two stories — /settings is active (created first), /dashboard second
+    recordStory(testSessionId, "flow-verification", "/settings", "settings flow", []);
+    recordStory(testSessionId, "flow-verification", "/dashboard", "dashboard flow", []);
+
+    // Bash curl targets /settings — should resolve to /settings story, not /dashboard (active)
+    const payload = makeStdinPayload("curl http://localhost:3000/settings", testSessionId);
+    const logs = captureStderr(() => run(payload));
+
+    const gate = logs.find((l) => l.event === "verification.routing-policy-resolution-gate");
+    expect(gate).toBeDefined();
+    expect(gate!.inferredRoute).toBe("/settings");
+    // resolvedStoryId should match the /settings story, not the active /dashboard one
+    expect(gate!.resolvedStoryId).toBeString();
+    expect(gate!.resolutionEligible).toBe(true);
   });
 });

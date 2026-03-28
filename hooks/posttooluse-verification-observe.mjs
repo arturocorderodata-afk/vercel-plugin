@@ -26,8 +26,42 @@ function isVerificationReport(value) {
     (b) => typeof b === "object" && b !== null && b.event === "verification.boundary_observed"
   );
 }
-function shouldResolveRoutingOutcome(event) {
-  return event.boundary !== "unknown" && event.signalStrength === "strong";
+var LOCAL_DEV_HOSTS = /* @__PURE__ */ new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "[::1]"
+]);
+function isLocalVerificationUrl(rawUrl, env = process.env) {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const hostname = url.hostname.toLowerCase();
+    if (LOCAL_DEV_HOSTS.has(hostname)) return true;
+    const configuredOrigin = envString(env, "VERCEL_PLUGIN_LOCAL_DEV_ORIGIN");
+    if (!configuredOrigin) return false;
+    const configured = new URL(configuredOrigin);
+    return configured.host.toLowerCase() === url.host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+function resolveObservedStoryId(plan, observedRoute, env = process.env) {
+  const explicit = envString(env, "VERCEL_PLUGIN_VERIFICATION_STORY_ID");
+  if (explicit) return explicit;
+  if (!observedRoute) return plan.activeStoryId ?? null;
+  const exact = plan.stories.filter((story) => story.route === observedRoute);
+  if (exact.length === 1) return exact[0].id;
+  return plan.activeStoryId ?? null;
+}
+function shouldResolveRoutingOutcome(event, env = process.env) {
+  if (event.boundary === "unknown") return false;
+  if (event.signalStrength !== "strong") return false;
+  if (event.toolName === "WebFetch") {
+    return isLocalVerificationUrl(event.command, env);
+  }
+  return true;
 }
 var BOUNDARY_PATTERNS = [
   // uiRender: browser/screenshot/playwright/puppeteer commands
@@ -339,8 +373,16 @@ function run(rawInput) {
       blockedReasons: [...plan.blockedReasons]
     });
     const primaryStory = plan.stories.length > 0 ? selectActiveStory(plan) : null;
-    const resolvedStoryId = primaryStory?.id ?? envString(env, "VERCEL_PLUGIN_VERIFICATION_STORY_ID") ?? null;
-    if (shouldResolveRoutingOutcome(boundaryEvent)) {
+    const resolvedStoryId = resolveObservedStoryId(
+      {
+        stories: plan.stories.map((s) => ({ id: s.id, route: s.route })),
+        activeStoryId: primaryStory?.id ?? null
+      },
+      inferredRoute,
+      env
+    );
+    const resolutionEligible = shouldResolveRoutingOutcome(boundaryEvent, env);
+    if (resolutionEligible) {
       const resolved = resolveBoundaryOutcome({
         sessionId,
         boundary: boundaryEvent.boundary,
@@ -348,6 +390,14 @@ function run(rawInput) {
         storyId: resolvedStoryId,
         route: inferredRoute,
         now: boundaryEvent.timestamp
+      });
+      log.summary("verification.routing-policy-resolution-gate", {
+        verificationId,
+        toolName,
+        boundary: boundaryEvent.boundary,
+        inferredRoute,
+        resolvedStoryId,
+        resolutionEligible: true
       });
       if (resolved.length > 0) {
         const outcomeKind = boundaryEvent.matchedSuggestedAction ? "directive-win" : "win";
@@ -362,12 +412,14 @@ function run(rawInput) {
         });
       }
     } else {
-      log.debug("verification.routing-policy-skipped", {
+      log.summary("verification.routing-policy-resolution-gate", {
         verificationId,
-        reason: "soft_signal_or_unknown_boundary",
-        signalStrength,
-        boundary,
-        toolName
+        toolName,
+        boundary: boundaryEvent.boundary,
+        inferredRoute,
+        resolvedStoryId,
+        resolutionEligible: false,
+        reason: boundaryEvent.toolName === "WebFetch" ? "non_local_webfetch" : "soft_signal_or_unknown_boundary"
       });
     }
     const redactedTarget = toolName === "Bash" ? redactCommand(summary).slice(0, 200) : summary.slice(0, 200);
@@ -451,10 +503,12 @@ export {
   classifyVerificationSignal,
   envString,
   inferRoute,
+  isLocalVerificationUrl,
   isVerificationReport,
   parseInput,
   redactCommand,
   resolveObservedRoute,
+  resolveObservedStoryId,
   run,
   shouldResolveRoutingOutcome
 };
