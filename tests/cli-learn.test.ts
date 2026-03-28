@@ -404,6 +404,204 @@ describe("runLearnCommand", () => {
     expect(parsed.rules).toHaveLength(1);
     expect(parsed.rules[0]?.skill).toBe("next-config");
   });
+
+  // ---------------------------------------------------------------------------
+  // --write vs dry-run behavior
+  // ---------------------------------------------------------------------------
+
+  test("dry-run (no --write) does NOT create the artifact file", async () => {
+    const project = trackDir(makeTempProject());
+
+    const traces = Array.from({ length: 6 }, (_, i) =>
+      makeTrace({
+        decisionId: `d${i}`,
+        injectedSkills: ["next-config"],
+        ranked: [
+          {
+            skill: "next-config",
+            basePriority: 6,
+            effectivePriority: 6,
+            pattern: { type: "path", value: "next.config.*" },
+            profilerBoost: 0,
+            policyBoost: 0,
+            policyReason: null,
+            summaryOnly: false,
+            synthetic: false,
+            droppedReason: null,
+          },
+        ],
+      }),
+    );
+    writeTraceFixture(TEST_SESSION, traces);
+    writeExposureFixture(TEST_SESSION, [makeExposure({ skill: "next-config", outcome: "win" })]);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+    try {
+      await runLearnCommand({ project, json: true, session: TEST_SESSION });
+    } finally {
+      console.log = origLog;
+    }
+
+    // stdout has JSON, but no file was written
+    const stdout = logs.join("\n");
+    expect(() => JSON.parse(stdout)).not.toThrow();
+    expect(existsSync(learnedRulesPath(project))).toBe(false);
+  });
+
+  test("--write creates file while --json dry-run does not", async () => {
+    const projectWrite = trackDir(makeTempProject());
+    const projectDry = trackDir(makeTempProject());
+
+    // Same session/traces for both
+    writeTraceFixture(TEST_SESSION, []);
+    writeExposureFixture(TEST_SESSION, []);
+
+    await runLearnCommand({ project: projectWrite, write: true, session: TEST_SESSION });
+    await runLearnCommand({ project: projectDry, json: true, session: TEST_SESSION });
+
+    expect(existsSync(learnedRulesPath(projectWrite))).toBe(true);
+    expect(existsSync(learnedRulesPath(projectDry))).toBe(false);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Deterministic JSON output for --json
+  // ---------------------------------------------------------------------------
+
+  test("--json output has deterministic key ordering across runs", async () => {
+    const project = trackDir(makeTempProject());
+
+    const traces = Array.from({ length: 6 }, (_, i) =>
+      makeTrace({
+        decisionId: `d${i}`,
+        injectedSkills: ["next-config"],
+        ranked: [
+          {
+            skill: "next-config",
+            basePriority: 6,
+            effectivePriority: 6,
+            pattern: { type: "path", value: "next.config.*" },
+            profilerBoost: 0,
+            policyBoost: 0,
+            policyReason: null,
+            summaryOnly: false,
+            synthetic: false,
+            droppedReason: null,
+          },
+        ],
+      }),
+    );
+    writeTraceFixture(TEST_SESSION, traces);
+    writeExposureFixture(TEST_SESSION, [makeExposure({ skill: "next-config", outcome: "win" })]);
+
+    const capture = async () => {
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (msg: string) => logs.push(msg);
+      try {
+        await runLearnCommand({ project, json: true, session: TEST_SESSION });
+      } finally {
+        console.log = origLog;
+      }
+      const parsed = JSON.parse(logs.join("\n"));
+      delete parsed.generatedAt;
+      return JSON.stringify(parsed);
+    };
+
+    const run1 = await capture();
+    const run2 = await capture();
+    expect(run1).toBe(run2);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Regression exit code with properly constructed regression scenario
+  // ---------------------------------------------------------------------------
+
+  test("exit code 1 when replay detects regressions from promoted rules", async () => {
+    const project = trackDir(makeTempProject());
+
+    // 8 verified traces: skill-a injected (baseline wins), skill-b ranked
+    const winTraces = Array.from({ length: 8 }, (_, i) =>
+      makeTrace({
+        decisionId: `d${i}`,
+        injectedSkills: ["skill-a"],
+        ranked: [
+          {
+            skill: "skill-b",
+            basePriority: 6,
+            effectivePriority: 6,
+            pattern: { type: "path", value: "b.*" },
+            profilerBoost: 0,
+            policyBoost: 0,
+            policyReason: null,
+            summaryOnly: false,
+            synthetic: false,
+            droppedReason: null,
+          },
+        ],
+        verification: {
+          verificationId: `v${i}`,
+          observedBoundary: "uiRender",
+          matchedSuggestedAction: true,
+        },
+      }),
+    );
+
+    // 8 unverified traces with skill-c to dilute scenario precision (lift > 1.5)
+    const dilutionTraces = Array.from({ length: 8 }, (_, i) =>
+      makeTrace({
+        decisionId: `dilute${i}`,
+        injectedSkills: ["skill-c"],
+        ranked: [
+          {
+            skill: "skill-c",
+            basePriority: 6,
+            effectivePriority: 6,
+            pattern: { type: "path", value: "c.*" },
+            profilerBoost: 0,
+            policyBoost: 0,
+            policyReason: null,
+            summaryOnly: false,
+            synthetic: false,
+            droppedReason: null,
+          },
+        ],
+      }),
+    );
+
+    writeTraceFixture(TEST_SESSION, [...winTraces, ...dilutionTraces]);
+    writeExposureFixture(TEST_SESSION, [
+      // skill-b: 8 candidate wins
+      ...Array.from({ length: 8 }, (_, i) =>
+        makeExposure({
+          id: `exp-b-${i}`,
+          skill: "skill-b",
+          candidateSkill: "skill-b",
+          attributionRole: "candidate",
+          outcome: "win",
+        }),
+      ),
+      // skill-c: 8 candidate stale-misses (scenario dilution)
+      ...Array.from({ length: 8 }, (_, i) =>
+        makeExposure({
+          id: `exp-c-${i}`,
+          skill: "skill-c",
+          candidateSkill: "skill-c",
+          attributionRole: "candidate",
+          outcome: "stale-miss",
+        }),
+      ),
+    ]);
+
+    const code = await runLearnCommand({
+      project,
+      json: true,
+      session: TEST_SESSION,
+    });
+
+    expect(code).toBe(1);
+  });
 });
 
 describe("learnedRulesPath", () => {

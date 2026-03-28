@@ -95,19 +95,31 @@ export function replayLearnedRules(params: {
   }
 
   let baselineWins = 0;
+  let baselineDirectiveWins = 0;
   let learnedWins = 0;
+  let learnedDirectiveWins = 0;
   const regressions: string[] = [];
 
   for (const trace of traces) {
     const sKey = scenarioKeyFromTrace(trace);
     const promotedSkills = promotedByScenario.get(sKey);
 
-    // Baseline: trace had verified success with at least one injected skill
-    const baselineHit =
-      trace.verification?.matchedSuggestedAction === true &&
+    // Verified success requires an observed verification outcome and at least
+    // one injected skill. PreToolUse may write a placeholder verification
+    // object before PostToolUse observation arrives; those pending traces must
+    // not count as successes.
+    const verifiedSuccess =
+      trace.verification?.observedBoundary != null &&
       trace.injectedSkills.length > 0;
 
-    if (baselineHit) baselineWins++;
+    // Directive adherence is the stricter subset where the suggested action
+    // matched on an observed verification.
+    const directiveAdherent =
+      verifiedSuccess &&
+      trace.verification?.matchedSuggestedAction === true;
+
+    if (verifiedSuccess) baselineWins++;
+    if (directiveAdherent) baselineDirectiveWins++;
 
     if (promotedSkills) {
       // Learned rules exist for this scenario
@@ -115,7 +127,7 @@ export function replayLearnedRules(params: {
         promotedSkills.has(s),
       );
 
-      if (baselineHit && !learnedOverlap) {
+      if (verifiedSuccess && !learnedOverlap) {
         // Baseline won but promoted rules don't cover the winning skill.
         // This is a regression: learned rules would displace the winner.
         regressions.push(trace.decisionId);
@@ -128,14 +140,12 @@ export function replayLearnedRules(params: {
       } else if (learnedOverlap) {
         // Promoted rule covers an injected skill — learned win
         learnedWins++;
-      } else if (baselineHit) {
-        // Dead path: baselineHit && !learnedOverlap is caught above.
-        // Kept for defensive clarity.
-        learnedWins++;
+        if (directiveAdherent) learnedDirectiveWins++;
       }
-    } else if (baselineHit) {
+    } else if (verifiedSuccess) {
       // No promoted rules for this scenario — baseline win carries through
       learnedWins++;
+      if (directiveAdherent) learnedDirectiveWins++;
     }
   }
 
@@ -144,15 +154,21 @@ export function replayLearnedRules(params: {
 
   const result: ReplayResult = {
     baselineWins,
+    baselineDirectiveWins,
     learnedWins,
+    learnedDirectiveWins,
     deltaWins: learnedWins - baselineWins,
+    deltaDirectiveWins: learnedDirectiveWins - baselineDirectiveWins,
     regressions,
   };
 
   logger.summary("replay_complete", {
     baselineWins: result.baselineWins,
+    baselineDirectiveWins: result.baselineDirectiveWins,
     learnedWins: result.learnedWins,
+    learnedDirectiveWins: result.learnedDirectiveWins,
     deltaWins: result.deltaWins,
+    deltaDirectiveWins: result.deltaDirectiveWins,
     regressionCount: result.regressions.length,
     regressionIds: result.regressions,
   });

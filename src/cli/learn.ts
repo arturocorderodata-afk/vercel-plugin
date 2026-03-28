@@ -150,7 +150,7 @@ export async function runLearnCommand(options: LearnCommandOptions): Promise<num
       generatedAt: new Date().toISOString(),
       projectRoot,
       rules: [],
-      replay: { baselineWins: 0, learnedWins: 0, deltaWins: 0, regressions: [] },
+      replay: { baselineWins: 0, baselineDirectiveWins: 0, learnedWins: 0, learnedDirectiveWins: 0, deltaWins: 0, deltaDirectiveWins: 0, regressions: [] },
     };
     if (jsonOutput) {
       console.log(JSON.stringify(result, null, 2));
@@ -164,10 +164,13 @@ export async function runLearnCommand(options: LearnCommandOptions): Promise<num
         "  holdout-fail: 0",
         "",
         "Replay:",
-        "  baseline wins: 0",
-        "  learned wins:  0",
-        "  delta:         0",
-        "  regressions:   0",
+        "  baseline wins:           0",
+        "  baseline directive wins: 0",
+        "  learned wins:            0",
+        "  learned directive wins:  0",
+        "  delta:                   0",
+        "  delta directive:         0",
+        "  regressions:             0",
       ].join("\n"));
     }
     if (writeOutput) {
@@ -215,10 +218,13 @@ export async function runLearnCommand(options: LearnCommandOptions): Promise<num
       `  holdout-fail: ${holdoutFail}`,
       "",
       `Replay:`,
-      `  baseline wins: ${result.replay.baselineWins}`,
-      `  learned wins:  ${result.replay.learnedWins}`,
-      `  delta:         ${result.replay.deltaWins > 0 ? "+" : ""}${result.replay.deltaWins}`,
-      `  regressions:   ${result.replay.regressions.length}`,
+      `  baseline wins:           ${result.replay.baselineWins}`,
+      `  baseline directive wins: ${result.replay.baselineDirectiveWins}`,
+      `  learned wins:            ${result.replay.learnedWins}`,
+      `  learned directive wins:  ${result.replay.learnedDirectiveWins}`,
+      `  delta:                   ${result.replay.deltaWins > 0 ? "+" : ""}${result.replay.deltaWins}`,
+      `  delta directive:         ${result.replay.deltaDirectiveWins > 0 ? "+" : ""}${result.replay.deltaDirectiveWins}`,
+      `  regressions:             ${result.replay.regressions.length}`,
     ];
 
     if (result.replay.regressions.length > 0) {

@@ -205,8 +205,11 @@ describe("distillRulesFromTrace", () => {
     expect(result.rules).toEqual([]);
     expect(result.replay).toEqual({
       baselineWins: 0,
+      baselineDirectiveWins: 0,
       learnedWins: 0,
+      learnedDirectiveWins: 0,
       deltaWins: 0,
+      deltaDirectiveWins: 0,
       regressions: [],
     });
   });
@@ -446,8 +449,11 @@ describe("replayLearnedRules", () => {
     const result = replayLearnedRules({ traces: [], rules: [] });
     expect(result).toEqual({
       baselineWins: 0,
+      baselineDirectiveWins: 0,
       learnedWins: 0,
+      learnedDirectiveWins: 0,
       deltaWins: 0,
+      deltaDirectiveWins: 0,
       regressions: [],
     });
   });

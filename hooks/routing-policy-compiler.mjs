@@ -1,7 +1,6 @@
 // hooks/src/routing-policy-compiler.mts
 import {
-  derivePolicyBoost,
-  ensureScenario
+  derivePolicyBoost
 } from "./routing-policy.mjs";
 import { createLogger } from "./logger.mjs";
 function boostForAction(rec) {
@@ -76,10 +75,10 @@ function compilePolicyPatch(policy, report) {
     entries
   };
 }
-function applyPolicyPatch(policy, patch, now) {
+function applyPolicyPatch(patch, now) {
   const log = createLogger();
   const timestamp = now ?? (/* @__PURE__ */ new Date()).toISOString();
-  let applied = 0;
+  const rules = [];
   for (const entry of patch.entries) {
     if (entry.action === "investigate" || entry.action === "no-op") {
       log.debug("policy_apply_skip", {
@@ -90,40 +89,34 @@ function applyPolicyPatch(policy, patch, now) {
       });
       continue;
     }
-    const stats = ensureScenario(
-      policy,
-      entry.scenario,
-      entry.skill,
-      timestamp
-    );
-    if (entry.proposedBoost === 8) {
-      stats.exposures = Math.max(stats.exposures, 5);
-      stats.wins = Math.max(stats.wins, stats.exposures);
-      stats.lastUpdatedAt = timestamp;
-    } else if (entry.proposedBoost === -2) {
-      stats.exposures = Math.max(stats.exposures, 5);
-      stats.wins = 0;
-      stats.directiveWins = 0;
-      stats.staleMisses = Math.max(stats.staleMisses, stats.exposures);
-      stats.lastUpdatedAt = timestamp;
-    }
-    const actualBoost = derivePolicyBoost(stats);
+    rules.push({
+      scenario: entry.scenario,
+      skill: entry.skill,
+      action: entry.action,
+      boost: entry.proposedBoost,
+      confidence: entry.confidence,
+      reason: entry.reason
+    });
     log.summary("policy_apply_entry", {
       scenario: entry.scenario,
       skill: entry.skill,
       action: entry.action,
       proposedBoost: entry.proposedBoost,
-      actualBoost,
-      match: actualBoost === entry.proposedBoost
+      delta: entry.delta
     });
-    applied += 1;
   }
   log.summary("policy_apply_complete", {
     sessionId: patch.sessionId,
-    applied,
+    applied: rules.length,
     total: patch.entries.length
   });
-  return applied;
+  return {
+    version: 1,
+    sessionId: patch.sessionId,
+    promotedAt: timestamp,
+    applied: rules.length,
+    rules
+  };
 }
 export {
   applyPolicyPatch,

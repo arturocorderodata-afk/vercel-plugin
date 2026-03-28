@@ -4,17 +4,17 @@
  *
  * Contract:
  * - compilePolicyPatch is a pure function of (existing policy, replay report).
- * - No write side effects unless applyPolicyPatch is explicitly called.
+ * - applyPolicyPatch produces a PromotionArtifact without mutating policy stats.
  * - Patch recommendations reuse derivePolicyBoost thresholds — no second scoring system.
  * - Deterministic patch ordering: scenario asc, skill asc.
  * - Covers promote, demote, investigate, and no-op cases.
+ * - Routing-policy remains the observational evidence store; promotions live in a separate artifact.
  */
 
 import {
   type RoutingPolicyFile,
   type RoutingPolicyStats,
   derivePolicyBoost,
-  ensureScenario,
 } from "./routing-policy.mjs";
 import type {
   RoutingReplayReport,
@@ -44,6 +44,27 @@ export interface PolicyPatchReport {
   sessionId: string;
   patchCount: number;
   entries: PolicyPatchEntry[];
+}
+
+// ---------------------------------------------------------------------------
+// Promotion artifact — separate from the observational policy ledger
+// ---------------------------------------------------------------------------
+
+export interface PromotedRule {
+  scenario: string;
+  skill: string;
+  action: "promote" | "demote";
+  boost: number;
+  confidence: number;
+  reason: string;
+}
+
+export interface PromotionArtifact {
+  version: 1;
+  sessionId: string;
+  promotedAt: string;
+  applied: number;
+  rules: PromotedRule[];
 }
 
 // ---------------------------------------------------------------------------
@@ -167,24 +188,28 @@ export function compilePolicyPatch(
 }
 
 // ---------------------------------------------------------------------------
-// Apply — mutates policy in place (explicit opt-in path)
+// Apply — produces a PromotionArtifact without mutating the policy ledger
 // ---------------------------------------------------------------------------
 
 /**
- * Apply a compiled patch to a policy file by recording synthetic exposures
- * and outcomes that would produce the proposed boost via derivePolicyBoost.
+ * Convert a compiled patch into a PromotionArtifact — a standalone record of
+ * promotion decisions that does NOT touch the observational routing-policy stats.
  *
- * This is the only function that mutates state. It must be called explicitly.
- * Returns the number of entries applied.
+ * The routing-policy ledger remains the evidence store (exposures, wins,
+ * directiveWins, staleMisses are never fabricated). Promotion boosts are
+ * recorded in the returned artifact and can be inspected, replayed, or
+ * applied by a downstream consumer without corrupting ground truth.
+ *
+ * Pure function: same inputs always produce the same artifact.
+ * Idempotent: calling twice with the same patch yields identical output.
  */
 export function applyPolicyPatch(
-  policy: RoutingPolicyFile,
   patch: PolicyPatchReport,
   now?: string,
-): number {
+): PromotionArtifact {
   const log = createLogger();
   const timestamp = now ?? new Date().toISOString();
-  let applied = 0;
+  const rules: PromotedRule[] = [];
 
   for (const entry of patch.entries) {
     if (entry.action === "investigate" || entry.action === "no-op") {
@@ -197,53 +222,35 @@ export function applyPolicyPatch(
       continue;
     }
 
-    const stats = ensureScenario(
-      policy,
-      entry.scenario,
-      entry.skill,
-      timestamp,
-    );
-
-    // We set stats directly to values that produce the proposed boost
-    // via derivePolicyBoost. This ensures we never introduce a second
-    // scoring system — the existing boost ladder is the single source
-    // of truth.
-    if (entry.proposedBoost === 8) {
-      // derivePolicyBoost returns 8 when: exposures >= 3, successRate >= 0.80
-      // Set 5 exposures, 5 wins → rate 1.0 + directiveWins*0.25 → well above 0.80
-      stats.exposures = Math.max(stats.exposures, 5);
-      stats.wins = Math.max(stats.wins, stats.exposures);
-      stats.lastUpdatedAt = timestamp;
-    } else if (entry.proposedBoost === -2) {
-      // derivePolicyBoost returns -2 when: exposures >= 5, successRate < 0.15
-      // Set 5 exposures, 0 wins → rate 0.0
-      stats.exposures = Math.max(stats.exposures, 5);
-      stats.wins = 0;
-      stats.directiveWins = 0;
-      stats.staleMisses = Math.max(stats.staleMisses, stats.exposures);
-      stats.lastUpdatedAt = timestamp;
-    }
-
-    // Verify the boost actually matches what we wanted
-    const actualBoost = derivePolicyBoost(stats);
+    rules.push({
+      scenario: entry.scenario,
+      skill: entry.skill,
+      action: entry.action as "promote" | "demote",
+      boost: entry.proposedBoost,
+      confidence: entry.confidence,
+      reason: entry.reason,
+    });
 
     log.summary("policy_apply_entry", {
       scenario: entry.scenario,
       skill: entry.skill,
       action: entry.action,
       proposedBoost: entry.proposedBoost,
-      actualBoost,
-      match: actualBoost === entry.proposedBoost,
+      delta: entry.delta,
     });
-
-    applied += 1;
   }
 
   log.summary("policy_apply_complete", {
     sessionId: patch.sessionId,
-    applied,
+    applied: rules.length,
     total: patch.entries.length,
   });
 
-  return applied;
+  return {
+    version: 1,
+    sessionId: patch.sessionId,
+    promotedAt: timestamp,
+    applied: rules.length,
+    rules,
+  };
 }

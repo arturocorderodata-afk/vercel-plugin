@@ -39,18 +39,22 @@ function replayLearnedRules(params) {
     skills.add(rule.skill);
   }
   let baselineWins = 0;
+  let baselineDirectiveWins = 0;
   let learnedWins = 0;
+  let learnedDirectiveWins = 0;
   const regressions = [];
   for (const trace of traces) {
     const sKey = scenarioKeyFromTrace(trace);
     const promotedSkills = promotedByScenario.get(sKey);
-    const baselineHit = trace.verification?.matchedSuggestedAction === true && trace.injectedSkills.length > 0;
-    if (baselineHit) baselineWins++;
+    const verifiedSuccess = trace.verification !== null && trace.injectedSkills.length > 0;
+    const directiveAdherent = verifiedSuccess && trace.verification?.matchedSuggestedAction === true;
+    if (verifiedSuccess) baselineWins++;
+    if (directiveAdherent) baselineDirectiveWins++;
     if (promotedSkills) {
       const learnedOverlap = trace.injectedSkills.some(
         (s) => promotedSkills.has(s)
       );
-      if (baselineHit && !learnedOverlap) {
+      if (verifiedSuccess && !learnedOverlap) {
         regressions.push(trace.decisionId);
         logger.summary("replay_regression", {
           decisionId: trace.decisionId,
@@ -60,24 +64,30 @@ function replayLearnedRules(params) {
         });
       } else if (learnedOverlap) {
         learnedWins++;
-      } else if (baselineHit) {
-        learnedWins++;
+        if (directiveAdherent) learnedDirectiveWins++;
       }
-    } else if (baselineHit) {
+    } else if (verifiedSuccess) {
       learnedWins++;
+      if (directiveAdherent) learnedDirectiveWins++;
     }
   }
   regressions.sort();
   const result = {
     baselineWins,
+    baselineDirectiveWins,
     learnedWins,
+    learnedDirectiveWins,
     deltaWins: learnedWins - baselineWins,
+    deltaDirectiveWins: learnedDirectiveWins - baselineDirectiveWins,
     regressions
   };
   logger.summary("replay_complete", {
     baselineWins: result.baselineWins,
+    baselineDirectiveWins: result.baselineDirectiveWins,
     learnedWins: result.learnedWins,
+    learnedDirectiveWins: result.learnedDirectiveWins,
     deltaWins: result.deltaWins,
+    deltaDirectiveWins: result.deltaDirectiveWins,
     regressionCount: result.regressions.length,
     regressionIds: result.regressions
   });

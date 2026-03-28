@@ -66,6 +66,7 @@ function makeRule(
   };
 }
 
+/** Verified trace with matchedSuggestedAction === true (directive-adherent win). */
 function verifiedTrace(
   decisionId: string,
   injectedSkills: string[],
@@ -77,6 +78,22 @@ function verifiedTrace(
       verificationId: `v-${decisionId}`,
       observedBoundary: "uiRender",
       matchedSuggestedAction: true,
+    },
+  });
+}
+
+/** Verified trace with matchedSuggestedAction === false (verified success, not directive-adherent). */
+function verifiedNonDirectiveTrace(
+  decisionId: string,
+  injectedSkills: string[],
+): RoutingDecisionTrace {
+  return makeTrace({
+    decisionId,
+    injectedSkills,
+    verification: {
+      verificationId: `v-${decisionId}`,
+      observedBoundary: "uiRender",
+      matchedSuggestedAction: false,
     },
   });
 }
@@ -97,8 +114,11 @@ describe("replayLearnedRules — empty inputs", () => {
     const result = replayLearnedRules({ traces: [], rules: [] });
     expect(result).toEqual({
       baselineWins: 0,
+      baselineDirectiveWins: 0,
       learnedWins: 0,
+      learnedDirectiveWins: 0,
       deltaWins: 0,
+      deltaDirectiveWins: 0,
       regressions: [],
     });
   });
@@ -110,8 +130,11 @@ describe("replayLearnedRules — empty inputs", () => {
     });
     expect(result).toEqual({
       baselineWins: 0,
+      baselineDirectiveWins: 0,
       learnedWins: 0,
+      learnedDirectiveWins: 0,
       deltaWins: 0,
+      deltaDirectiveWins: 0,
       regressions: [],
     });
   });
@@ -123,8 +146,11 @@ describe("replayLearnedRules — empty inputs", () => {
     });
     expect(result).toEqual({
       baselineWins: 0,
+      baselineDirectiveWins: 0,
       learnedWins: 0,
+      learnedDirectiveWins: 0,
       deltaWins: 0,
+      deltaDirectiveWins: 0,
       regressions: [],
     });
   });
@@ -141,8 +167,11 @@ describe("replayLearnedRules — baseline carry-through", () => {
       rules: [],
     });
     expect(result.baselineWins).toBe(1);
+    expect(result.baselineDirectiveWins).toBe(1);
     expect(result.learnedWins).toBe(1);
+    expect(result.learnedDirectiveWins).toBe(1);
     expect(result.deltaWins).toBe(0);
+    expect(result.deltaDirectiveWins).toBe(0);
     expect(result.regressions).toEqual([]);
   });
 
@@ -156,7 +185,9 @@ describe("replayLearnedRules — baseline carry-through", () => {
       rules: [],
     });
     expect(result.baselineWins).toBe(2);
+    expect(result.baselineDirectiveWins).toBe(2);
     expect(result.learnedWins).toBe(2);
+    expect(result.learnedDirectiveWins).toBe(2);
     expect(result.deltaWins).toBe(0);
     expect(result.regressions).toEqual([]);
   });
@@ -173,6 +204,95 @@ describe("replayLearnedRules — baseline carry-through", () => {
     expect(result.baselineWins).toBe(1);
     expect(result.learnedWins).toBe(1);
     expect(result.regressions).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Verified success vs directive adherence
+// ---------------------------------------------------------------------------
+
+describe("replayLearnedRules — verified success vs directive adherence", () => {
+  test("verified non-directive trace counts as baseline win but not directive win", () => {
+    const result = replayLearnedRules({
+      traces: [verifiedNonDirectiveTrace("d1", ["next-config"])],
+      rules: [],
+    });
+    expect(result.baselineWins).toBe(1);
+    expect(result.baselineDirectiveWins).toBe(0);
+    expect(result.learnedWins).toBe(1);
+    expect(result.learnedDirectiveWins).toBe(0);
+  });
+
+  test("mix of directive and non-directive verified traces counted separately", () => {
+    const result = replayLearnedRules({
+      traces: [
+        verifiedTrace("d1", ["skill-a"]),           // directive-adherent
+        verifiedNonDirectiveTrace("d2", ["skill-b"]), // verified but not directive
+        unverifiedTrace("d3", ["skill-c"]),           // not verified
+      ],
+      rules: [],
+    });
+    expect(result.baselineWins).toBe(2);
+    expect(result.baselineDirectiveWins).toBe(1);
+    expect(result.learnedWins).toBe(2);
+    expect(result.learnedDirectiveWins).toBe(1);
+  });
+
+  test("non-directive verified trace triggers regression when promoted rule misses", () => {
+    const result = replayLearnedRules({
+      traces: [verifiedNonDirectiveTrace("d1", ["skill-a"])],
+      rules: [makeRule({ id: "r1", skill: "skill-b" })],
+    });
+    expect(result.baselineWins).toBe(1);
+    expect(result.baselineDirectiveWins).toBe(0);
+    expect(result.regressions).toEqual(["d1"]);
+  });
+
+  test("promoted rule covering non-directive verified trace is a learned win", () => {
+    const result = replayLearnedRules({
+      traces: [verifiedNonDirectiveTrace("d1", ["next-config"])],
+      rules: [makeRule({ id: "r1", skill: "next-config" })],
+    });
+    expect(result.baselineWins).toBe(1);
+    expect(result.baselineDirectiveWins).toBe(0);
+    expect(result.learnedWins).toBe(1);
+    expect(result.learnedDirectiveWins).toBe(0);
+    expect(result.regressions).toEqual([]);
+  });
+
+  test("directive adherence tracked through to learned wins", () => {
+    const result = replayLearnedRules({
+      traces: [
+        verifiedTrace("d1", ["skill-a"]),              // directive
+        verifiedNonDirectiveTrace("d2", ["skill-a"]),   // non-directive
+      ],
+      rules: [makeRule({ id: "r1", skill: "skill-a" })],
+    });
+    expect(result.baselineWins).toBe(2);
+    expect(result.baselineDirectiveWins).toBe(1);
+    expect(result.learnedWins).toBe(2);
+    expect(result.learnedDirectiveWins).toBe(1);
+    expect(result.deltaWins).toBe(0);
+    expect(result.deltaDirectiveWins).toBe(0);
+  });
+
+  test("regression rejects rules that reduce verified success even if directive wins would increase", () => {
+    // d1: non-directive verified win with skill-a (counts as baseline win)
+    // d2: unverified trace with skill-b (promoted rule covers it → learned win)
+    // Promoted rule is skill-b, which doesn't cover d1 → regression on d1
+    const result = replayLearnedRules({
+      traces: [
+        verifiedNonDirectiveTrace("d1", ["skill-a"]),
+        makeTrace({
+          decisionId: "d2",
+          injectedSkills: ["skill-b"],
+          verification: null,
+        }),
+      ],
+      rules: [makeRule({ id: "r1", skill: "skill-b" })],
+    });
+    expect(result.baselineWins).toBe(1);
+    expect(result.regressions).toEqual(["d1"]);
   });
 });
 
@@ -348,8 +468,11 @@ describe("replayLearnedRules — determinism", () => {
 
     // Counts are the same
     expect(r1.baselineWins).toBe(r2.baselineWins);
+    expect(r1.baselineDirectiveWins).toBe(r2.baselineDirectiveWins);
     expect(r1.learnedWins).toBe(r2.learnedWins);
+    expect(r1.learnedDirectiveWins).toBe(r2.learnedDirectiveWins);
     expect(r1.deltaWins).toBe(r2.deltaWins);
+    expect(r1.deltaDirectiveWins).toBe(r2.deltaDirectiveWins);
     // Regressions sorted identically
     expect(r1.regressions).toEqual(r2.regressions);
   });
@@ -449,9 +572,10 @@ describe("replayLearnedRules — edge cases", () => {
     });
     const result = replayLearnedRules({ traces: [trace], rules: [] });
     expect(result.baselineWins).toBe(0);
+    expect(result.baselineDirectiveWins).toBe(0);
   });
 
-  test("trace with verification false is not a baseline win", () => {
+  test("trace with verification false is a baseline win but not a directive win", () => {
     const trace = makeTrace({
       decisionId: "d1",
       injectedSkills: ["next-config"],
@@ -462,21 +586,23 @@ describe("replayLearnedRules — edge cases", () => {
       },
     });
     const result = replayLearnedRules({ traces: [trace], rules: [] });
-    expect(result.baselineWins).toBe(0);
+    expect(result.baselineWins).toBe(1);
+    expect(result.baselineDirectiveWins).toBe(0);
   });
 
-  test("trace with verification null matchedSuggestedAction is not a baseline win", () => {
+  test("pending verification placeholder is not a baseline win", () => {
     const trace = makeTrace({
       decisionId: "d1",
       injectedSkills: ["next-config"],
       verification: {
         verificationId: "v1",
-        observedBoundary: "uiRender",
+        observedBoundary: null,
         matchedSuggestedAction: null,
       },
     });
     const result = replayLearnedRules({ traces: [trace], rules: [] });
     expect(result.baselineWins).toBe(0);
+    expect(result.baselineDirectiveWins).toBe(0);
   });
 
   test("multiple promoted rules for same scenario are unioned", () => {

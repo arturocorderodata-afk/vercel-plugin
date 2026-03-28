@@ -55,8 +55,11 @@ export interface LearnedRoutingRule {
 
 export interface ReplayResult {
   baselineWins: number;
+  baselineDirectiveWins: number;
   learnedWins: number;
+  learnedDirectiveWins: number;
   deltaWins: number;
+  deltaDirectiveWins: number;
   regressions: string[];
 }
 

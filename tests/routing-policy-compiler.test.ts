@@ -4,6 +4,7 @@ import {
   applyPolicyPatch,
   type PolicyPatchReport,
   type PolicyPatchEntry,
+  type PromotionArtifact,
 } from "../hooks/src/routing-policy-compiler.mts";
 import {
   createEmptyRoutingPolicy,
@@ -487,8 +488,7 @@ describe("routing-policy-compiler", () => {
   // -------------------------------------------------------------------------
 
   describe("applyPolicyPatch", () => {
-    test("promote: after apply, derivePolicyBoost returns 8", () => {
-      const policy = createEmptyRoutingPolicy();
+    test("promote: produces PromotionArtifact with boost 8", () => {
       const patch: PolicyPatchReport = {
         version: 1,
         sessionId: "apply-test",
@@ -507,15 +507,16 @@ describe("routing-policy-compiler", () => {
         ],
       };
 
-      const applied = applyPolicyPatch(policy, patch, T1);
-      expect(applied).toBe(1);
-
-      const stats = policy.scenarios[SCENARIO_A]["skill-a"];
-      expect(derivePolicyBoost(stats)).toBe(8);
+      const artifact = applyPolicyPatch(patch, T1);
+      expect(artifact.applied).toBe(1);
+      expect(artifact.rules).toHaveLength(1);
+      expect(artifact.rules[0].action).toBe("promote");
+      expect(artifact.rules[0].boost).toBe(8);
+      expect(artifact.rules[0].skill).toBe("skill-a");
+      expect(artifact.rules[0].scenario).toBe(SCENARIO_A);
     });
 
-    test("demote: after apply, derivePolicyBoost returns -2", () => {
-      const policy = createEmptyRoutingPolicy();
+    test("demote: produces PromotionArtifact with boost -2", () => {
       const patch: PolicyPatchReport = {
         version: 1,
         sessionId: "apply-test",
@@ -534,15 +535,14 @@ describe("routing-policy-compiler", () => {
         ],
       };
 
-      const applied = applyPolicyPatch(policy, patch, T1);
-      expect(applied).toBe(1);
-
-      const stats = policy.scenarios[SCENARIO_A]["skill-b"];
-      expect(derivePolicyBoost(stats)).toBe(-2);
+      const artifact = applyPolicyPatch(patch, T1);
+      expect(artifact.applied).toBe(1);
+      expect(artifact.rules).toHaveLength(1);
+      expect(artifact.rules[0].action).toBe("demote");
+      expect(artifact.rules[0].boost).toBe(-2);
     });
 
-    test("investigate: skipped, no mutation", () => {
-      const policy = createEmptyRoutingPolicy();
+    test("investigate: skipped, not included in rules", () => {
       const patch: PolicyPatchReport = {
         version: 1,
         sessionId: "apply-test",
@@ -561,13 +561,12 @@ describe("routing-policy-compiler", () => {
         ],
       };
 
-      const applied = applyPolicyPatch(policy, patch, T1);
-      expect(applied).toBe(0);
-      expect(policy.scenarios[SCENARIO_A]).toBeUndefined();
+      const artifact = applyPolicyPatch(patch, T1);
+      expect(artifact.applied).toBe(0);
+      expect(artifact.rules).toHaveLength(0);
     });
 
-    test("no-op: skipped, no mutation", () => {
-      const policy = createEmptyRoutingPolicy();
+    test("no-op: skipped, not included in rules", () => {
       const patch: PolicyPatchReport = {
         version: 1,
         sessionId: "apply-test",
@@ -586,12 +585,12 @@ describe("routing-policy-compiler", () => {
         ],
       };
 
-      const applied = applyPolicyPatch(policy, patch, T1);
-      expect(applied).toBe(0);
+      const artifact = applyPolicyPatch(patch, T1);
+      expect(artifact.applied).toBe(0);
+      expect(artifact.rules).toHaveLength(0);
     });
 
-    test("idempotent: applying same patch twice produces same result", () => {
-      const policy = createEmptyRoutingPolicy();
+    test("idempotent: applying same patch twice produces identical artifacts", () => {
       const patch: PolicyPatchReport = {
         version: 1,
         sessionId: "idempotent-test",
@@ -610,17 +609,13 @@ describe("routing-policy-compiler", () => {
         ],
       };
 
-      applyPolicyPatch(policy, patch, T1);
-      const snapshot1 = JSON.stringify(policy);
+      const artifact1 = applyPolicyPatch(patch, T1);
+      const artifact2 = applyPolicyPatch(patch, T1);
 
-      applyPolicyPatch(policy, patch, T1);
-      const snapshot2 = JSON.stringify(policy);
-
-      expect(snapshot1).toBe(snapshot2);
+      expect(JSON.stringify(artifact1)).toBe(JSON.stringify(artifact2));
     });
 
-    test("sets lastUpdatedAt to provided timestamp", () => {
-      const policy = createEmptyRoutingPolicy();
+    test("sets promotedAt to provided timestamp", () => {
       const patch: PolicyPatchReport = {
         version: 1,
         sessionId: "ts-test",
@@ -639,9 +634,121 @@ describe("routing-policy-compiler", () => {
         ],
       };
 
-      applyPolicyPatch(policy, patch, T1);
-      const stats = policy.scenarios[SCENARIO_A]["skill-ts"];
-      expect(stats.lastUpdatedAt).toBe(T1);
+      const artifact = applyPolicyPatch(patch, T1);
+      expect(artifact.promotedAt).toBe(T1);
+    });
+
+    test("does not mutate any RoutingPolicyFile (evidence preservation)", () => {
+      const policy = policyWithBoost(SCENARIO_A, "skill-evidence", 2);
+      const policySnapshot = JSON.stringify(policy);
+
+      const patch: PolicyPatchReport = {
+        version: 1,
+        sessionId: "evidence-test",
+        patchCount: 1,
+        entries: [
+          {
+            scenario: SCENARIO_A,
+            skill: "skill-evidence",
+            action: "promote",
+            currentBoost: 2,
+            proposedBoost: 8,
+            delta: 6,
+            confidence: 0.99,
+            reason: "test",
+          },
+        ],
+      };
+
+      // applyPolicyPatch no longer takes a policy — it cannot mutate one
+      const artifact = applyPolicyPatch(patch, T1);
+      expect(artifact.applied).toBe(1);
+
+      // Policy remains completely untouched
+      expect(JSON.stringify(policy)).toBe(policySnapshot);
+    });
+
+    test("repeated application does not inflate counters or corrupt evidence", () => {
+      const patch: PolicyPatchReport = {
+        version: 1,
+        sessionId: "no-corruption-test",
+        patchCount: 2,
+        entries: [
+          {
+            scenario: SCENARIO_A,
+            skill: "skill-x",
+            action: "promote",
+            currentBoost: 0,
+            proposedBoost: 8,
+            delta: 8,
+            confidence: 0.99,
+            reason: "test",
+          },
+          {
+            scenario: SCENARIO_B,
+            skill: "skill-y",
+            action: "demote",
+            currentBoost: 5,
+            proposedBoost: -2,
+            delta: -7,
+            confidence: 1.0,
+            reason: "test",
+          },
+        ],
+      };
+
+      // Apply 10 times — artifact is always the same
+      const artifacts: PromotionArtifact[] = [];
+      for (let i = 0; i < 10; i++) {
+        artifacts.push(applyPolicyPatch(patch, T1));
+      }
+
+      const first = JSON.stringify(artifacts[0]);
+      for (const a of artifacts) {
+        expect(JSON.stringify(a)).toBe(first);
+      }
+      expect(artifacts[0].applied).toBe(2);
+      expect(artifacts[0].rules).toHaveLength(2);
+    });
+
+    test("preserves confidence and reason in PromotedRule", () => {
+      const patch: PolicyPatchReport = {
+        version: 1,
+        sessionId: "passthrough-test",
+        patchCount: 1,
+        entries: [
+          {
+            scenario: SCENARIO_A,
+            skill: "skill-pass",
+            action: "promote",
+            currentBoost: 0,
+            proposedBoost: 8,
+            delta: 8,
+            confidence: 0.73,
+            reason: "4/5 wins in scenario",
+          },
+        ],
+      };
+
+      const artifact = applyPolicyPatch(patch, T1);
+      expect(artifact.rules[0].confidence).toBe(0.73);
+      expect(artifact.rules[0].reason).toBe("4/5 wins in scenario");
+    });
+
+    test("version and sessionId are set correctly on artifact", () => {
+      const patch: PolicyPatchReport = {
+        version: 1,
+        sessionId: "meta-test",
+        patchCount: 0,
+        entries: [],
+      };
+
+      const artifact = applyPolicyPatch(patch, T1);
+      expect(artifact.version).toBe(1);
+      expect(artifact.sessionId).toBe("meta-test");
+      expect(artifact.promotedAt).toBe(T1);
+      expect(artifact.applied).toBe(0);
+      expect(artifact.rules).toEqual([]);
     });
   });
 

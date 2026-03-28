@@ -14,6 +14,11 @@ import {
   finalizeStaleExposures,
   type SkillExposure,
 } from "../hooks/src/routing-policy-ledger.mts";
+import {
+  distillRulesFromTrace,
+  type LearnedRoutingRulesFile,
+} from "../hooks/src/rule-distillation.mts";
+import type { RoutingDecisionTrace } from "../hooks/src/routing-decision-trace.mts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -295,6 +300,123 @@ describe("candidate-vs-context policy gating", () => {
     const scenario = "PreToolUse|flow-verification|uiRender|Bash";
     expect(policy.scenarios[scenario]?.["legacy-skill"]).toBeDefined();
     expect(policy.scenarios[scenario]!["legacy-skill"]!.exposures).toBe(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Distillation-level attribution: context-only skills produce no rules
+  // ---------------------------------------------------------------------------
+
+  test("distillation pipeline: candidate-only attribution produces rules, context does not", () => {
+    const DISTILL_TS = "2026-03-28T06:00:00.000Z";
+
+    // Build traces with both candidate and context skills ranked
+    const traces: RoutingDecisionTrace[] = Array.from({ length: 8 }, (_, i) => ({
+      version: 2 as const,
+      decisionId: `distill-attr-${i}`,
+      sessionId: SESSION_ID,
+      hook: "PreToolUse" as const,
+      toolName: "Read" as const,
+      toolTarget: "/app/page.tsx",
+      timestamp: DISTILL_TS,
+      primaryStory: {
+        id: "story-1",
+        kind: "feature",
+        storyRoute: "/app",
+        targetBoundary: "uiRender",
+      },
+      observedRoute: "/app",
+      policyScenario: null,
+      matchedSkills: ["main-skill", "helper-skill"],
+      injectedSkills: ["main-skill", "helper-skill"],
+      skippedReasons: [],
+      ranked: [
+        {
+          skill: "main-skill",
+          basePriority: 6,
+          effectivePriority: 6,
+          pattern: { type: "path", value: "app/**" },
+          profilerBoost: 0,
+          policyBoost: 0,
+          policyReason: null,
+          summaryOnly: false,
+          synthetic: false,
+          droppedReason: null,
+        },
+        {
+          skill: "helper-skill",
+          basePriority: 4,
+          effectivePriority: 4,
+          pattern: { type: "path", value: "**/*.tsx" },
+          profilerBoost: 0,
+          policyBoost: 0,
+          policyReason: null,
+          summaryOnly: false,
+          synthetic: false,
+          droppedReason: null,
+        },
+      ],
+      verification: {
+        verificationId: `v-attr-${i}`,
+        observedBoundary: "uiRender",
+        matchedSuggestedAction: true,
+      },
+    }));
+
+    // Candidate exposures for main-skill
+    const candidateExposures: SkillExposure[] = Array.from({ length: 8 }, (_, i) => ({
+      id: `cand-exp-${i}`,
+      sessionId: SESSION_ID,
+      projectRoot: PROJECT_ROOT,
+      storyId: "story-1",
+      storyKind: "feature",
+      route: "/app",
+      hook: "PreToolUse" as const,
+      toolName: "Read" as const,
+      skill: "main-skill",
+      targetBoundary: "uiRender",
+      exposureGroupId: `group-${i}`,
+      attributionRole: "candidate" as const,
+      candidateSkill: "main-skill",
+      createdAt: DISTILL_TS,
+      resolvedAt: DISTILL_TS,
+      outcome: "win" as const,
+    }));
+
+    // Context exposures for helper-skill
+    const contextExposures: SkillExposure[] = Array.from({ length: 8 }, (_, i) => ({
+      id: `ctx-exp-${i}`,
+      sessionId: SESSION_ID,
+      projectRoot: PROJECT_ROOT,
+      storyId: "story-1",
+      storyKind: "feature",
+      route: "/app",
+      hook: "PreToolUse" as const,
+      toolName: "Read" as const,
+      skill: "helper-skill",
+      targetBoundary: "uiRender",
+      exposureGroupId: `group-${i}`,
+      attributionRole: "context" as const,
+      candidateSkill: "main-skill",
+      createdAt: DISTILL_TS,
+      resolvedAt: DISTILL_TS,
+      outcome: "win" as const,
+    }));
+
+    const result: LearnedRoutingRulesFile = distillRulesFromTrace({
+      projectRoot: PROJECT_ROOT,
+      traces,
+      exposures: [...candidateExposures, ...contextExposures],
+      policy: { scenarios: {} },
+      generatedAt: DISTILL_TS,
+    });
+
+    // candidate main-skill should have rules
+    const mainRules = result.rules.filter((r) => r.skill === "main-skill");
+    expect(mainRules.length).toBeGreaterThanOrEqual(1);
+
+    // context helper-skill should have ZERO rules
+    const helperRules = result.rules.filter((r) => r.skill === "helper-skill");
+    expect(helperRules).toEqual([]);
   });
 
   test("directive-win only credits candidate in policy", () => {
