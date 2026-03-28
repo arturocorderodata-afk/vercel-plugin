@@ -11,7 +11,7 @@ import {
   recordObservation
 } from "./verification-ledger.mjs";
 import { resolveBoundaryOutcome } from "./routing-policy-ledger.mjs";
-import { selectPrimaryStory } from "./verification-plan.mjs";
+import { selectActiveStory } from "./verification-plan.mjs";
 import {
   appendRoutingDecisionTrace,
   createDecisionId
@@ -189,7 +189,7 @@ function run(rawInput) {
       primaryNextAction: plan.primaryNextAction,
       blockedReasons: [...plan.blockedReasons]
     });
-    const primaryStory = plan.stories.length > 0 ? selectPrimaryStory(plan.stories) : null;
+    const primaryStory = plan.stories.length > 0 ? selectActiveStory(plan) : null;
     const resolvedStoryId = primaryStory?.id ?? envString(env, "VERCEL_PLUGIN_VERIFICATION_STORY_ID") ?? null;
     if (boundaryEvent.boundary !== "unknown") {
       const resolved = resolveBoundaryOutcome({

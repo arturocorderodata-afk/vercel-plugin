@@ -239,6 +239,68 @@ describe("session-explain exposure aggregation", () => {
     expect(result.exposures.wins).toBe(0);
     expect(result.exposures.directiveWins).toBe(0);
     expect(result.exposures.staleMisses).toBe(0);
+    expect(result.exposures.candidateWins).toBe(0);
+    expect(result.exposures.contextWins).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Manifest exclusion drift diagnosis
+// ---------------------------------------------------------------------------
+
+describe("session-explain manifest exclusion drift", () => {
+  test("emits MANIFEST_EXCLUSION_DRIFT when live exclusions exist but manifest has none", () => {
+    // Create a temp root with an excluded skill but a manifest with excludedSkills: []
+    const tempRoot = join(tmpdir(), `session-explain-drift-${Date.now()}`);
+    const generatedDir = join(tempRoot, "generated");
+    const tempSkills = join(tempRoot, "skills", "fake-drift-skill");
+    mkdirSync(generatedDir, { recursive: true });
+    mkdirSync(tempSkills, { recursive: true });
+    writeFileSync(
+      join(generatedDir, "skill-manifest.json"),
+      JSON.stringify({
+        generatedAt: "2026-03-28T00:00:00.000Z",
+        version: 2,
+        excludedSkills: [],
+        skills: {},
+      }),
+    );
+    writeFileSync(
+      join(tempSkills, "SKILL.md"),
+      `---
+name: fake-drift-skill
+description: "Fixture that triggers exclusion drift"
+metadata:
+  priority: 1
+---
+# Fake Drift Skill
+`,
+    );
+
+    try {
+      const output = runSessionExplain(null, tempRoot, true);
+      const result: SessionExplainResult = JSON.parse(output);
+
+      const drift = result.diagnosis.find(
+        (d) => d.code === "MANIFEST_EXCLUSION_DRIFT",
+      );
+      expect(drift).toBeDefined();
+      expect(drift!.severity).toBe("error");
+      expect(drift!.hint).toContain("build:manifest");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("does NOT emit MANIFEST_EXCLUSION_DRIFT when manifest exclusions are in sync", () => {
+    // Use the real project root — manifest should be in sync after rebuild
+    const output = runSessionExplain(null, ROOT, true);
+    const result: SessionExplainResult = JSON.parse(output);
+
+    const drift = result.diagnosis.find(
+      (d) => d.code === "MANIFEST_EXCLUSION_DRIFT",
+    );
+    expect(drift).toBeUndefined();
   });
 });
 

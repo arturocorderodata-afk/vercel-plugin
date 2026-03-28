@@ -3,12 +3,12 @@ import {
   computePlan,
   formatVerificationBanner,
   loadCachedPlanResult,
-  selectPrimaryStory
+  selectActiveStory
 } from "./verification-plan.mjs";
 import { createLogger, logCaughtError } from "./logger.mjs";
 function buildVerificationDirective(plan) {
   if (!plan?.hasStories || plan.stories.length === 0) return null;
-  const story = selectPrimaryStory(plan.stories);
+  const story = selectActiveStory(plan);
   if (!story) return null;
   return {
     version: 1,

@@ -36,13 +36,14 @@ import {
 import { resolveVercelJsonSkills, isVercelJsonPath, VERCEL_JSON_SKILLS } from "./vercel-config.mjs";
 import { createLogger, logDecision } from "./logger.mjs";
 import { trackBaseEvents } from "./telemetry.mjs";
-import { loadCachedPlanResult, selectPrimaryStory } from "./verification-plan.mjs";
+import { loadCachedPlanResult, selectActiveStory } from "./verification-plan.mjs";
 import { resolveVerificationRuntimeState, buildVerificationEnv } from "./verification-directive.mjs";
 import { applyPolicyBoosts } from "./routing-policy.mjs";
 import {
   appendSkillExposure,
   loadProjectRoutingPolicy
 } from "./routing-policy-ledger.mjs";
+import { buildAttributionDecision } from "./routing-attribution.mjs";
 import { explainPolicyRecall } from "./routing-diagnosis.mjs";
 import {
   appendRoutingDecisionTrace,
@@ -567,7 +568,7 @@ function deduplicateSkills({ matchedEntries, matched, toolName, toolInput, injec
   const policyBoosted = [];
   if (cwd) {
     const plan = sessionId ? loadCachedPlanResult(sessionId, l) : null;
-    const primaryStory = plan ? selectPrimaryStory(plan.stories ?? []) : null;
+    const primaryStory = plan ? selectActiveStory(plan) : null;
     if (primaryStory) {
       const policyScenario = {
         hook: "PreToolUse",
@@ -1030,7 +1031,7 @@ function run() {
   const policyRecallSynthetic = /* @__PURE__ */ new Set();
   if (cwd && sessionId) {
     const recallPlan = loadCachedPlanResult(sessionId, log);
-    const recallStory = recallPlan ? selectPrimaryStory(recallPlan.stories ?? []) : null;
+    const recallStory = recallPlan ? selectActiveStory(recallPlan) : null;
     const recallBoundary = recallPlan?.primaryNextAction?.targetBoundary ?? null;
     if (recallStory && recallBoundary) {
       const recallScenario = {
@@ -1136,8 +1137,18 @@ function run() {
   if (log.active) timing.skill_read = Math.round(log.now() - tSkillRead);
   if (loaded.length > 0 && sessionId) {
     const plan = loadCachedPlanResult(sessionId, log);
-    const story = plan ? selectPrimaryStory(plan.stories ?? []) : null;
+    const story = plan ? selectActiveStory(plan) : null;
     if (story) {
+      const targetBoundary = plan?.primaryNextAction?.targetBoundary ?? null;
+      const attribution = buildAttributionDecision({
+        sessionId,
+        hook: "PreToolUse",
+        storyId: story.id ?? null,
+        route: story.route ?? null,
+        targetBoundary,
+        loadedSkills: loaded,
+        preferredSkills: policyRecallSynthetic
+      });
       for (const skill of loaded) {
         appendSkillExposure({
           id: `${sessionId}:${skill}:${Date.now()}`,
@@ -1149,7 +1160,10 @@ function run() {
           hook: "PreToolUse",
           toolName,
           skill,
-          targetBoundary: plan?.primaryNextAction?.targetBoundary ?? null,
+          targetBoundary,
+          exposureGroupId: attribution.exposureGroupId,
+          attributionRole: skill === attribution.candidateSkill ? "candidate" : "context",
+          candidateSkill: attribution.candidateSkill,
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
           resolvedAt: null,
           outcome: "pending"
@@ -1159,7 +1173,9 @@ function run() {
         hook: "PreToolUse",
         skills: loaded,
         storyId: story.id,
-        storyKind: story.kind ?? null
+        storyKind: story.kind ?? null,
+        candidateSkill: attribution.candidateSkill,
+        exposureGroupId: attribution.exposureGroupId
       });
     } else {
       log.debug("routing-policy-exposures-skipped", {
@@ -1337,7 +1353,7 @@ function run() {
   }
   {
     const tracePlan = sessionId ? loadCachedPlanResult(sessionId, log) : null;
-    const traceStory = tracePlan ? selectPrimaryStory(tracePlan.stories ?? []) : null;
+    const traceStory = tracePlan ? selectActiveStory(tracePlan) : null;
     const traceTimestamp = (/* @__PURE__ */ new Date()).toISOString();
     const traceToolTarget = toolName === "Bash" ? redactCommand(toolTarget) : toolTarget;
     const decisionId = createDecisionId({

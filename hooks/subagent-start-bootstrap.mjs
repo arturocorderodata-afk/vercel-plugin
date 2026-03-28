@@ -13,7 +13,7 @@ import { claimPendingLaunch } from "./subagent-state.mjs";
 import {
   computePlan,
   loadCachedPlanResult,
-  selectPrimaryStory
+  selectActiveStory
 } from "./verification-plan.mjs";
 import {
   buildVerificationDirective,
@@ -167,7 +167,7 @@ function resolveVerificationPlan(sessionId) {
 }
 function buildVerificationContextFromPlan(plan, category) {
   if (!plan.hasStories || plan.stories.length === 0) return null;
-  const story = selectPrimaryStory(plan.stories);
+  const story = selectActiveStory(plan);
   if (!story) return null;
   const routePart = story.route ? ` (${story.route})` : "";
   switch (category) {

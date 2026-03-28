@@ -26,12 +26,13 @@ import { searchSkills, initializeLexicalIndex } from "./lexical-index.mjs";
 import { analyzePrompt } from "./prompt-analysis.mjs";
 import { createLogger, logDecision } from "./logger.mjs";
 import { trackBaseEvents } from "./telemetry.mjs";
-import { loadCachedPlanResult, selectPrimaryStory } from "./verification-plan.mjs";
+import { loadCachedPlanResult, selectActiveStory } from "./verification-plan.mjs";
 import { applyPolicyBoosts } from "./routing-policy.mjs";
 import {
   appendSkillExposure,
   loadProjectRoutingPolicy
 } from "./routing-policy-ledger.mjs";
+import { buildAttributionDecision } from "./routing-attribution.mjs";
 import {
   appendRoutingDecisionTrace,
   createDecisionId
@@ -714,7 +715,7 @@ function run() {
   const promptPolicyBoosted = [];
   if (cwd && report.selectedSkills.length > 0) {
     const plan = sessionId ? loadCachedPlanResult(sessionId, log) : null;
-    const primaryStory = plan ? selectPrimaryStory(plan.stories ?? []) : null;
+    const primaryStory = plan ? selectActiveStory(plan) : null;
     if (primaryStory) {
       const promptPolicyScenario = {
         hook: "UserPromptSubmit",
@@ -780,8 +781,16 @@ function run() {
   const matchedSkills = allMatched;
   if (loaded.length > 0 && sessionId) {
     const exposurePlan = loadCachedPlanResult(sessionId, log);
-    const exposureStory = exposurePlan ? selectPrimaryStory(exposurePlan.stories ?? []) : null;
+    const exposureStory = exposurePlan ? selectActiveStory(exposurePlan) : null;
     if (exposureStory) {
+      const attribution = buildAttributionDecision({
+        sessionId,
+        hook: "UserPromptSubmit",
+        storyId: exposureStory.id ?? null,
+        route: exposureStory.route ?? null,
+        targetBoundary: null,
+        loadedSkills: loaded
+      });
       for (const skill of loaded) {
         appendSkillExposure({
           id: `${sessionId}:prompt:${skill}:${Date.now()}`,
@@ -794,6 +803,9 @@ function run() {
           toolName: "Prompt",
           skill,
           targetBoundary: null,
+          exposureGroupId: attribution.exposureGroupId,
+          attributionRole: skill === attribution.candidateSkill ? "candidate" : "context",
+          candidateSkill: attribution.candidateSkill,
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
           resolvedAt: null,
           outcome: "pending"
@@ -804,7 +816,9 @@ function run() {
         skills: loaded,
         storyId: exposureStory.id,
         storyKind: exposureStory.kind ?? null,
-        policyBoosted: promptPolicyBoosted
+        policyBoosted: promptPolicyBoosted,
+        candidateSkill: attribution.candidateSkill,
+        exposureGroupId: attribution.exposureGroupId
       });
     } else {
       log.debug("routing-policy-exposures-skipped", {
@@ -863,7 +877,7 @@ function run() {
   }
   {
     const tracePlan = sessionId ? loadCachedPlanResult(sessionId, log) : null;
-    const traceStory = tracePlan ? selectPrimaryStory(tracePlan.stories ?? []) : null;
+    const traceStory = tracePlan ? selectActiveStory(tracePlan) : null;
     const traceTimestamp = (/* @__PURE__ */ new Date()).toISOString();
     const decisionId = createDecisionId({
       hook: "UserPromptSubmit",

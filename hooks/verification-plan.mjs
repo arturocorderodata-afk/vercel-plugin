@@ -16,6 +16,13 @@ function selectPrimaryStory(stories) {
     return a.id.localeCompare(b.id);
   })[0];
 }
+function selectActiveStory(result) {
+  if (result.activeStoryId) {
+    const activeStory = result.stories.find((story) => story.id === result.activeStoryId);
+    if (activeStory) return activeStory;
+  }
+  return selectPrimaryStory(result.stories);
+}
 function computePlan(sessionId, options, logger) {
   const log = logger ?? createLogger();
   const observations = loadObservations(sessionId, log);
@@ -143,7 +150,7 @@ function formatVerificationBanner(result) {
   if (!result.primaryNextAction && result.missingBoundaries.length === 0) return null;
   const lines = ["<!-- verification-plan -->"];
   lines.push("**[Verification Plan]**");
-  const story = selectPrimaryStory(result.stories);
+  const story = selectActiveStory(result);
   if (story) {
     const routePart = story.route ? ` (${story.route})` : "";
     lines.push(`Story: ${story.kind}${routePart} \u2014 "${story.promptExcerpt}"`);
@@ -172,7 +179,7 @@ function formatPlanHuman(result) {
     return "No verification stories active.\nNo observations recorded.\n";
   }
   const lines = [];
-  const activeStory = result.activeStoryId ? result.stories.find((s) => s.id === result.activeStoryId) : selectPrimaryStory(result.stories);
+  const activeStory = selectActiveStory(result);
   if (activeStory) {
     const routePart = activeStory.route ? ` (${activeStory.route})` : "";
     lines.push(`Active story: ${activeStory.kind}${routePart}: "${activeStory.promptExcerpt}"`);
@@ -216,5 +223,6 @@ export {
   loadCachedPlanResult,
   planToLoopSnapshot,
   planToResult,
+  selectActiveStory,
   selectPrimaryStory
 };

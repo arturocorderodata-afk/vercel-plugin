@@ -68,6 +68,7 @@ import {
   appendSkillExposure,
   loadProjectRoutingPolicy,
 } from "./routing-policy-ledger.mjs";
+import { buildAttributionDecision } from "./routing-attribution.mjs";
 import { explainPolicyRecall } from "./routing-diagnosis.mjs";
 import {
   appendRoutingDecisionTrace,
@@ -1715,6 +1716,23 @@ function run(): string {
     const plan = loadCachedPlanResult(sessionId, log);
     const story = plan ? selectActiveStory(plan) : null;
     if (story) {
+      const targetBoundary = (plan?.primaryNextAction?.targetBoundary as
+        | "uiRender"
+        | "clientRequest"
+        | "serverHandler"
+        | "environment"
+        | null) ?? null;
+
+      const attribution = buildAttributionDecision({
+        sessionId,
+        hook: "PreToolUse",
+        storyId: story.id ?? null,
+        route: story.route ?? null,
+        targetBoundary,
+        loadedSkills: loaded,
+        preferredSkills: policyRecallSynthetic,
+      });
+
       for (const skill of loaded) {
         appendSkillExposure({
           id: `${sessionId}:${skill}:${Date.now()}`,
@@ -1726,12 +1744,10 @@ function run(): string {
           hook: "PreToolUse",
           toolName: toolName as RoutingToolName,
           skill,
-          targetBoundary: (plan?.primaryNextAction?.targetBoundary as
-            | "uiRender"
-            | "clientRequest"
-            | "serverHandler"
-            | "environment"
-            | null) ?? null,
+          targetBoundary,
+          exposureGroupId: attribution.exposureGroupId,
+          attributionRole: skill === attribution.candidateSkill ? "candidate" : "context",
+          candidateSkill: attribution.candidateSkill,
           createdAt: new Date().toISOString(),
           resolvedAt: null,
           outcome: "pending",
@@ -1742,6 +1758,8 @@ function run(): string {
         skills: loaded,
         storyId: story.id,
         storyKind: story.kind ?? null,
+        candidateSkill: attribution.candidateSkill,
+        exposureGroupId: attribution.exposureGroupId,
       });
     } else {
       log.debug("routing-policy-exposures-skipped", {

@@ -45,28 +45,37 @@ function saveProjectRoutingPolicy(projectRoot, policy) {
     scenarioCount: Object.keys(policy.scenarios).length
   });
 }
+function shouldAffectPolicy(exposure) {
+  if (!exposure.attributionRole) return true;
+  return exposure.attributionRole === "candidate";
+}
 function appendSkillExposure(exposure) {
   const path = sessionExposurePath(exposure.sessionId);
   const log = createLogger();
   appendFileSync(path, JSON.stringify(exposure) + "\n");
-  const policy = loadProjectRoutingPolicy(exposure.projectRoot);
-  policyRecordExposure(policy, {
-    hook: exposure.hook,
-    storyKind: exposure.storyKind,
-    targetBoundary: exposure.targetBoundary,
-    toolName: exposure.toolName,
-    routeScope: exposure.route,
-    skill: exposure.skill,
-    now: exposure.createdAt
-  });
-  saveProjectRoutingPolicy(exposure.projectRoot, policy);
+  if (shouldAffectPolicy(exposure)) {
+    const policy = loadProjectRoutingPolicy(exposure.projectRoot);
+    policyRecordExposure(policy, {
+      hook: exposure.hook,
+      storyKind: exposure.storyKind,
+      targetBoundary: exposure.targetBoundary,
+      toolName: exposure.toolName,
+      routeScope: exposure.route,
+      skill: exposure.skill,
+      now: exposure.createdAt
+    });
+    saveProjectRoutingPolicy(exposure.projectRoot, policy);
+  }
   log.summary("routing-policy-ledger.exposure-append", {
     id: exposure.id,
     skill: exposure.skill,
     hook: exposure.hook,
     targetBoundary: exposure.targetBoundary,
     route: exposure.route,
-    outcome: exposure.outcome
+    outcome: exposure.outcome,
+    attributionRole: exposure.attributionRole ?? "legacy",
+    exposureGroupId: exposure.exposureGroupId ?? null,
+    policyAffected: shouldAffectPolicy(exposure)
   });
 }
 function loadSessionExposures(sessionId) {
@@ -125,10 +134,13 @@ function resolveBoundaryOutcome(params) {
   const path = sessionExposurePath(sessionId);
   const lines = exposures.map((e) => JSON.stringify(e)).join("\n") + "\n";
   writeFileSync(path, lines);
+  const candidateResolved = resolved.filter(shouldAffectPolicy);
   const projectRoots = new Set(resolved.map((e) => e.projectRoot));
   for (const projectRoot of projectRoots) {
+    const candidates = candidateResolved.filter((r) => r.projectRoot === projectRoot);
+    if (candidates.length === 0) continue;
     const policy = loadProjectRoutingPolicy(projectRoot);
-    for (const e of resolved.filter((r) => r.projectRoot === projectRoot)) {
+    for (const e of candidates) {
       policyRecordOutcome(policy, {
         hook: e.hook,
         storyKind: e.storyKind,
@@ -149,6 +161,8 @@ function resolveBoundaryOutcome(params) {
     route,
     outcome,
     resolvedCount: resolved.length,
+    candidateCount: candidateResolved.length,
+    contextCount: resolved.length - candidateResolved.length,
     skills: resolved.map((e) => e.skill)
   });
   return resolved;
@@ -182,10 +196,13 @@ function finalizeStaleExposures(sessionId, now) {
   const path = sessionExposurePath(sessionId);
   const lines = exposures.map((e) => JSON.stringify(e)).join("\n") + "\n";
   writeFileSync(path, lines);
+  const candidateStale = stale.filter(shouldAffectPolicy);
   const projectRoots = new Set(stale.map((e) => e.projectRoot));
   for (const projectRoot of projectRoots) {
+    const candidates = candidateStale.filter((r) => r.projectRoot === projectRoot);
+    if (candidates.length === 0) continue;
     const policy = loadProjectRoutingPolicy(projectRoot);
-    for (const e of stale.filter((r) => r.projectRoot === projectRoot)) {
+    for (const e of candidates) {
       policyRecordOutcome(policy, {
         hook: e.hook,
         storyKind: e.storyKind,
@@ -202,6 +219,8 @@ function finalizeStaleExposures(sessionId, now) {
   log.summary("routing-policy-ledger.finalize-stale", {
     sessionId,
     staleCount: stale.length,
+    candidateCount: candidateStale.length,
+    contextCount: stale.length - candidateStale.length,
     skills: stale.map((e) => e.skill)
   });
   return stale;

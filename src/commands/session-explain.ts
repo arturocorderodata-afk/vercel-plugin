@@ -96,6 +96,8 @@ export interface SessionExplainResult {
     wins: number;
     directiveWins: number;
     staleMisses: number;
+    candidateWins: number;
+    contextWins: number;
   };
   diagnosis: SessionExplainDiagnosis[];
   doctor: SessionExplainDoctor | null;
@@ -259,6 +261,17 @@ export function runSessionExplain(
     ? manifestExcludedSkills
     : liveExcluded;
 
+  // Emit hard diagnosis when live exclusions exist but manifest reports none
+  if (liveExcluded.length > 0 && manifestExcludedSkills.length === 0) {
+    diagnosis.push({
+      severity: "error",
+      code: "MANIFEST_EXCLUSION_DRIFT",
+      message:
+        "Live exclusion policy found excluded skills, but generated/skill-manifest.json lists none.",
+      hint: "Run `bun run build:manifest` and commit the regenerated artifact.",
+    });
+  }
+
   // Emit exclusion diagnosis for each excluded skill
   for (const ex of excludedSkills) {
     diagnosis.push({
@@ -342,6 +355,14 @@ export function runSessionExplain(
       wins: exposures.filter((e) => e.outcome === "win").length,
       directiveWins: exposures.filter((e) => e.outcome === "directive-win").length,
       staleMisses: exposures.filter((e) => e.outcome === "stale-miss").length,
+      candidateWins: exposures.filter((e) =>
+        (e.outcome === "win" || e.outcome === "directive-win") &&
+        (e as any).attributionRole === "candidate"
+      ).length,
+      contextWins: exposures.filter((e) =>
+        (e.outcome === "win" || e.outcome === "directive-win") &&
+        (e as any).attributionRole === "context"
+      ).length,
     },
     diagnosis,
     doctor,

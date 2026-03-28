@@ -55,6 +55,7 @@ import {
   appendSkillExposure,
   loadProjectRoutingPolicy,
 } from "./routing-policy-ledger.mjs";
+import { buildAttributionDecision } from "./routing-attribution.mjs";
 import {
   appendRoutingDecisionTrace,
   createDecisionId,
@@ -1170,6 +1171,15 @@ export function run(): string {
     const exposurePlan = loadCachedPlanResult(sessionId, log);
     const exposureStory = exposurePlan ? selectActiveStory(exposurePlan) : null;
     if (exposureStory) {
+      const attribution = buildAttributionDecision({
+        sessionId,
+        hook: "UserPromptSubmit",
+        storyId: exposureStory.id ?? null,
+        route: exposureStory.route ?? null,
+        targetBoundary: null,
+        loadedSkills: loaded,
+      });
+
       for (const skill of loaded) {
         appendSkillExposure({
           id: `${sessionId}:prompt:${skill}:${Date.now()}`,
@@ -1182,6 +1192,9 @@ export function run(): string {
           toolName: "Prompt",
           skill,
           targetBoundary: null,
+          exposureGroupId: attribution.exposureGroupId,
+          attributionRole: skill === attribution.candidateSkill ? "candidate" : "context",
+          candidateSkill: attribution.candidateSkill,
           createdAt: new Date().toISOString(),
           resolvedAt: null,
           outcome: "pending",
@@ -1193,6 +1206,8 @@ export function run(): string {
         storyId: exposureStory.id,
         storyKind: exposureStory.kind ?? null,
         policyBoosted: promptPolicyBoosted,
+        candidateSkill: attribution.candidateSkill,
+        exposureGroupId: attribution.exposureGroupId,
       });
     } else {
       log.debug("routing-policy-exposures-skipped", {

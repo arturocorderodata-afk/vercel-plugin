@@ -14,7 +14,6 @@
 
 import {
   appendFileSync,
-  mkdirSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
@@ -58,6 +57,12 @@ export interface SkillExposure {
   toolName: RoutingToolName;
   skill: string;
   targetBoundary: RoutingBoundary | null;
+  /** Shared across all exposures in the same injection batch. Null for legacy rows. */
+  exposureGroupId: string | null;
+  /** Whether this skill is the causal candidate or a co-injected context helper. */
+  attributionRole: "candidate" | "context";
+  /** Which skill in the group owns policy credit. Null for legacy rows. */
+  candidateSkill: string | null;
   createdAt: string;
   resolvedAt: string | null;
   outcome: "pending" | "win" | "directive-win" | "stale-miss";
@@ -108,25 +113,48 @@ export function saveProjectRoutingPolicy(
 }
 
 // ---------------------------------------------------------------------------
+// Attribution gating
+// ---------------------------------------------------------------------------
+
+/**
+ * Only candidate exposures update long-term project routing policy.
+ * Context exposures are still fully persisted in the session JSONL for
+ * replay, operator inspection, and diagnostics.
+ *
+ * Legacy rows (missing attributionRole) default to candidate behavior
+ * for backward compatibility.
+ */
+function shouldAffectPolicy(exposure: SkillExposure): boolean {
+  // Legacy rows without attribution fields default to candidate
+  if (!exposure.attributionRole) return true;
+  return exposure.attributionRole === "candidate";
+}
+
+// ---------------------------------------------------------------------------
 // Session exposure ledger (append-only JSONL)
 // ---------------------------------------------------------------------------
 
 export function appendSkillExposure(exposure: SkillExposure): void {
   const path = sessionExposurePath(exposure.sessionId);
   const log = createLogger();
+
+  // Always persist to session JSONL — full history for replay and inspection
   appendFileSync(path, JSON.stringify(exposure) + "\n");
 
-  const policy = loadProjectRoutingPolicy(exposure.projectRoot);
-  policyRecordExposure(policy, {
-    hook: exposure.hook,
-    storyKind: exposure.storyKind,
-    targetBoundary: exposure.targetBoundary,
-    toolName: exposure.toolName,
-    routeScope: exposure.route,
-    skill: exposure.skill,
-    now: exposure.createdAt,
-  });
-  saveProjectRoutingPolicy(exposure.projectRoot, policy);
+  // Only candidate exposures update project routing policy
+  if (shouldAffectPolicy(exposure)) {
+    const policy = loadProjectRoutingPolicy(exposure.projectRoot);
+    policyRecordExposure(policy, {
+      hook: exposure.hook,
+      storyKind: exposure.storyKind,
+      targetBoundary: exposure.targetBoundary,
+      toolName: exposure.toolName,
+      routeScope: exposure.route,
+      skill: exposure.skill,
+      now: exposure.createdAt,
+    });
+    saveProjectRoutingPolicy(exposure.projectRoot, policy);
+  }
 
   log.summary("routing-policy-ledger.exposure-append", {
     id: exposure.id,
@@ -135,6 +163,9 @@ export function appendSkillExposure(exposure: SkillExposure): void {
     targetBoundary: exposure.targetBoundary,
     route: exposure.route,
     outcome: exposure.outcome,
+    attributionRole: exposure.attributionRole ?? "legacy",
+    exposureGroupId: exposure.exposureGroupId ?? null,
+    policyAffected: shouldAffectPolicy(exposure),
   });
 }
 
@@ -242,11 +273,14 @@ export function resolveBoundaryOutcome(params: {
   const lines = exposures.map((e) => JSON.stringify(e)).join("\n") + "\n";
   writeFileSync(path, lines);
 
-  // Update project policy for each resolved exposure
+  // Update project policy only for candidate exposures
+  const candidateResolved = resolved.filter(shouldAffectPolicy);
   const projectRoots = new Set(resolved.map((e) => e.projectRoot));
   for (const projectRoot of projectRoots) {
+    const candidates = candidateResolved.filter((r) => r.projectRoot === projectRoot);
+    if (candidates.length === 0) continue;
     const policy = loadProjectRoutingPolicy(projectRoot);
-    for (const e of resolved.filter((r) => r.projectRoot === projectRoot)) {
+    for (const e of candidates) {
       policyRecordOutcome(policy, {
         hook: e.hook,
         storyKind: e.storyKind,
@@ -268,6 +302,8 @@ export function resolveBoundaryOutcome(params: {
     route,
     outcome,
     resolvedCount: resolved.length,
+    candidateCount: candidateResolved.length,
+    contextCount: resolved.length - candidateResolved.length,
     skills: resolved.map((e) => e.skill),
   });
 
@@ -318,11 +354,14 @@ export function finalizeStaleExposures(
   const lines = exposures.map((e) => JSON.stringify(e)).join("\n") + "\n";
   writeFileSync(path, lines);
 
-  // Update project policies
+  // Update project policies — only for candidate exposures
+  const candidateStale = stale.filter(shouldAffectPolicy);
   const projectRoots = new Set(stale.map((e) => e.projectRoot));
   for (const projectRoot of projectRoots) {
+    const candidates = candidateStale.filter((r) => r.projectRoot === projectRoot);
+    if (candidates.length === 0) continue;
     const policy = loadProjectRoutingPolicy(projectRoot);
-    for (const e of stale.filter((r) => r.projectRoot === projectRoot)) {
+    for (const e of candidates) {
       policyRecordOutcome(policy, {
         hook: e.hook,
         storyKind: e.storyKind,
@@ -340,6 +379,8 @@ export function finalizeStaleExposures(
   log.summary("routing-policy-ledger.finalize-stale", {
     sessionId,
     staleCount: stale.length,
+    candidateCount: candidateStale.length,
+    contextCount: stale.length - candidateStale.length,
     skills: stale.map((e) => e.skill),
   });
 
